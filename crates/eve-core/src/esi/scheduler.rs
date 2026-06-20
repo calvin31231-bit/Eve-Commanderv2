@@ -154,6 +154,12 @@ impl Scheduler {
         self.jobs.push(job);
     }
 
+    /// Register many jobs at once (e.g. from
+    /// [`endpoints::all_jobs`](super::endpoints::all_jobs)).
+    pub fn add_jobs(&mut self, jobs: impl IntoIterator<Item = PollJob>) {
+        self.jobs.extend(jobs);
+    }
+
     pub fn set_intensity(&mut self, intensity: Intensity) {
         self.intensity = intensity;
     }
