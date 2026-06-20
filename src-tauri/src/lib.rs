@@ -26,6 +26,7 @@ use eve_core::industry::IndustryClient;
 use eve_core::mail::MailClient;
 use eve_core::market::MarketClient;
 use eve_core::mining::MiningClient;
+use eve_core::names::NameResolver;
 use eve_core::notify::NotificationCenter;
 use eve_core::prices::PricesClient;
 use eve_core::sde::Sde;
@@ -59,9 +60,9 @@ pub struct AppState {
     pub mail: MailClient,
     /// Public market-price reference for asset/ore valuation.
     pub prices: PricesClient,
-    /// Static data export for id→name resolution. Always present: the full
-    /// prebuilt `sde.sqlite` if shipped, otherwise a common-items seed.
-    pub sde: Sde,
+    /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
+    /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
+    pub names: NameResolver,
     /// Collected notifications shown in the Alerts rail.
     pub notifications: tray::SharedCenter,
 }
@@ -151,6 +152,8 @@ fn build_state() -> AppState {
         }
     };
 
+    let names = NameResolver::new(esi.clone(), db.clone(), sde);
+
     AppState {
         config,
         esi,
@@ -168,7 +171,7 @@ fn build_state() -> AppState {
         mining,
         mail,
         prices,
-        sde,
+        names,
         notifications,
     }
 }

@@ -32,6 +32,7 @@ pub mod mail;
 pub mod market;
 pub mod mining;
 pub mod model;
+pub mod names;
 pub mod notify;
 pub mod prices;
 pub mod sde;

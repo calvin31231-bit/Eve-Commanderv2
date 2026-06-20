@@ -5,6 +5,7 @@
 //! concurrent reads during writes.
 
 pub mod characters;
+pub mod names;
 
 use std::path::Path;
 use std::str::FromStr;

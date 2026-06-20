@@ -7,9 +7,7 @@ use tauri::State;
 use eve_core::assets::value_holdings;
 use eve_core::character::CharacterSheet;
 use eve_core::clones::ClonesSummary;
-use eve_core::industry::ActiveJob;
 use eve_core::mail::{strip_markup, MailHeader};
-use eve_core::market::OrderView;
 use eve_core::mining::estimated_yield;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
@@ -214,16 +212,19 @@ pub async fn get_top_holdings(
     let prices = state.prices.price_map().await.unwrap_or_default();
 
     let valued = value_holdings(&groups, &prices, limit);
-    let mut out = Vec::with_capacity(valued.groups.len());
-    for g in valued.groups {
-        out.push(ValuedAssetGroup {
+    let ids: Vec<i64> = valued.groups.iter().map(|g| g.type_id).collect();
+    let names = names_for(&state, &ids).await;
+    let out = valued
+        .groups
+        .into_iter()
+        .map(|g| ValuedAssetGroup {
             type_id: g.type_id,
-            name: resolve_type_name(&state, g.type_id).await,
+            name: named(&names, g.type_id),
             quantity: g.quantity,
             locations: g.locations,
             value: g.value,
-        });
-    }
+        })
+        .collect();
     Ok(HoldingsView {
         total_value: valued.total_value,
         groups: out,
@@ -248,11 +249,15 @@ pub async fn get_clones(state: State<'_, AppState>, character_id: i64) -> CmdRes
         .await
         .map_err(|e| e.to_string())?;
 
-    let implants = state
-        .sde
-        .name_types(&summary.active_implants)
-        .await
-        .map_err(|e| e.to_string())?;
+    let names = names_for(&state, &summary.active_implants).await;
+    let implants = summary
+        .active_implants
+        .iter()
+        .map(|&type_id| NamedType {
+            type_id,
+            name: named(&names, type_id),
+        })
+        .collect();
 
     Ok(ClonesView {
         jump_clone_count: summary.jump_clone_count,
@@ -300,25 +305,22 @@ pub async fn get_industry_jobs(
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut out = Vec::with_capacity(summary.jobs.len());
-    for job in summary.jobs {
-        out.push(view_for(&state, job).await);
-    }
+    let ids: Vec<i64> = summary.jobs.iter().map(|j| j.display_type_id).collect();
+    let names = names_for(&state, &ids).await;
+    let out = summary
+        .jobs
+        .into_iter()
+        .map(|job| IndustryJobView {
+            job_id: job.job_id,
+            activity: job.activity,
+            item_name: named(&names, job.display_type_id),
+            runs: job.runs,
+            status: job.status,
+            end_date: job.end_date,
+            seconds_remaining: job.seconds_remaining,
+        })
+        .collect();
     Ok(out)
-}
-
-/// Enrich one [`ActiveJob`] with its display item name (falling back to the id).
-async fn view_for(state: &AppState, job: ActiveJob) -> IndustryJobView {
-    let item_name = resolve_type_name(state, job.display_type_id).await;
-    IndustryJobView {
-        job_id: job.job_id,
-        activity: job.activity,
-        item_name,
-        runs: job.runs,
-        status: job.status,
-        end_date: job.end_date,
-        seconds_remaining: job.seconds_remaining,
-    }
 }
 
 /// One open order with its SDE-resolved item name.
@@ -354,10 +356,21 @@ pub async fn get_market_orders(
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut orders = Vec::with_capacity(summary.orders.len());
-    for o in summary.orders {
-        orders.push(order_view(&state, o).await);
-    }
+    let ids: Vec<i64> = summary.orders.iter().map(|o| o.type_id).collect();
+    let names = names_for(&state, &ids).await;
+    let orders = summary
+        .orders
+        .into_iter()
+        .map(|o| MarketOrderView {
+            order_id: o.order_id,
+            item_name: named(&names, o.type_id),
+            is_buy_order: o.is_buy_order,
+            price: o.price,
+            volume_remain: o.volume_remain,
+            volume_total: o.volume_total,
+            seconds_remaining: o.seconds_remaining,
+        })
+        .collect();
     Ok(MarketView {
         buy_count: summary.buy_count,
         sell_count: summary.sell_count,
@@ -365,20 +378,6 @@ pub async fn get_market_orders(
         sell_value: summary.sell_value,
         orders,
     })
-}
-
-/// Enrich one [`OrderView`] with its item name (falling back to the id).
-async fn order_view(state: &AppState, o: OrderView) -> MarketOrderView {
-    let item_name = resolve_type_name(state, o.type_id).await;
-    MarketOrderView {
-        order_id: o.order_id,
-        item_name,
-        is_buy_order: o.is_buy_order,
-        price: o.price,
-        volume_remain: o.volume_remain,
-        volume_total: o.volume_total,
-        seconds_remaining: o.seconds_remaining,
-    }
 }
 
 /// One ore total with its SDE name and estimated ISK value.
@@ -411,15 +410,18 @@ pub async fn get_mining(state: State<'_, AppState>, character_id: i64) -> CmdRes
     // Total yield spans all ore; only the display rows are truncated.
     let total_value = estimated_yield(&summary.by_ore, &prices);
 
-    let mut ores = Vec::new();
-    for ore in summary.by_ore.into_iter().take(8) {
-        ores.push(NamedOre {
+    let top: Vec<_> = summary.by_ore.into_iter().take(8).collect();
+    let ids: Vec<i64> = top.iter().map(|o| o.type_id).collect();
+    let names = names_for(&state, &ids).await;
+    let ores = top
+        .into_iter()
+        .map(|ore| NamedOre {
             type_id: ore.type_id,
-            name: resolve_type_name(&state, ore.type_id).await,
+            name: named(&names, ore.type_id),
             quantity: ore.quantity,
             value: prices.value(ore.type_id, ore.quantity),
-        });
-    }
+        })
+        .collect();
     Ok(MiningView {
         total_units: summary.total_units,
         day_count: summary.day_count,
@@ -428,15 +430,18 @@ pub async fn get_mining(state: State<'_, AppState>, character_id: i64) -> CmdRes
     })
 }
 
-/// Resolve a single type id to a name via the SDE, falling back to `Type {id}`.
-async fn resolve_type_name(state: &AppState, type_id: i64) -> String {
-    state
-        .sde
-        .type_name(type_id)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| format!("Type {type_id}"))
+/// Batch-resolve ids to names via the layered resolver (cache → SDE → ESI).
+/// Returns the resolved map; ids that didn't resolve are simply absent.
+async fn names_for(
+    state: &AppState,
+    ids: &[i64],
+) -> std::collections::HashMap<i64, String> {
+    state.names.resolve(ids).await.unwrap_or_default()
+}
+
+/// Look up a name in a resolved map, falling back to `Type {id}`.
+fn named(names: &std::collections::HashMap<i64, String>, id: i64) -> String {
+    names.get(&id).cloned().unwrap_or_else(|| format!("Type {id}"))
 }
 
 /// The latest page of mail headers for a character.

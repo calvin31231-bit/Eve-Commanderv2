@@ -37,3 +37,12 @@ CREATE TABLE IF NOT EXISTS snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_snapshots_char_kind_time
     ON snapshots (character_id, kind, taken_at);
+
+-- Resolved id→name cache (types, systems, characters, …) from ESI
+-- /universe/names/. Persistent so names are instant after the first lookup.
+CREATE TABLE IF NOT EXISTS names (
+    id       INTEGER PRIMARY KEY,
+    name     TEXT    NOT NULL,
+    category TEXT
+);
+
