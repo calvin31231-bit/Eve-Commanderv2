@@ -142,12 +142,13 @@ fn redirect_port(redirect_uri: &str) -> CmdResult<u16> {
 fn open_in_browser(url: &str) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     let mut cmd = {
-        // Use explorer.exe, NOT `cmd /C start`: cmd treats the `&` in the OAuth
-        // query string as command separators and truncates the URL at the first
-        // one, dropping client_id/scope/state. explorer opens the URL verbatim
-        // in the default browser.
-        let mut c = std::process::Command::new("explorer.exe");
-        c.arg(url);
+        // Open via the shell URL protocol handler. NOT `cmd /C start` (cmd splits
+        // the OAuth URL on `&`, dropping client_id/scope/state) and NOT
+        // `explorer.exe <url>` (which can open a folder window instead of the
+        // browser). rundll32 isn't a shell, so the URL — ampersands and all —
+        // reaches the default browser intact.
+        let mut c = std::process::Command::new("rundll32.exe");
+        c.arg("url.dll,FileProtocolHandler").arg(url);
         c
     };
     #[cfg(target_os = "macos")]
