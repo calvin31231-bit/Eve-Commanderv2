@@ -1,0 +1,30 @@
+# Rust
+/target
+**/target
+Cargo.lock.bak
+
+# Node / frontend
+node_modules
+dist
+dist-ssr
+.vite
+*.local
+
+# Tauri build output
+src-tauri/target
+src-tauri/gen
+
+# Local data / secrets (never commit ESI tokens, vaults, or DBs)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+memory-vault/
+.env
+.env.*
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.swp
