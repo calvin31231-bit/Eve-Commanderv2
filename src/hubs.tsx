@@ -56,9 +56,10 @@ interface HomeProps {
   statusError: string | null;
   characters: Character[];
   onLogin: () => void;
+  onSelectCharacter: (characterId: number) => void;
 }
 
-function Home({ status, statusError, characters, onLogin }: HomeProps): ReactNode {
+function Home({ status, statusError, characters, onLogin, onSelectCharacter }: HomeProps): ReactNode {
   return (
     <>
       <h1>Welcome, Capsuleer</h1>
@@ -88,13 +89,25 @@ function Home({ status, statusError, characters, onLogin }: HomeProps): ReactNod
               </button>
             </>
           ) : (
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
-              {characters.map((c) => (
-                <li key={c.id}>
-                  {c.name} {c.active && <span className="badge safe">active</span>}
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="char-list">
+                {characters.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      className={`char-row${c.active ? " active" : ""}`}
+                      onClick={() => onSelectCharacter(c.id)}
+                      title={c.active ? "Active character" : "Make active"}
+                    >
+                      <span>{c.name}</span>
+                      {c.active && <span className="badge safe">active</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button className="primary" style={{ marginTop: 10 }} onClick={onLogin}>
+                Add character
+              </button>
+            </>
           )}
         </div>
       </div>

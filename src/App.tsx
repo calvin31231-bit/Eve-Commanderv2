@@ -44,15 +44,33 @@ export default function App() {
 
   const activeCharacter = characters.find((c) => c.active) ?? null;
 
+  async function reloadCharacters() {
+    const list = await api.listCharacters();
+    setCharacters(list);
+    return list;
+  }
+
   async function onLogin() {
     try {
       // One backend round-trip: opens the system browser, captures the loopback
       // redirect, and resolves with the added character.
       const character = await api.login();
-      setCharacters((prev) => {
-        const without = prev.filter((c) => c.id !== character.id);
-        return [...without, character];
-      });
+      const list = await reloadCharacters();
+      // First character (or none active yet) becomes the active one, so the
+      // hubs have something to show immediately.
+      if (!list.some((c) => c.active)) {
+        await api.setActiveCharacter(character.id);
+        await reloadCharacters();
+      }
+    } catch (e) {
+      setStatusError(String(e));
+    }
+  }
+
+  async function onSelectCharacter(characterId: number) {
+    try {
+      await api.setActiveCharacter(characterId);
+      await reloadCharacters();
     } catch (e) {
       setStatusError(String(e));
     }
@@ -96,7 +114,7 @@ export default function App() {
 
       {/* Main canvas */}
       <main className="main-canvas">
-        {renderHub(activeHub, { status, statusError, characters, onLogin }, activeCharacter)}
+        {renderHub(activeHub, { status, statusError, characters, onLogin, onSelectCharacter }, activeCharacter)}
       </main>
 
       {/* Right Situational Awareness rail — always present in every hub */}

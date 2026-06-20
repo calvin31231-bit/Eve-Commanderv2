@@ -181,6 +181,26 @@ table.holdings td.pos { color: #51cf66; }
 .cashflow-totals .neg,
 table.holdings td.neg { color: var(--danger); }
 
+/* Character picker (Home) */
+ul.char-list { list-style: none; margin: 0; padding: 0; }
+.char-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.char-row:hover { border-color: var(--accent-dim); }
+.char-row.active { border-color: var(--accent); }
+
 /* Mail (EVEmail reader) */
 ul.mail-list { list-style: none; margin: 0; padding: 0; }
 .mail-row {
