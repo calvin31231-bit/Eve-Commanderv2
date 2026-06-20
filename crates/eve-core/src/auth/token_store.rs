@@ -8,6 +8,8 @@
 
 use crate::error::{Error, Result};
 
+/// Keychain service name. Only referenced by the `keychain`-gated backend.
+#[cfg_attr(not(feature = "keychain"), allow(dead_code))]
 const SERVICE: &str = "eve-commander";
 
 /// Abstraction over a refresh-token store, keyed by character id.

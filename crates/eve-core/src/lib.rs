@@ -9,7 +9,7 @@
 //! Module map (see the project plan for the full architecture):
 //! - [`auth`]   — EVE SSO OAuth2 + PKCE and token storage.
 //! - [`esi`]    — the ESI client: cache-first requests, error-budget rate
-//!                limiting, and the tiered background poll scheduler.
+//!   limiting, and the tiered background poll scheduler.
 //! - [`model`]  — account / character / group data model.
 //! - [`config`] — application configuration and on-disk paths.
 //! - [`error`]  — the crate-wide error type.

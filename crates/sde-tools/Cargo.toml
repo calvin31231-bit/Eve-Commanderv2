@@ -1,0 +1,21 @@
+[package]
+name = "sde-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Build-time converter that ingests CCP's Static Data Export (YAML) into the prebuilt, version-pinned sde.sqlite that eve-core queries read-only."
+
+[[bin]]
+name = "sde-convert"
+path = "src/main.rs"
+
+[dependencies]
+# Reuse the SDE schema from eve-core so the converter and the reader can never
+# drift apart.
+eve-core = { path = "../eve-core" }
+rusqlite.workspace = true
+serde.workspace = true
+serde_yaml = "0.9"
+anyhow = "1"

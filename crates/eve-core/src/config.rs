@@ -18,21 +18,16 @@ pub const SSO_TOKEN_URL: &str = "https://login.eveonline.com/v2/oauth/token";
 /// How aggressively the background scheduler refreshes data. This never beats
 /// an endpoint's published cache timer — it only scales *which* characters and
 /// *which* tiers get polled, to keep the resource footprint low.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Intensity {
     /// Foreground essentials only; lean on on-demand fetches. Ideal on a laptop
     /// / on battery.
     Light,
     /// Sensible default: foreground at full cadence, background alts slower.
+    #[default]
     Balanced,
     /// Keep everything near its cache cadence. Highest freshness, highest cost.
     Aggressive,
-}
-
-impl Default for Intensity {
-    fn default() -> Self {
-        Intensity::Balanced
-    }
 }
 
 impl Intensity {

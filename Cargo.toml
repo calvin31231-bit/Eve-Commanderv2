@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/eve-core", "src-tauri"]
+members = ["crates/eve-core", "crates/sde-tools", "src-tauri"]
 resolver = "2"
 
 [workspace.package]

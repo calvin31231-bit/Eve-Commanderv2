@@ -30,18 +30,13 @@ pub struct Claims {
 }
 
 /// `scp` is either a single string or an array of strings.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(untagged)]
 enum ScopeField {
     One(String),
     Many(Vec<String>),
+    #[default]
     None,
-}
-
-impl Default for ScopeField {
-    fn default() -> Self {
-        ScopeField::None
-    }
 }
 
 impl Claims {
