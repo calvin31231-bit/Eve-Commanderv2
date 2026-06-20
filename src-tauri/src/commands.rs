@@ -4,6 +4,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use eve_core::character::CharacterSheet;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
 
@@ -135,6 +136,19 @@ fn open_in_browser(url: &str) -> std::io::Result<()> {
         c
     };
     cmd.spawn().map(|_| ())
+}
+
+/// Fetch the Character-hub summary (skills + queue + wallet) for a character.
+#[tauri::command]
+pub async fn get_character_sheet(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<CharacterSheet> {
+    state
+        .character
+        .sheet(character_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// All collected notifications, most recent first (drives the Alerts rail).

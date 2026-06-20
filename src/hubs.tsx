@@ -3,8 +3,9 @@
 // Strategy"). Phase 0 ships the shell + Home; other hubs are placeholders that
 // later phases fill in.
 
-import type { ReactNode } from "react";
-import type { Character, ServerStatus } from "./types";
+import { useEffect, useState, type ReactNode } from "react";
+import { api, isTauri } from "./ipc";
+import type { Character, CharacterSheet, ServerStatus } from "./types";
 
 export interface Hub {
   id: string;
@@ -89,12 +90,97 @@ function Home({ status, statusError, characters, onLogin }: HomeProps): ReactNod
   );
 }
 
-export function renderHub(hubId: string, home: HomeProps): ReactNode {
+const ISK = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+
+function formatDuration(seconds: number): string {
+  if (seconds <= 0) return "complete";
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function CharacterHub({ character }: { character: Character | null }): ReactNode {
+  const [sheet, setSheet] = useState<CharacterSheet | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setSheet(null);
+    setError(null);
+    if (!character) return;
+    if (!isTauri()) {
+      setError("Design preview — connect the desktop shell to load live data.");
+      return;
+    }
+    setLoading(true);
+    api
+      .getCharacterSheet(character.id)
+      .then(setSheet)
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, [character?.id]);
+
+  if (!character) {
+    return (
+      <>
+        <h1>Character</h1>
+        <div className="sub">No active character. Add one from Home, then select it.</div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <h1>{character.name}</h1>
+      <div className="sub">Skills, training, and wallet.</div>
+      {error && !sheet && <div className="card"><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
+      {loading && <div className="card"><p style={{ color: "var(--text-dim)" }}>Loading…</p></div>}
+      {sheet && (
+        <div className="card-grid">
+          <div className="card">
+            <h3>Wallet</h3>
+            <p className="mono" style={{ fontSize: 22 }}>
+              {ISK.format(sheet.wallet_balance)} <span style={{ color: "var(--text-dim)", fontSize: 13 }}>ISK</span>
+            </p>
+          </div>
+          <div className="card">
+            <h3>Skill points</h3>
+            <p className="mono" style={{ fontSize: 22 }}>{ISK.format(sheet.total_sp)}</p>
+            <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+              {sheet.skill_count} skills · {sheet.maxed_count} at level V
+              {sheet.unallocated_sp ? ` · ${ISK.format(sheet.unallocated_sp)} unallocated` : ""}
+            </p>
+          </div>
+          <div className="card">
+            <h3>Training</h3>
+            {sheet.queue_len === 0 ? (
+              <p style={{ color: "var(--caution)" }}>Skill queue is empty.</p>
+            ) : (
+              <>
+                <p className="mono" style={{ fontSize: 22 }}>
+                  {sheet.queue_seconds_remaining != null ? formatDuration(sheet.queue_seconds_remaining) : "—"}
+                </p>
+                <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+                  {sheet.queue_len} skill{sheet.queue_len === 1 ? "" : "s"} queued
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export function renderHub(hubId: string, home: HomeProps, activeCharacter: Character | null): ReactNode {
   switch (hubId) {
     case "home":
       return <Home {...home} />;
     case "character":
-      return <Placeholder title="Character" blurb="Skills, wallet, assets, clones, mining, mail." />;
+      return <CharacterHub character={activeCharacter} />;
     case "economy":
       return <Placeholder title="Economy" blurb="Market, industry, reactions, PI, reprocessing." />;
     case "combat":

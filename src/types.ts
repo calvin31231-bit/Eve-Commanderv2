@@ -16,6 +16,18 @@ export interface ServerStatus {
   vip: boolean;
 }
 
+export interface CharacterSheet {
+  wallet_balance: number;
+  total_sp: number;
+  unallocated_sp: number | null;
+  skill_count: number;
+  maxed_count: number;
+  queue_len: number;
+  active_skill_id: number | null;
+  queue_finishes_at: string | null;
+  queue_seconds_remaining: number | null;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

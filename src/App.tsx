@@ -96,7 +96,7 @@ export default function App() {
 
       {/* Main canvas */}
       <main className="main-canvas">
-        {renderHub(activeHub, { status, statusError, characters, onLogin })}
+        {renderHub(activeHub, { status, statusError, characters, onLogin }, activeCharacter)}
       </main>
 
       {/* Right Situational Awareness rail — always present in every hub */}

@@ -16,6 +16,7 @@ use tauri::Manager;
 
 use eve_core::auth::{LoginManager, SsoClient, TokenManager};
 use eve_core::auth::token_store::TokenStore;
+use eve_core::character::CharacterClient;
 use eve_core::config::Config;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
@@ -31,6 +32,8 @@ pub struct AppState {
     pub tokens: Arc<dyn TokenStore>,
     /// Hands out valid access tokens (refreshing as needed) for ESI polling.
     pub token_manager: TokenManager,
+    /// Typed character reads (skills, queue, wallet) for the Character hub.
+    pub character: CharacterClient,
     /// Collected notifications shown in the Alerts rail.
     pub notifications: tray::SharedCenter,
 }
@@ -82,6 +85,7 @@ fn build_state() -> AppState {
 
     let tokens: Arc<dyn TokenStore> = Arc::from(eve_core::auth::token_store::default_store());
     let token_manager = TokenManager::new(sso.clone(), tokens.clone());
+    let character = CharacterClient::new(esi.clone(), token_manager.clone());
     let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
 
     AppState {
@@ -92,6 +96,7 @@ fn build_state() -> AppState {
         db,
         tokens,
         token_manager,
+        character,
         notifications,
     }
 }
@@ -129,6 +134,7 @@ pub fn run() {
             commands::login,
             commands::set_active_character,
             commands::remove_character,
+            commands::get_character_sheet,
             commands::list_notifications,
             commands::unread_notifications,
             commands::mark_notifications_read,
