@@ -10,9 +10,13 @@
 //! 5. Persist only the **refresh token** (in the OS keychain when the
 //!    `keychain` feature is enabled); keep access tokens in memory.
 
+pub mod flow;
 pub mod pkce;
 pub mod sso;
+pub mod token;
 pub mod token_store;
 
+pub use flow::{CompletedLogin, LoginManager};
 pub use pkce::PkcePair;
-pub use sso::{TokenResponse, SsoClient};
+pub use sso::{SsoClient, TokenResponse};
+pub use token::{decode_claims, Claims};

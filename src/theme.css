@@ -1,0 +1,67 @@
+/* EVE Commander — "sci-fi cockpit meets Bloomberg terminal".
+   Dark, high-contrast, restrained. A small palette: neutrals + one cyan accent
+   + semantic status colors. A future pass swaps this for Tailwind tokens +
+   shadcn/ui per the ROADMAP, keeping these variable names. */
+
+:root {
+  --bg: #0a0e14;
+  --bg-panel: #111722;
+  --bg-elevated: #19212e;
+  --border: #233044;
+  --text: #d6e0f0;
+  --text-dim: #8a98ad;
+  --accent: #36c5f4;
+  --accent-dim: #1c6f8c;
+
+  --danger: #ff4d4f;
+  --warn: #f7b500;
+  --caution: #f7b500;
+  --safe: #3ddc84;
+  --neutral: #8a98ad;
+
+  --rail-w: 64px;
+  --sa-rail-w: 300px;
+  --context-h: 44px;
+
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Inter, sans-serif;
+  font-size: 14px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button:hover {
+  border-color: var(--accent-dim);
+}
+button.primary {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+a {
+  color: var(--accent);
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}

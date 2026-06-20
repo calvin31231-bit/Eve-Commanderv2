@@ -10,19 +10,26 @@ mod commands;
 
 use std::sync::Arc;
 
+use eve_core::auth::{LoginManager, SsoClient};
+use eve_core::auth::token_store::TokenStore;
 use eve_core::config::Config;
+use eve_core::db::Database;
+use eve_core::esi::EsiClient;
 
 /// Shared application state handed to every Tauri command.
 pub struct AppState {
     pub config: Config,
-    pub esi: eve_core::esi::EsiClient,
-    pub tokens: Arc<dyn eve_core::auth::token_store::TokenStore>,
+    pub esi: EsiClient,
+    pub sso: SsoClient,
+    pub login: LoginManager,
+    pub db: Database,
+    pub tokens: Arc<dyn TokenStore>,
 }
 
 /// Build the app config from environment / defaults. The ESI `client_id` and
 /// `redirect_uri` come from the registered ESI application.
 fn load_config() -> Config {
-    let data_dir = dirs_next_data_dir().join("eve-commander");
+    let data_dir = data_dir().join("eve-commander");
     let client_id = std::env::var("EVE_COMMANDER_CLIENT_ID").unwrap_or_default();
     let redirect = std::env::var("EVE_COMMANDER_REDIRECT_URI")
         .unwrap_or_else(|_| "http://localhost:8787/callback".to_string());
@@ -30,7 +37,7 @@ fn load_config() -> Config {
 }
 
 /// Minimal data-dir resolver without pulling in an extra crate at this stage.
-fn dirs_next_data_dir() -> std::path::PathBuf {
+fn data_dir() -> std::path::PathBuf {
     if let Ok(dir) = std::env::var("XDG_DATA_HOME") {
         return std::path::PathBuf::from(dir);
     }
@@ -40,18 +47,38 @@ fn dirs_next_data_dir() -> std::path::PathBuf {
     std::env::temp_dir()
 }
 
+/// Construct the shared application state (opens the database).
+fn build_state() -> AppState {
+    let config = load_config();
+    std::fs::create_dir_all(&config.data_dir).ok();
+
+    let http = reqwest::Client::new();
+    let cache: Arc<dyn eve_core::esi::client::CacheStore> =
+        Arc::new(eve_core::esi::client::MemoryCacheStore::default());
+    let esi = EsiClient::new(config.user_agent.clone(), cache).expect("failed to build ESI client");
+    let sso = SsoClient::new(http, config.client_id.clone(), config.redirect_uri.clone());
+
+    // Database::open is async; block on it during startup.
+    let db = tauri::async_runtime::block_on(Database::open(config.app_db_path()))
+        .expect("failed to open app database");
+
+    let tokens: Arc<dyn TokenStore> = Arc::from(eve_core::auth::token_store::default_store());
+
+    AppState {
+        config,
+        esi,
+        sso,
+        login: LoginManager::new(),
+        db,
+        tokens,
+    }
+}
+
 /// Entry point invoked by `main.rs`.
 pub fn run() {
     tracing_subscriber::fmt().with_env_filter("info").init();
 
-    let config = load_config();
-    let cache: Arc<dyn eve_core::esi::client::CacheStore> =
-        Arc::new(eve_core::esi::client::MemoryCacheStore::default());
-    let esi = eve_core::esi::EsiClient::new(config.user_agent.clone(), cache)
-        .expect("failed to build ESI client");
-    let tokens = Arc::from(eve_core::auth::token_store::default_store());
-
-    let state = AppState { config, esi, tokens };
+    let state = build_state();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -60,6 +87,9 @@ pub fn run() {
             commands::server_status,
             commands::list_characters,
             commands::begin_login,
+            commands::complete_login,
+            commands::set_active_character,
+            commands::remove_character,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

@@ -21,8 +21,10 @@
 
 pub mod auth;
 pub mod config;
+pub mod db;
 pub mod error;
 pub mod esi;
 pub mod model;
+pub mod sde;
 
 pub use error::{Error, Result};

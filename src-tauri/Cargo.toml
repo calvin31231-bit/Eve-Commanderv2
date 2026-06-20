@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 eve-core = { path = "../crates/eve-core", features = ["keychain"] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-notification = "2"
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

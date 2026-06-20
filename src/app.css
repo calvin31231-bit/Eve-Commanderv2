@@ -1,0 +1,141 @@
+/* Layout for the cockpit shell: a top context bar, a left hub rail, a central
+   canvas, and a docked right-hand Situational Awareness rail. */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--rail-w) 1fr var(--sa-rail-w);
+  grid-template-rows: var(--context-h) 1fr;
+  grid-template-areas:
+    "rail context context"
+    "rail main    sa";
+  height: 100vh;
+}
+
+/* Top context bar: active char, location, system safety, training, connection */
+.context-bar {
+  grid-area: context;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+.context-bar .spacer {
+  flex: 1;
+}
+.context-bar .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+}
+.context-bar .conn-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--neutral);
+}
+.context-bar .conn-dot.ok {
+  background: var(--safe);
+}
+.context-bar .conn-dot.err {
+  background: var(--danger);
+}
+
+/* Left hub rail */
+.hub-rail {
+  grid-area: rail;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 8px;
+  gap: 4px;
+}
+.hub-rail .brand {
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.hub-rail button {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 18px;
+}
+.hub-rail button.active {
+  background: var(--bg-elevated);
+  border-color: var(--accent-dim);
+}
+
+/* Main canvas */
+.main-canvas {
+  grid-area: main;
+  overflow: auto;
+  padding: 20px;
+}
+.main-canvas h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.main-canvas .sub {
+  color: var(--text-dim);
+  margin-bottom: 18px;
+}
+
+/* Situational Awareness rail */
+.sa-rail {
+  grid-area: sa;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  overflow: auto;
+  padding: 12px;
+}
+.sa-section {
+  margin-bottom: 18px;
+}
+.sa-section h3 {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 8px;
+}
+.sa-empty {
+  color: var(--text-dim);
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+/* Cards / panels */
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+/* Status badges (Safe / Caution / Danger), reusing in-game overview convention */
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge.safe { background: rgba(61, 220, 132, 0.15); color: var(--safe); }
+.badge.caution { background: rgba(247, 181, 0, 0.15); color: var(--caution); }
+.badge.danger { background: rgba(255, 77, 79, 0.15); color: var(--danger); }
