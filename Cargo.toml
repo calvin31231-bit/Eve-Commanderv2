@@ -22,3 +22,6 @@ rand = "0.8"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 tracing = "0.1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
+# Synchronous SQLite for the cache store, which sits on the ESI client's hot
+# synchronous path (the CacheStore trait is sync). Shares libsqlite3-sys with sqlx.
+rusqlite = { version = "0.32", features = ["bundled"] }

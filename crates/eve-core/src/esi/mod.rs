@@ -9,10 +9,12 @@
 //! - [`client`]    — the cache-first HTTP client tying it together.
 
 pub mod cache;
+pub mod cache_store;
 pub mod client;
 pub mod ratelimit;
 pub mod scheduler;
 
-pub use client::EsiClient;
+pub use cache_store::SqliteCacheStore;
+pub use client::{CacheStore, EsiClient, MemoryCacheStore};
 pub use ratelimit::ErrorBudget;
-pub use scheduler::{PollClass, PollJob};
+pub use scheduler::{PollClass, PollJob, Scheduler};

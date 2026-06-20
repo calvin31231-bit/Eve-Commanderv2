@@ -20,6 +20,9 @@ pub enum Error {
     #[error("database error: {0}")]
     Db(#[from] sqlx::Error),
 
+    #[error("cache database error: {0}")]
+    CacheDb(#[from] rusqlite::Error),
+
     #[error("i/o error: {0}")]
     Io(#[from] std::io::Error),
 

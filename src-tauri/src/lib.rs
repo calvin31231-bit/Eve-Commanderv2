@@ -53,8 +53,17 @@ fn build_state() -> AppState {
     std::fs::create_dir_all(&config.data_dir).ok();
 
     let http = reqwest::Client::new();
+    // Persistent on-disk cache so ETags/bodies survive restarts (the first poll
+    // after launch is usually a free 304). Fall back to in-memory if the cache
+    // DB can't be opened — a degraded cache must never block startup.
     let cache: Arc<dyn eve_core::esi::client::CacheStore> =
-        Arc::new(eve_core::esi::client::MemoryCacheStore::default());
+        match eve_core::esi::SqliteCacheStore::open(config.cache_db_path()) {
+            Ok(store) => Arc::new(store),
+            Err(e) => {
+                tracing::warn!("falling back to in-memory cache: {e}");
+                Arc::new(eve_core::esi::client::MemoryCacheStore::default())
+            }
+        };
     let esi = EsiClient::new(config.user_agent.clone(), cache).expect("failed to build ESI client");
     let sso = SsoClient::new(http, config.client_id.clone(), config.redirect_uri.clone());
 

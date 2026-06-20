@@ -20,6 +20,7 @@ rand.workspace = true
 time.workspace = true
 tracing.workspace = true
 sqlx.workspace = true
+rusqlite.workspace = true
 
 [features]
 default = []
