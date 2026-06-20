@@ -15,6 +15,7 @@ use crate::auth::TokenManager;
 use crate::error::{Error, Result};
 use crate::esi::endpoints::endpoint;
 use crate::esi::EsiClient;
+use crate::prices::PriceMap;
 
 /// One mining-ledger row (ESI `GET /characters/{id}/mining/`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +42,15 @@ pub struct MiningSummary {
     pub day_count: usize,
     /// Ore types mined, most units first.
     pub by_ore: Vec<OreTotal>,
+}
+
+/// Estimated ISK yield of the mined ore, valued against a [`PriceMap`]
+/// (unpriced ores contribute 0).
+pub fn estimated_yield(by_ore: &[OreTotal], prices: &PriceMap) -> f64 {
+    by_ore
+        .iter()
+        .map(|o| prices.value(o.type_id, o.quantity))
+        .sum()
 }
 
 /// Aggregate ledger rows by ore type, count active days, and total the units.
@@ -90,12 +100,11 @@ impl MiningClient {
             .await
     }
 
-    /// Fetch and aggregate the ledger, keeping only the `top_n` ores.
-    pub async fn summary(&self, character_id: i64, top_n: usize) -> Result<MiningSummary> {
+    /// Fetch and aggregate the full ledger (untruncated, so callers can value
+    /// the total yield before truncating for display).
+    pub async fn summary(&self, character_id: i64) -> Result<MiningSummary> {
         let entries = self.ledger(character_id).await?;
-        let mut summary = summarize_mining(&entries);
-        summary.by_ore.truncate(top_n);
-        Ok(summary)
+        Ok(summarize_mining(&entries))
     }
 }
 
@@ -144,5 +153,20 @@ mod tests {
         assert_eq!(s.total_units, 0);
         assert_eq!(s.day_count, 0);
         assert!(s.by_ore.is_empty());
+    }
+
+    #[test]
+    fn estimated_yield_values_ore() {
+        use crate::prices::{PriceMap, TypePrice};
+        let prices = PriceMap::from_prices(&[TypePrice {
+            type_id: 34,
+            average_price: 5.0,
+            adjusted_price: 0.0,
+        }]);
+        let by_ore = vec![
+            OreTotal { type_id: 34, quantity: 1000 }, // 5,000
+            OreTotal { type_id: 999, quantity: 50 },  // unpriced → 0
+        ];
+        assert_eq!(estimated_yield(&by_ore, &prices), 5000.0);
     }
 }

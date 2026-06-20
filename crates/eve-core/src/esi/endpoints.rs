@@ -60,6 +60,13 @@ pub const CATALOG: &[Endpoint] = &[
         class: PollClass::Fast,
         scope: None,
     },
+    // --- shared / public market data ---
+    Endpoint {
+        key: "market_prices",
+        path: "/latest/markets/prices/",
+        class: PollClass::Daily,
+        scope: None,
+    },
     // --- per-character public ---
     Endpoint {
         key: "character_public",

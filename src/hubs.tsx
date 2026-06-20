@@ -10,12 +10,12 @@ import type {
   Character,
   CharacterSheet,
   ClonesView,
+  HoldingsView,
   IndustryJobView,
   MailHeader,
   MailView,
   MarketView,
   MiningView,
-  NamedAssetGroup,
   ServerStatus,
 } from "./types";
 
@@ -174,7 +174,7 @@ function MailCard({ character }: { character: Character }): ReactNode {
 
 function CharacterHub({ character }: { character: Character | null }): ReactNode {
   const [sheet, setSheet] = useState<CharacterSheet | null>(null);
-  const [holdings, setHoldings] = useState<NamedAssetGroup[]>([]);
+  const [holdings, setHoldings] = useState<HoldingsView | null>(null);
   const [clones, setClones] = useState<ClonesView | null>(null);
   const [cashflow, setCashflow] = useState<CashflowSummary | null>(null);
   const [mining, setMining] = useState<MiningView | null>(null);
@@ -183,7 +183,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
 
   useEffect(() => {
     setSheet(null);
-    setHoldings([]);
+    setHoldings(null);
     setClones(null);
     setCashflow(null);
     setMining(null);
@@ -309,16 +309,16 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
-      {holdings.length > 0 && (
+      {holdings && holdings.groups.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
-          <h3>Top holdings</h3>
+          <h3>Top holdings <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {ISK.format(holdings.total_value)} ISK est.</span></h3>
           <table className="holdings">
             <tbody>
-              {holdings.map((h) => (
+              {holdings.groups.map((h) => (
                 <tr key={h.type_id}>
                   <td>{h.name}</td>
-                  <td className="mono num">{ISK.format(h.quantity)}</td>
-                  <td className="loc">{h.locations} loc{h.locations === 1 ? "" : "s"}</td>
+                  <td className="mono num">×{ISK.format(h.quantity)}</td>
+                  <td className="mono num pos">{ISK.format(h.value)}</td>
                 </tr>
               ))}
             </tbody>
@@ -327,13 +327,14 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
       )}
       {mining && mining.total_units > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
-          <h3>Mining <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {ISK.format(mining.total_units)} units over {mining.day_count} day{mining.day_count === 1 ? "" : "s"}</span></h3>
+          <h3>Mining <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {ISK.format(mining.total_value)} ISK over {mining.day_count} day{mining.day_count === 1 ? "" : "s"}</span></h3>
           <table className="holdings">
             <tbody>
               {mining.ores.map((o) => (
                 <tr key={o.type_id}>
                   <td>{o.name}</td>
-                  <td className="mono num">{ISK.format(o.quantity)}</td>
+                  <td className="mono num">×{ISK.format(o.quantity)}</td>
+                  <td className="mono num pos">{ISK.format(o.value)}</td>
                 </tr>
               ))}
             </tbody>

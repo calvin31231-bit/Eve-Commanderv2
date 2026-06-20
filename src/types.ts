@@ -28,11 +28,17 @@ export interface CharacterSheet {
   queue_seconds_remaining: number | null;
 }
 
-export interface NamedAssetGroup {
+export interface ValuedAssetGroup {
   type_id: number;
   name: string;
   quantity: number;
   locations: number;
+  value: number;
+}
+
+export interface HoldingsView {
+  total_value: number;
+  groups: ValuedAssetGroup[];
 }
 
 export interface NamedType {
@@ -92,11 +98,13 @@ export interface NamedOre {
   type_id: number;
   name: string;
   quantity: number;
+  value: number;
 }
 
 export interface MiningView {
   total_units: number;
   day_count: number;
+  total_value: number;
   ores: NamedOre[];
 }
 

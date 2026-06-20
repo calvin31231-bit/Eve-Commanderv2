@@ -4,13 +4,13 @@
 use serde::Serialize;
 use tauri::State;
 
-use eve_core::assets::{resolve_names, NamedAssetGroup};
+use eve_core::assets::value_holdings;
 use eve_core::character::CharacterSheet;
 use eve_core::clones::ClonesSummary;
 use eve_core::industry::ActiveJob;
 use eve_core::mail::{strip_markup, MailHeader};
 use eve_core::market::OrderView;
-use eve_core::mining::OreTotal;
+use eve_core::mining::estimated_yield;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
 use eve_core::sde::NamedType;
@@ -174,23 +174,55 @@ pub async fn get_character_sheet(
         .map_err(|e| e.to_string())
 }
 
-/// Top `limit` asset holdings for a character, aggregated by type and resolved
-/// to names via the SDE (falling back to `Type {id}` when the SDE isn't loaded).
+/// A named, valued asset holding.
+#[derive(Debug, Serialize)]
+pub struct ValuedAssetGroup {
+    pub type_id: i64,
+    pub name: String,
+    pub quantity: i64,
+    pub locations: usize,
+    pub value: f64,
+}
+
+/// A character's holdings: total estimated value plus the top valued groups.
+#[derive(Debug, Serialize)]
+pub struct HoldingsView {
+    pub total_value: f64,
+    pub groups: Vec<ValuedAssetGroup>,
+}
+
+/// Top `limit` holdings for a character, ranked by ISK value (priced via the
+/// public market reference) and named via the SDE. `total_value` spans all
+/// holdings, not just the returned rows.
 #[tauri::command]
 pub async fn get_top_holdings(
     state: State<'_, AppState>,
     character_id: i64,
     limit: usize,
-) -> CmdResult<Vec<NamedAssetGroup>> {
+) -> CmdResult<HoldingsView> {
     let groups = state
         .assets
-        .top_holdings(character_id, limit)
+        .all_holdings(character_id)
         .await
         .map_err(|e| e.to_string())?;
+    // Prices are best-effort: if the fetch fails, values fall back to 0.
+    let prices = state.prices.price_map().await.unwrap_or_default();
 
-    resolve_names(&groups, &state.sde)
-        .await
-        .map_err(|e| e.to_string())
+    let valued = value_holdings(&groups, &prices, limit);
+    let mut out = Vec::with_capacity(valued.groups.len());
+    for g in valued.groups {
+        out.push(ValuedAssetGroup {
+            type_id: g.type_id,
+            name: resolve_type_name(&state, g.type_id).await,
+            quantity: g.quantity,
+            locations: g.locations,
+            value: g.value,
+        });
+    }
+    Ok(HoldingsView {
+        total_value: valued.total_value,
+        groups: out,
+    })
 }
 
 /// The clone view: jump-clone count and the active clone's named implants.
@@ -344,19 +376,21 @@ async fn order_view(state: &AppState, o: OrderView) -> MarketOrderView {
     }
 }
 
-/// One ore total with its SDE-resolved name.
+/// One ore total with its SDE name and estimated ISK value.
 #[derive(Debug, Serialize)]
 pub struct NamedOre {
     pub type_id: i64,
     pub name: String,
     pub quantity: i64,
+    pub value: f64,
 }
 
-/// A character's mining ledger rollup: totals + named top ores.
+/// A character's mining ledger rollup: unit/value totals + named top ores.
 #[derive(Debug, Serialize)]
 pub struct MiningView {
     pub total_units: i64,
     pub day_count: usize,
+    pub total_value: f64,
     pub ores: Vec<NamedOre>,
 }
 
@@ -364,28 +398,29 @@ pub struct MiningView {
 pub async fn get_mining(state: State<'_, AppState>, character_id: i64) -> CmdResult<MiningView> {
     let summary = state
         .mining
-        .summary(character_id, 8)
+        .summary(character_id)
         .await
         .map_err(|e| e.to_string())?;
+    let prices = state.prices.price_map().await.unwrap_or_default();
 
-    let mut ores = Vec::with_capacity(summary.by_ore.len());
-    for ore in summary.by_ore {
-        ores.push(named_ore(&state, ore).await);
+    // Total yield spans all ore; only the display rows are truncated.
+    let total_value = estimated_yield(&summary.by_ore, &prices);
+
+    let mut ores = Vec::new();
+    for ore in summary.by_ore.into_iter().take(8) {
+        ores.push(NamedOre {
+            type_id: ore.type_id,
+            name: resolve_type_name(&state, ore.type_id).await,
+            quantity: ore.quantity,
+            value: prices.value(ore.type_id, ore.quantity),
+        });
     }
     Ok(MiningView {
         total_units: summary.total_units,
         day_count: summary.day_count,
+        total_value,
         ores,
     })
-}
-
-/// Enrich one [`OreTotal`] with its item name (falling back to the id).
-async fn named_ore(state: &AppState, ore: OreTotal) -> NamedOre {
-    NamedOre {
-        type_id: ore.type_id,
-        name: resolve_type_name(state, ore.type_id).await,
-        quantity: ore.quantity,
-    }
 }
 
 /// Resolve a single type id to a name via the SDE, falling back to `Type {id}`.

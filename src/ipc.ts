@@ -10,12 +10,12 @@ import type {
   Character,
   CharacterSheet,
   ClonesView,
+  HoldingsView,
   IndustryJobView,
   MailHeader,
   MailView,
   MarketView,
   MiningView,
-  NamedAssetGroup,
   Notification,
   ServerStatus,
 } from "./types";
@@ -44,7 +44,7 @@ export const api = {
   getCharacterSheet: (characterId: number) =>
     call<CharacterSheet>("get_character_sheet", { characterId }),
   getTopHoldings: (characterId: number, limit: number) =>
-    call<NamedAssetGroup[]>("get_top_holdings", { characterId, limit }),
+    call<HoldingsView>("get_top_holdings", { characterId, limit }),
   getClones: (characterId: number) =>
     call<ClonesView>("get_clones", { characterId }),
   getCashflow: (characterId: number) =>

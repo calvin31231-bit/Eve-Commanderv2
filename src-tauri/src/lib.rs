@@ -27,6 +27,7 @@ use eve_core::mail::MailClient;
 use eve_core::market::MarketClient;
 use eve_core::mining::MiningClient;
 use eve_core::notify::NotificationCenter;
+use eve_core::prices::PricesClient;
 use eve_core::sde::Sde;
 use eve_core::wallet::WalletClient;
 
@@ -56,6 +57,8 @@ pub struct AppState {
     pub mining: MiningClient,
     /// EVEmail reads (headers + body) for the Character hub.
     pub mail: MailClient,
+    /// Public market-price reference for asset/ore valuation.
+    pub prices: PricesClient,
     /// Static data export for id→name resolution. Always present: the full
     /// prebuilt `sde.sqlite` if shipped, otherwise a common-items seed.
     pub sde: Sde,
@@ -118,6 +121,7 @@ fn build_state() -> AppState {
     let market = MarketClient::new(esi.clone(), token_manager.clone());
     let mining = MiningClient::new(esi.clone(), token_manager.clone());
     let mail = MailClient::new(esi.clone(), token_manager.clone());
+    let prices = PricesClient::new(esi.clone());
     let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
 
     // Use the full prebuilt SDE if shipped, else fall back to the common-items
@@ -149,6 +153,7 @@ fn build_state() -> AppState {
         market,
         mining,
         mail,
+        prices,
         sde,
         notifications,
     }

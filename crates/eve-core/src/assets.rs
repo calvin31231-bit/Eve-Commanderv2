@@ -16,6 +16,7 @@ use crate::auth::TokenManager;
 use crate::error::{Error, Result};
 use crate::esi::endpoints::endpoint;
 use crate::esi::EsiClient;
+use crate::prices::PriceMap;
 use crate::sde::Sde;
 
 /// One asset stack (ESI `GET /characters/{id}/assets/` element).
@@ -75,6 +76,54 @@ pub fn aggregate_by_type(items: &[AssetItem]) -> Vec<AssetGroup> {
     groups
 }
 
+/// An [`AssetGroup`] with its estimated ISK value.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValuedGroup {
+    pub type_id: i64,
+    pub quantity: i64,
+    pub locations: usize,
+    pub value: f64,
+}
+
+/// Asset holdings valued against a [`PriceMap`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValuedHoldings {
+    /// Total estimated value across **all** holdings (not just the top ones).
+    pub total_value: f64,
+    /// The `top_n` groups by value, descending.
+    pub groups: Vec<ValuedGroup>,
+}
+
+/// Value every group, total them, and return the `top_n` by value (descending).
+/// The total reflects all holdings; only the returned rows are truncated.
+pub fn value_holdings(groups: &[AssetGroup], prices: &PriceMap, top_n: usize) -> ValuedHoldings {
+    let mut valued: Vec<ValuedGroup> = groups
+        .iter()
+        .map(|g| ValuedGroup {
+            type_id: g.type_id,
+            quantity: g.quantity,
+            locations: g.locations,
+            value: prices.value(g.type_id, g.quantity),
+        })
+        .collect();
+
+    let total_value: f64 = valued.iter().map(|g| g.value).sum();
+
+    // Most valuable first; type_id breaks ties for a stable order.
+    valued.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.type_id.cmp(&b.type_id))
+    });
+    valued.truncate(top_n);
+
+    ValuedHoldings {
+        total_value,
+        groups: valued,
+    }
+}
+
 /// Resolve type ids to names via the SDE, falling back to `Type {id}` for ids
 /// the (version-pinned) SDE doesn't know.
 pub async fn resolve_names(groups: &[AssetGroup], sde: &Sde) -> Result<Vec<NamedAssetGroup>> {
@@ -115,12 +164,11 @@ impl AssetsClient {
             .await
     }
 
-    /// Fetch and aggregate assets, returning the `top_n` holdings by quantity.
-    pub async fn top_holdings(&self, character_id: i64, top_n: usize) -> Result<Vec<AssetGroup>> {
+    /// Fetch and aggregate **all** holdings by type (untruncated), so callers
+    /// can rank by value once prices are known.
+    pub async fn all_holdings(&self, character_id: i64) -> Result<Vec<AssetGroup>> {
         let items = self.items(character_id).await?;
-        let mut groups = aggregate_by_type(&items);
-        groups.truncate(top_n);
-        Ok(groups)
+        Ok(aggregate_by_type(&items))
     }
 }
 
@@ -174,6 +222,28 @@ mod tests {
         assert_eq!(groups[1].type_id, 587);
         assert_eq!(groups[1].quantity, 1);
         assert_eq!(groups[1].locations, 1);
+    }
+
+    #[test]
+    fn values_rank_by_value_and_total_covers_all() {
+        use crate::prices::{PriceMap, TypePrice};
+        let prices = PriceMap::from_prices(&[
+            TypePrice { type_id: 34, average_price: 5.0, adjusted_price: 0.0 },   // Tritanium
+            TypePrice { type_id: 587, average_price: 1_000_000.0, adjusted_price: 0.0 }, // Rifter
+        ]);
+        let groups = vec![
+            AssetGroup { type_id: 34, quantity: 1000, locations: 1 },  // 5,000
+            AssetGroup { type_id: 587, quantity: 2, locations: 1 },    // 2,000,000
+            AssetGroup { type_id: 999, quantity: 50, locations: 1 },   // unpriced → 0
+        ];
+        let valued = value_holdings(&groups, &prices, 2);
+        // Total spans all three groups (incl. the zero-valued one).
+        assert_eq!(valued.total_value, 2_005_000.0);
+        // Top 2 by value: Rifter then Tritanium.
+        assert_eq!(valued.groups.len(), 2);
+        assert_eq!(valued.groups[0].type_id, 587);
+        assert_eq!(valued.groups[0].value, 2_000_000.0);
+        assert_eq!(valued.groups[1].type_id, 34);
     }
 
     #[tokio::test]

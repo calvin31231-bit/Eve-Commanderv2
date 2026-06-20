@@ -33,6 +33,7 @@ pub mod market;
 pub mod mining;
 pub mod model;
 pub mod notify;
+pub mod prices;
 pub mod sde;
 pub mod wallet;
 
