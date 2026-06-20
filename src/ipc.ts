@@ -10,6 +10,7 @@ import type {
   Character,
   CharacterSheet,
   ClonesView,
+  IndustryJobView,
   NamedAssetGroup,
   Notification,
   ServerStatus,
@@ -44,6 +45,8 @@ export const api = {
     call<ClonesView>("get_clones", { characterId }),
   getCashflow: (characterId: number) =>
     call<CashflowSummary>("get_cashflow", { characterId }),
+  getIndustryJobs: (characterId: number) =>
+    call<IndustryJobView[]>("get_industry_jobs", { characterId }),
   listNotifications: () => call<Notification[]>("list_notifications"),
   unreadNotifications: () => call<number>("unread_notifications"),
   markNotificationsRead: () => call<void>("mark_notifications_read"),

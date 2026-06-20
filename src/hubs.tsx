@@ -10,6 +10,7 @@ import type {
   Character,
   CharacterSheet,
   ClonesView,
+  IndustryJobView,
   NamedAssetGroup,
   ServerStatus,
 } from "./types";
@@ -265,6 +266,79 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
   );
 }
 
+function EconomyHub({ character }: { character: Character | null }): ReactNode {
+  const [jobs, setJobs] = useState<IndustryJobView[]>([]);
+  const [loadedAt, setLoadedAt] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    setJobs([]);
+    setError(null);
+    if (!character) return;
+    if (!isTauri()) {
+      setError("Design preview — connect the desktop shell to load live data.");
+      return;
+    }
+    api
+      .getIndustryJobs(character.id)
+      .then((j) => {
+        setJobs(j);
+        setLoadedAt(Date.now());
+      })
+      .catch((e) => setError(String(e)));
+  }, [character?.id]);
+
+  // Tick once a second so the countdowns advance without re-polling ESI.
+  useEffect(() => {
+    if (jobs.length === 0) return;
+    const t = window.setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [jobs.length]);
+
+  if (!character) {
+    return (
+      <>
+        <h1>Economy</h1>
+        <div className="sub">No active character. Add one from Home, then select it.</div>
+      </>
+    );
+  }
+
+  const elapsed = loadedAt ? Math.floor((Date.now() - loadedAt) / 1000) : 0;
+
+  return (
+    <>
+      <h1>Economy</h1>
+      <div className="sub">Industry jobs, market, and more.</div>
+      {error && <div className="card"><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
+      <div className="card">
+        <h3>Industry jobs {jobs.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {jobs.length} active</span>}</h3>
+        {jobs.length === 0 && !error ? (
+          <p style={{ color: "var(--text-dim)" }}>No jobs in progress.</p>
+        ) : (
+          <table className="holdings">
+            <tbody>
+              {jobs.map((j) => {
+                const remaining = Math.max(0, j.seconds_remaining - elapsed);
+                return (
+                  <tr key={j.job_id}>
+                    <td>{j.item_name}</td>
+                    <td className="loc">{j.activity}{j.runs > 1 ? ` ×${j.runs}` : ""}</td>
+                    <td className={`mono num ${remaining === 0 ? "pos" : ""}`}>
+                      {remaining === 0 ? "Ready" : formatDuration(remaining)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function renderHub(hubId: string, home: HomeProps, activeCharacter: Character | null): ReactNode {
   switch (hubId) {
     case "home":
@@ -272,7 +346,7 @@ export function renderHub(hubId: string, home: HomeProps, activeCharacter: Chara
     case "character":
       return <CharacterHub character={activeCharacter} />;
     case "economy":
-      return <Placeholder title="Economy" blurb="Market, industry, reactions, PI, reprocessing." />;
+      return <EconomyHub character={activeCharacter} />;
     case "combat":
       return <Placeholder title="Combat & Intel" blurb="Killboard, intel map, D-scan, threat scanner, fitting, AAR." />;
     case "navigation":

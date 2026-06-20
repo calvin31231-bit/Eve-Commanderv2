@@ -60,6 +60,16 @@ export interface CashflowSummary {
   by_ref_type: RefTypeTotal[];
 }
 
+export interface IndustryJobView {
+  job_id: number;
+  activity: string;
+  item_name: string;
+  runs: number;
+  status: string;
+  end_date: string;
+  seconds_remaining: number;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

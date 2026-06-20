@@ -7,6 +7,7 @@ use tauri::State;
 use eve_core::assets::{resolve_names, NamedAssetGroup};
 use eve_core::character::CharacterSheet;
 use eve_core::clones::ClonesSummary;
+use eve_core::industry::ActiveJob;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
 use eve_core::sde::NamedType;
@@ -248,6 +249,60 @@ pub async fn get_cashflow(
         .cashflow(character_id, 6)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// An active industry job with its SDE-resolved item name.
+#[derive(Debug, Serialize)]
+pub struct IndustryJobView {
+    pub job_id: i64,
+    pub activity: String,
+    pub item_name: String,
+    pub runs: i64,
+    pub status: String,
+    pub end_date: String,
+    pub seconds_remaining: i64,
+}
+
+/// In-progress industry jobs (with client-side countdowns) for a character,
+/// items resolved to names via the SDE.
+#[tauri::command]
+pub async fn get_industry_jobs(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<IndustryJobView>> {
+    let summary = state
+        .industry
+        .summary(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut out = Vec::with_capacity(summary.jobs.len());
+    for job in summary.jobs {
+        out.push(view_for(&state, job).await);
+    }
+    Ok(out)
+}
+
+/// Enrich one [`ActiveJob`] with its display item name (falling back to the id).
+async fn view_for(state: &AppState, job: ActiveJob) -> IndustryJobView {
+    let item_name = match &state.sde {
+        Some(sde) => sde
+            .type_name(job.display_type_id)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| format!("Type {}", job.display_type_id)),
+        None => format!("Type {}", job.display_type_id),
+    };
+    IndustryJobView {
+        job_id: job.job_id,
+        activity: job.activity,
+        item_name,
+        runs: job.runs,
+        status: job.status,
+        end_date: job.end_date,
+        seconds_remaining: job.seconds_remaining,
+    }
 }
 
 /// All collected notifications, most recent first (drives the Alerts rail).
