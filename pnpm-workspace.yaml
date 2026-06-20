@@ -1,0 +1,5 @@
+# pnpm settings live here (newer pnpm no longer reads the "pnpm" field in
+# package.json). Allow esbuild (used by Vite) to run its install script so the
+# native binary is set up; pnpm 10+ blocks dependency build scripts by default.
+onlyBuiltDependencies:
+  - esbuild
