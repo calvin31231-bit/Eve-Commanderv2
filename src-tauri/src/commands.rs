@@ -5,6 +5,7 @@ use serde::Serialize;
 use tauri::State;
 
 use eve_core::model::Character;
+use eve_core::notify::Notification;
 
 use crate::AppState;
 
@@ -134,6 +135,36 @@ fn open_in_browser(url: &str) -> std::io::Result<()> {
         c
     };
     cmd.spawn().map(|_| ())
+}
+
+/// All collected notifications, most recent first (drives the Alerts rail).
+#[tauri::command]
+pub fn list_notifications(state: State<'_, AppState>) -> CmdResult<Vec<Notification>> {
+    let center = state.notifications.lock().map_err(|_| "notification center poisoned")?;
+    Ok(center.list())
+}
+
+/// Count of unread notifications (drives the Alerts badge).
+#[tauri::command]
+pub fn unread_notifications(state: State<'_, AppState>) -> CmdResult<usize> {
+    let center = state.notifications.lock().map_err(|_| "notification center poisoned")?;
+    Ok(center.unread_count())
+}
+
+/// Mark every notification read.
+#[tauri::command]
+pub fn mark_notifications_read(state: State<'_, AppState>) -> CmdResult<()> {
+    let mut center = state.notifications.lock().map_err(|_| "notification center poisoned")?;
+    center.mark_all_read();
+    Ok(())
+}
+
+/// Dismiss a single notification by key.
+#[tauri::command]
+pub fn dismiss_notification(state: State<'_, AppState>, key: String) -> CmdResult<()> {
+    let mut center = state.notifications.lock().map_err(|_| "notification center poisoned")?;
+    center.dismiss(&key);
+    Ok(())
 }
 
 /// Make a character the active/foreground one (polled at full cadence).

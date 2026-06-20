@@ -8,8 +8,9 @@
 
 mod commands;
 mod poller;
+mod tray;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tauri::Manager;
 
@@ -18,6 +19,7 @@ use eve_core::auth::token_store::TokenStore;
 use eve_core::config::Config;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
+use eve_core::notify::NotificationCenter;
 
 /// Shared application state handed to every Tauri command.
 pub struct AppState {
@@ -29,6 +31,8 @@ pub struct AppState {
     pub tokens: Arc<dyn TokenStore>,
     /// Hands out valid access tokens (refreshing as needed) for ESI polling.
     pub token_manager: TokenManager,
+    /// Collected notifications shown in the Alerts rail.
+    pub notifications: tray::SharedCenter,
 }
 
 /// Build the app config from environment / defaults. The ESI `client_id` and
@@ -78,6 +82,7 @@ fn build_state() -> AppState {
 
     let tokens: Arc<dyn TokenStore> = Arc::from(eve_core::auth::token_store::default_store());
     let token_manager = TokenManager::new(sso.clone(), tokens.clone());
+    let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
 
     AppState {
         config,
@@ -87,6 +92,7 @@ fn build_state() -> AppState {
         db,
         tokens,
         token_manager,
+        notifications,
     }
 }
 
@@ -100,15 +106,20 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(state)
         .setup(|app| {
+            // System tray with Show/Quit.
+            tray::build(app.handle())?;
+
             // Start the background poll worker with cheap clones of the shared
             // handles. It reloads the roster from the DB each tick, so it picks
             // up characters added later in the session.
             let state = app.state::<AppState>();
             poller::spawn(
+                app.handle().clone(),
                 state.esi.clone(),
                 state.token_manager.clone(),
                 state.db.clone(),
                 state.config.clone(),
+                state.notifications.clone(),
             );
             Ok(())
         })
@@ -118,6 +129,10 @@ pub fn run() {
             commands::login,
             commands::set_active_character,
             commands::remove_character,
+            commands::list_notifications,
+            commands::unread_notifications,
+            commands::mark_notifications_read,
+            commands::dismiss_notification,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

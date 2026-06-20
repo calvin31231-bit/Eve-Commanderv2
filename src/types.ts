@@ -15,3 +15,15 @@ export interface ServerStatus {
   server_version: string;
   vip: boolean;
 }
+
+export type Severity = "Info" | "Warning" | "Critical";
+
+export interface Notification {
+  key: string;
+  title: string;
+  body: string;
+  severity: Severity;
+  category: string;
+  created_at: number;
+  read: boolean;
+}

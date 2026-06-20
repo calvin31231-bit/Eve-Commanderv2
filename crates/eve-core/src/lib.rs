@@ -25,6 +25,7 @@ pub mod db;
 pub mod error;
 pub mod esi;
 pub mod model;
+pub mod notify;
 pub mod sde;
 
 pub use error::{Error, Result};

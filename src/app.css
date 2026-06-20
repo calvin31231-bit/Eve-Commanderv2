@@ -115,6 +115,32 @@
   padding: 10px;
 }
 
+/* Alerts list (notification center, "calm" — collected, glanceable) */
+.alert-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.alert {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  background: var(--panel, rgba(255, 255, 255, 0.02));
+}
+.alert.read { opacity: 0.6; }
+.alert.sev-info { border-left-color: var(--accent); }
+.alert.sev-warning { border-left-color: var(--caution); }
+.alert.sev-critical { border-left-color: var(--danger); }
+.alert-title { font-size: 12px; font-weight: 600; }
+.alert-body { font-size: 11px; color: var(--text-dim); }
+
 /* Cards / panels */
 .card {
   background: var(--bg-panel);

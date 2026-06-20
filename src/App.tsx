@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, isTauri } from "./ipc";
 import { HUBS, renderHub } from "./hubs";
-import type { Character, ServerStatus } from "./types";
+import type { Character, Notification, ServerStatus } from "./types";
 import "./app.css";
 
 // Hubs are deep-linkable via the URL hash (e.g. #combat) so a view can be
@@ -21,6 +21,7 @@ export default function App() {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [alerts, setAlerts] = useState<Notification[]>([]);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -32,6 +33,13 @@ export default function App() {
       .then(setStatus)
       .catch((e) => setStatusError(String(e)));
     api.listCharacters().then(setCharacters).catch(() => undefined);
+
+    // Poll the notification center for the Alerts rail.
+    const refreshAlerts = () =>
+      api.listNotifications().then(setAlerts).catch(() => undefined);
+    refreshAlerts();
+    const timer = window.setInterval(refreshAlerts, 5000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const activeCharacter = characters.find((c) => c.active) ?? null;
@@ -107,7 +115,18 @@ export default function App() {
         </div>
         <div className="sa-section">
           <h3>Alerts</h3>
-          <div className="sa-empty">Fuel timers, job completions, intel pings (Phase 4).</div>
+          {alerts.length === 0 ? (
+            <div className="sa-empty">Fuel timers, job completions, intel pings (Phase 4).</div>
+          ) : (
+            <ul className="alert-list">
+              {alerts.map((a) => (
+                <li key={a.key} className={`alert sev-${a.severity.toLowerCase()}${a.read ? " read" : ""}`}>
+                  <span className="alert-title">{a.title}</span>
+                  <span className="alert-body">{a.body}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </aside>
     </div>

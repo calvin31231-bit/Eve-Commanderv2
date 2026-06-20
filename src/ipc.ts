@@ -5,7 +5,7 @@
 // fail gracefully so the UI can still render for design work.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { Character, ServerStatus } from "./types";
+import type { Character, Notification, ServerStatus } from "./types";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -28,4 +28,9 @@ export const api = {
     call<void>("set_active_character", { characterId }),
   removeCharacter: (characterId: number) =>
     call<void>("remove_character", { characterId }),
+  listNotifications: () => call<Notification[]>("list_notifications"),
+  unreadNotifications: () => call<number>("unread_notifications"),
+  markNotificationsRead: () => call<void>("mark_notifications_read"),
+  dismissNotification: (key: string) =>
+    call<void>("dismiss_notification", { key }),
 };

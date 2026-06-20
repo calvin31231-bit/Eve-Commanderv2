@@ -15,25 +15,42 @@
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use tauri::AppHandle;
+
 use eve_core::auth::TokenManager;
 use eve_core::config::Config;
 use eve_core::db::Database;
 use eve_core::esi::{all_jobs, plan_fetches, EsiClient, Scheduler};
+use eve_core::notify::{Notification, Severity};
+
+use crate::tray::{self, SharedCenter};
 
 /// How often the scheduler is consulted. Individual endpoints still only fire at
 /// their own (cache-timer-aligned) cadence; this is just the heartbeat.
 const TICK: Duration = Duration::from_secs(5);
 
+/// De-dup key for the "polling paused" notification.
+const BACKOFF_KEY: &str = "esi:backoff";
+
 /// Spawn the background poller. Cheap clones of the shared handles are moved into
 /// the task; it lives for the duration of the app.
-pub fn spawn(esi: EsiClient, tokens: TokenManager, db: Database, config: Config) {
+pub fn spawn(
+    app: AppHandle,
+    esi: EsiClient,
+    tokens: TokenManager,
+    db: Database,
+    config: Config,
+    notifications: SharedCenter,
+) {
     tauri::async_runtime::spawn(async move {
         let mut last_runs: HashMap<(i64, &'static str), u64> = HashMap::new();
         let mut ticker = tokio::time::interval(TICK);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             ticker.tick().await;
-            if let Err(e) = run_tick(&esi, &tokens, &db, &config, &mut last_runs).await {
+            if let Err(e) =
+                run_tick(&app, &esi, &tokens, &db, &config, &notifications, &mut last_runs).await
+            {
                 tracing::warn!("poll tick failed: {e}");
             }
         }
@@ -41,13 +58,39 @@ pub fn spawn(esi: EsiClient, tokens: TokenManager, db: Database, config: Config)
 }
 
 /// One scheduler tick: rebuild the job set, select the due batch, and execute it.
+#[allow(clippy::too_many_arguments)]
 async fn run_tick(
+    app: &AppHandle,
     esi: &EsiClient,
     tokens: &TokenManager,
     db: &Database,
     config: &Config,
+    notifications: &SharedCenter,
     last_runs: &mut HashMap<(i64, &'static str), u64>,
 ) -> Result<(), String> {
+    // If the error-budget breaker is backing off, raise a calm (Info) notice
+    // that polling is paused and skip this tick's network work.
+    let backoff = esi.backoff();
+    if backoff > Duration::ZERO {
+        tray::dispatch(
+            app,
+            notifications,
+            Notification::new(
+                BACKOFF_KEY,
+                "ESI polling paused",
+                "Backing off briefly to respect EVE's rate limits.",
+                Severity::Info,
+                "system",
+                SystemTime::now(),
+            ),
+        );
+        return Ok(());
+    }
+    // Budget healthy again — clear any stale backoff notice.
+    if let Ok(mut center) = notifications.lock() {
+        center.dismiss(BACKOFF_KEY);
+    }
+
     let characters = db.list_characters().await.map_err(|e| e.to_string())?;
 
     // Rebuild the scheduler from the current roster, restoring last-run times so
