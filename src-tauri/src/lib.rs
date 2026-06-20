@@ -18,6 +18,7 @@ use eve_core::assets::AssetsClient;
 use eve_core::auth::{LoginManager, SsoClient, TokenManager};
 use eve_core::auth::token_store::TokenStore;
 use eve_core::character::CharacterClient;
+use eve_core::clones::ClonesClient;
 use eve_core::config::Config;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
@@ -38,6 +39,8 @@ pub struct AppState {
     pub character: CharacterClient,
     /// Paginated asset reads for the Character hub.
     pub assets: AssetsClient,
+    /// Jump clone + implant reads for the Character hub.
+    pub clones: ClonesClient,
     /// Static data export for id→name resolution; `None` until `sde.sqlite` is
     /// shipped/built (names then fall back to `Type {id}`).
     pub sde: Option<Sde>,
@@ -94,6 +97,7 @@ fn build_state() -> AppState {
     let token_manager = TokenManager::new(sso.clone(), tokens.clone());
     let character = CharacterClient::new(esi.clone(), token_manager.clone());
     let assets = AssetsClient::new(esi.clone(), token_manager.clone());
+    let clones = ClonesClient::new(esi.clone(), token_manager.clone());
     let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
 
     // Open the prebuilt SDE if present; absence is fine (names degrade).
@@ -115,6 +119,7 @@ fn build_state() -> AppState {
         token_manager,
         character,
         assets,
+        clones,
         sde,
         notifications,
     }
@@ -155,6 +160,7 @@ pub fn run() {
             commands::remove_character,
             commands::get_character_sheet,
             commands::get_top_holdings,
+            commands::get_clones,
             commands::list_notifications,
             commands::unread_notifications,
             commands::mark_notifications_read,

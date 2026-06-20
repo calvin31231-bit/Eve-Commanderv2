@@ -116,6 +116,18 @@ pub const CATALOG: &[Endpoint] = &[
         class: PollClass::Slow,
         scope: Some("esi-assets.read_assets.v1"),
     },
+    Endpoint {
+        key: "clones",
+        path: "/latest/characters/{cid}/clones/",
+        class: PollClass::Slow,
+        scope: Some("esi-clones.read_clones.v1"),
+    },
+    Endpoint {
+        key: "implants",
+        path: "/latest/characters/{cid}/implants/",
+        class: PollClass::Slow,
+        scope: Some("esi-clones.read_implants.v1"),
+    },
 ];
 
 /// Look up an endpoint by key.

@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Character,
   CharacterSheet,
+  ClonesView,
   NamedAssetGroup,
   Notification,
   ServerStatus,
@@ -38,6 +39,8 @@ export const api = {
     call<CharacterSheet>("get_character_sheet", { characterId }),
   getTopHoldings: (characterId: number, limit: number) =>
     call<NamedAssetGroup[]>("get_top_holdings", { characterId, limit }),
+  getClones: (characterId: number) =>
+    call<ClonesView>("get_clones", { characterId }),
   listNotifications: () => call<Notification[]>("list_notifications"),
   unreadNotifications: () => call<number>("unread_notifications"),
   markNotificationsRead: () => call<void>("mark_notifications_read"),

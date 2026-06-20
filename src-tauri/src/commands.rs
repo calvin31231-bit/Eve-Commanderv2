@@ -6,17 +6,32 @@ use tauri::State;
 
 use eve_core::assets::{resolve_names, NamedAssetGroup};
 use eve_core::character::CharacterSheet;
+use eve_core::clones::ClonesSummary;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
+use eve_core::sde::NamedType;
 
 use crate::AppState;
 
 /// Result type surfaced to the frontend: errors become strings.
 type CmdResult<T> = std::result::Result<T, String>;
 
-/// Default scopes requested at first login. Additional scopes are requested
-/// **incrementally per feature** as the user enables them.
-const BASE_SCOPES: &[&str] = &["publicData"];
+/// Scopes requested at login — the read scopes backing the Character hub, so one
+/// sign-in enables the whole monitor. (Truly incremental, per-feature scope
+/// requests are a later refinement.)
+const BASE_SCOPES: &[&str] = &[
+    "publicData",
+    "esi-skills.read_skills.v1",
+    "esi-skills.read_skillqueue.v1",
+    "esi-wallet.read_character_wallet.v1",
+    "esi-assets.read_assets.v1",
+    "esi-clones.read_clones.v1",
+    "esi-clones.read_implants.v1",
+    "esi-location.read_location.v1",
+    "esi-location.read_online.v1",
+    "esi-industry.read_character_jobs.v1",
+    "esi-markets.read_character_orders.v1",
+];
 
 /// EVE server status (public ESI endpoint) — a good first end-to-end check.
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -178,6 +193,46 @@ pub async fn get_top_holdings(
             })
             .collect()),
     }
+}
+
+/// The clone view: jump-clone count and the active clone's named implants.
+#[derive(Debug, Serialize)]
+pub struct ClonesView {
+    pub jump_clone_count: usize,
+    pub active_implant_count: usize,
+    pub implants: Vec<NamedType>,
+}
+
+/// Jump clones + active implants (with SDE-resolved implant names) for a
+/// character.
+#[tauri::command]
+pub async fn get_clones(state: State<'_, AppState>, character_id: i64) -> CmdResult<ClonesView> {
+    let summary: ClonesSummary = state
+        .clones
+        .summary(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let implants = match &state.sde {
+        Some(sde) => sde
+            .name_types(&summary.active_implants)
+            .await
+            .map_err(|e| e.to_string())?,
+        None => summary
+            .active_implants
+            .iter()
+            .map(|&type_id| NamedType {
+                type_id,
+                name: format!("Type {type_id}"),
+            })
+            .collect(),
+    };
+
+    Ok(ClonesView {
+        jump_clone_count: summary.jump_clone_count,
+        active_implant_count: summary.active_implants.len(),
+        implants,
+    })
 }
 
 /// All collected notifications, most recent first (drives the Alerts rail).

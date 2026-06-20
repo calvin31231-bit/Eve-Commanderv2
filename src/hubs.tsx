@@ -5,7 +5,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { api, isTauri } from "./ipc";
-import type { Character, CharacterSheet, NamedAssetGroup, ServerStatus } from "./types";
+import type { Character, CharacterSheet, ClonesView, NamedAssetGroup, ServerStatus } from "./types";
 
 export interface Hub {
   id: string;
@@ -105,12 +105,14 @@ function formatDuration(seconds: number): string {
 function CharacterHub({ character }: { character: Character | null }): ReactNode {
   const [sheet, setSheet] = useState<CharacterSheet | null>(null);
   const [holdings, setHoldings] = useState<NamedAssetGroup[]>([]);
+  const [clones, setClones] = useState<ClonesView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setSheet(null);
     setHoldings([]);
+    setClones(null);
     setError(null);
     if (!character) return;
     if (!isTauri()) {
@@ -128,6 +130,10 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     api
       .getTopHoldings(character.id, 8)
       .then(setHoldings)
+      .catch(() => undefined);
+    api
+      .getClones(character.id)
+      .then(setClones)
       .catch(() => undefined);
   }, [character?.id]);
 
@@ -177,6 +183,23 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
               </>
             )}
           </div>
+          {clones && (
+            <div className="card">
+              <h3>Clones</h3>
+              <p className="mono" style={{ fontSize: 22 }}>{clones.jump_clone_count}</p>
+              <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+                jump clone{clones.jump_clone_count === 1 ? "" : "s"} · {clones.active_implant_count} active implant
+                {clones.active_implant_count === 1 ? "" : "s"}
+              </p>
+              {clones.implants.length > 0 && (
+                <ul className="implant-list">
+                  {clones.implants.map((i) => (
+                    <li key={i.type_id}>{i.name}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
       )}
       {holdings.length > 0 && (

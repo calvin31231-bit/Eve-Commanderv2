@@ -35,6 +35,17 @@ export interface NamedAssetGroup {
   locations: number;
 }
 
+export interface NamedType {
+  type_id: number;
+  name: string;
+}
+
+export interface ClonesView {
+  jump_clone_count: number;
+  active_implant_count: number;
+  implants: NamedType[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

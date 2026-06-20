@@ -9,10 +9,19 @@
 use std::path::Path;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Row, SqlitePool};
 
 use crate::error::Result;
+
+/// A type id paired with its resolved name (UI-facing, serializable). The shared
+/// shape for any "id → name" resolution (implants, ship types, …).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NamedType {
+    pub type_id: i64,
+    pub name: String,
+}
 
 /// A minimal SDE item type.
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +109,20 @@ impl Sde {
         }))
     }
 
+    /// Resolve a list of type ids to [`NamedType`]s, falling back to `Type {id}`
+    /// for ids the version-pinned SDE doesn't know.
+    pub async fn name_types(&self, ids: &[i64]) -> Result<Vec<NamedType>> {
+        let mut out = Vec::with_capacity(ids.len());
+        for &type_id in ids {
+            let name = self
+                .type_name(type_id)
+                .await?
+                .unwrap_or_else(|| format!("Type {type_id}"));
+            out.push(NamedType { type_id, name });
+        }
+        Ok(out)
+    }
+
     /// Prefix-search item types by name (for the universal search bar).
     pub async fn search_types(&self, prefix: &str, limit: i64) -> Result<Vec<ItemType>> {
         let pattern = format!("{prefix}%");
@@ -165,5 +188,14 @@ mod tests {
         let results = sde.search_types("Tri", 10).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Tritanium");
+    }
+
+    #[tokio::test]
+    async fn name_types_resolves_with_fallback() {
+        let sde = Sde::open_in_memory().await.unwrap();
+        sde.insert_type(587, "Rifter", Some(25)).await.unwrap();
+        let named = sde.name_types(&[587, 99999]).await.unwrap();
+        assert_eq!(named[0].name, "Rifter");
+        assert_eq!(named[1].name, "Type 99999"); // unknown id falls back
     }
 }
