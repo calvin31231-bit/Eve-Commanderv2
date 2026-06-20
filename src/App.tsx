@@ -38,9 +38,13 @@ export default function App() {
 
   async function onLogin() {
     try {
-      const url = await api.beginLogin();
-      // In the desktop shell this opens the system browser; here we just log it.
-      console.info("authorize url:", url);
+      // One backend round-trip: opens the system browser, captures the loopback
+      // redirect, and resolves with the added character.
+      const character = await api.login();
+      setCharacters((prev) => {
+        const without = prev.filter((c) => c.id !== character.id);
+        return [...without, character];
+      });
     } catch (e) {
       setStatusError(String(e));
     }

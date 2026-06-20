@@ -21,9 +21,9 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 export const api = {
   serverStatus: () => call<ServerStatus>("server_status"),
   listCharacters: () => call<Character[]>("list_characters"),
-  beginLogin: () => call<string>("begin_login"),
-  completeLogin: (code: string, oauthState: string) =>
-    call<Character>("complete_login", { code, oauthState }),
+  // Runs the whole SSO flow on the backend (opens the browser, captures the
+  // loopback redirect) and resolves with the newly-added character.
+  login: () => call<Character>("login"),
   setActiveCharacter: (characterId: number) =>
     call<void>("set_active_character", { characterId }),
   removeCharacter: (characterId: number) =>

@@ -40,31 +40,46 @@ pub async fn list_characters(state: State<'_, AppState>) -> CmdResult<Vec<Charac
     state.db.list_characters().await.map_err(|e| e.to_string())
 }
 
-/// Begin the SSO login flow: returns the authorize URL the frontend should open
-/// in the system browser. The loopback redirect then calls [`complete_login`].
+/// How long we keep the loopback redirect server open waiting for the user to
+/// finish authorizing in their browser before giving up.
+const LOGIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Run the full SSO login on the backend: bind the loopback redirect server,
+/// open the system browser at the authorize URL, capture the redirect, exchange
+/// the code, persist the character, and store the refresh token in the keychain.
+///
+/// This is one round-trip from the frontend's perspective: it resolves with the
+/// newly-added [`Character`] (or an error string).
 #[tauri::command]
-pub async fn begin_login(state: State<'_, AppState>) -> CmdResult<String> {
+pub async fn login(state: State<'_, AppState>) -> CmdResult<Character> {
     if state.config.client_id.is_empty() {
         return Err("EVE_COMMANDER_CLIENT_ID is not set — register an ESI app first".into());
     }
+
+    // Bind the loopback server on the registered redirect port *before* opening
+    // the browser, so the redirect can never race ahead of us.
+    let port = redirect_port(&state.config.redirect_uri)?;
+    let server = eve_core::auth::LoopbackServer::bind(port)
+        .map_err(|e| format!("could not bind loopback redirect on port {port}: {e}"))?;
+
+    // Generate PKCE + state and get the authorize URL, then open the browser.
     let url = state
         .login
         .begin(&state.sso, BASE_SCOPES)
         .map_err(|e| e.to_string())?;
-    Ok(url.to_string())
-}
+    open_in_browser(url.as_str()).map_err(|e| format!("could not open browser: {e}"))?;
 
-/// Complete login from the redirect's `code` + `state`: exchanges the code,
-/// persists the character, and stores the refresh token in the OS keychain.
-#[tauri::command]
-pub async fn complete_login(
-    state: State<'_, AppState>,
-    code: String,
-    oauth_state: String,
-) -> CmdResult<Character> {
+    // Wait for the redirect off the async runtime (the server is blocking I/O).
+    let callback = tokio::task::spawn_blocking(move || server.wait_for_callback_timeout(LOGIN_TIMEOUT))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+    // Exchange the code (this also performs the authoritative CSRF state check),
+    // then persist.
     let completed = state
         .login
-        .complete(&state.sso, &oauth_state, &code)
+        .complete(&state.sso, &callback.state, &callback.code)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -79,6 +94,38 @@ pub async fn complete_login(
         .map_err(|e| e.to_string())?;
 
     Ok(completed.character)
+}
+
+/// Parse the explicit port out of the registered redirect URI. EVE SSO requires
+/// the redirect to match exactly, so the port is fixed by registration.
+fn redirect_port(redirect_uri: &str) -> CmdResult<u16> {
+    let url = reqwest::Url::parse(redirect_uri).map_err(|e| e.to_string())?;
+    url.port()
+        .ok_or_else(|| format!("redirect URI '{redirect_uri}' must include an explicit port"))
+}
+
+/// Open `url` in the user's default browser. Uses the platform opener directly
+/// to avoid pulling in a plugin; the SSO page is always an external https URL.
+fn open_in_browser(url: &str) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", url]);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(url);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(url);
+        c
+    };
+    cmd.spawn().map(|_| ())
 }
 
 /// Make a character the active/foreground one (polled at full cadence).

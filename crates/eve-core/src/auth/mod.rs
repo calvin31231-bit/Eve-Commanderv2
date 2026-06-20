@@ -11,12 +11,14 @@
 //!    `keychain` feature is enabled); keep access tokens in memory.
 
 pub mod flow;
+pub mod loopback;
 pub mod pkce;
 pub mod sso;
 pub mod token;
 pub mod token_store;
 
 pub use flow::{CompletedLogin, LoginManager};
+pub use loopback::{LoopbackServer, OAuthCallback};
 pub use pkce::PkcePair;
 pub use sso::{SsoClient, TokenResponse};
 pub use token::{decode_claims, Claims};
