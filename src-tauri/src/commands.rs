@@ -4,6 +4,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use eve_core::assets::{resolve_names, NamedAssetGroup};
 use eve_core::character::CharacterSheet;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
@@ -149,6 +150,34 @@ pub async fn get_character_sheet(
         .sheet(character_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Top `limit` asset holdings for a character, aggregated by type and resolved
+/// to names via the SDE (falling back to `Type {id}` when the SDE isn't loaded).
+#[tauri::command]
+pub async fn get_top_holdings(
+    state: State<'_, AppState>,
+    character_id: i64,
+    limit: usize,
+) -> CmdResult<Vec<NamedAssetGroup>> {
+    let groups = state
+        .assets
+        .top_holdings(character_id, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    match &state.sde {
+        Some(sde) => resolve_names(&groups, sde).await.map_err(|e| e.to_string()),
+        None => Ok(groups
+            .into_iter()
+            .map(|g| NamedAssetGroup {
+                type_id: g.type_id,
+                name: format!("Type {}", g.type_id),
+                quantity: g.quantity,
+                locations: g.locations,
+            })
+            .collect()),
+    }
 }
 
 /// All collected notifications, most recent first (drives the Alerts rail).

@@ -141,6 +141,20 @@
 .alert-title { font-size: 12px; font-weight: 600; }
 .alert-body { font-size: 11px; color: var(--text-dim); }
 
+/* Top holdings table (Character hub) */
+table.holdings {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+table.holdings td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+table.holdings td.num { text-align: right; }
+table.holdings td.loc { text-align: right; color: var(--text-dim); width: 72px; }
+table.holdings tr:last-child td { border-bottom: none; }
+
 /* Cards / panels */
 .card {
   background: var(--bg-panel);

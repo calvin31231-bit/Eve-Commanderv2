@@ -94,8 +94,33 @@ impl EsiClient {
         self.get_cached(path, access_token).await
     }
 
+    /// GET every page of a paginated authenticated route, concatenating the JSON
+    /// arrays. The page count comes from the `X-Pages` header (cached alongside
+    /// the body), and each page is itself cache-first.
+    pub async fn get_auth_json_paged<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        access_token: &str,
+    ) -> Result<Vec<T>> {
+        let (first, pages) = self.get_cached_meta(&page_url(path, 1), Some(access_token)).await?;
+        let mut items: Vec<T> = serde_json::from_slice(&first)?;
+        for page in 2..=pages {
+            let (body, _) = self
+                .get_cached_meta(&page_url(path, page), Some(access_token))
+                .await?;
+            items.extend(serde_json::from_slice::<Vec<T>>(&body)?);
+        }
+        Ok(items)
+    }
+
     /// Core cache-first GET. Returns the (possibly cached) response body bytes.
     async fn get_cached(&self, path: &str, token: Option<&str>) -> Result<Vec<u8>> {
+        Ok(self.get_cached_meta(path, token).await?.0)
+    }
+
+    /// Cache-first GET returning the body plus the route's page count (1 when not
+    /// paginated).
+    async fn get_cached_meta(&self, path: &str, token: Option<&str>) -> Result<(Vec<u8>, u32)> {
         // Respect the breaker before touching the network.
         let backoff = self.backoff();
         if backoff > Duration::ZERO {
@@ -107,7 +132,8 @@ impl EsiClient {
         match cache::decide(cached.as_ref(), now) {
             CacheDecision::ServeFresh => {
                 // Safe to unwrap: ServeFresh implies a cache entry exists.
-                Ok(cached.unwrap().body)
+                let entry = cached.unwrap();
+                Ok((entry.body, entry.pages.unwrap_or(1)))
             }
             CacheDecision::Revalidate(etag) => {
                 self.fetch(path, token, Some(etag), cached).await
@@ -122,7 +148,7 @@ impl EsiClient {
         token: Option<&str>,
         if_none_match: Option<String>,
         previous: Option<CacheEntry>,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<(Vec<u8>, u32)> {
         let url = format!("{ESI_BASE}{path}");
         let mut req = self
             .http
@@ -147,9 +173,11 @@ impl EsiClient {
         if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
             if let Some(mut prev) = previous {
                 prev.expires_at = parse_expires(&resp).unwrap_or(prev.expires_at);
+                let pages = parse_pages(&resp).or(prev.pages);
+                prev.pages = pages;
                 let body = prev.body.clone();
                 self.cache.put(path, prev);
-                return Ok(body);
+                return Ok((body, pages.unwrap_or(1)));
             }
         }
 
@@ -167,6 +195,7 @@ impl EsiClient {
             .and_then(|v| v.to_str().ok())
             .map(String::from);
         let expires_at = parse_expires(&resp).unwrap_or_else(|| SystemTime::now() + Duration::from_secs(60));
+        let pages = parse_pages(&resp);
         let body = resp.bytes().await?.to_vec();
 
         self.cache.put(
@@ -175,10 +204,25 @@ impl EsiClient {
                 body: body.clone(),
                 etag,
                 expires_at,
+                pages,
             },
         );
-        Ok(body)
+        Ok((body, pages.unwrap_or(1)))
     }
+}
+
+/// Append `?page=N` to a path, preserving any existing query string.
+fn page_url(path: &str, page: u32) -> String {
+    let sep = if path.contains('?') { '&' } else { '?' };
+    format!("{path}{sep}page={page}")
+}
+
+/// Parse the `X-Pages` header into a page count.
+fn parse_pages(resp: &reqwest::Response) -> Option<u32> {
+    resp.headers()
+        .get("x-pages")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u32>().ok())
 }
 
 /// Parse the `Expires` header (RFC 7231 IMF-fixdate) into a `SystemTime`.
@@ -238,6 +282,12 @@ mod tests {
         let secs = t.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
         // 2026-10-21T07:28:00Z == 1792567680
         assert_eq!(secs, 1_792_567_680);
+    }
+
+    #[test]
+    fn page_url_appends_query() {
+        assert_eq!(page_url("/latest/characters/1/assets/", 1), "/latest/characters/1/assets/?page=1");
+        assert_eq!(page_url("/x/?foo=bar", 3), "/x/?foo=bar&page=3");
     }
 
     #[test]

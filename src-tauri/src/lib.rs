@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use tauri::Manager;
 
+use eve_core::assets::AssetsClient;
 use eve_core::auth::{LoginManager, SsoClient, TokenManager};
 use eve_core::auth::token_store::TokenStore;
 use eve_core::character::CharacterClient;
@@ -21,6 +22,7 @@ use eve_core::config::Config;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
 use eve_core::notify::NotificationCenter;
+use eve_core::sde::Sde;
 
 /// Shared application state handed to every Tauri command.
 pub struct AppState {
@@ -34,6 +36,11 @@ pub struct AppState {
     pub token_manager: TokenManager,
     /// Typed character reads (skills, queue, wallet) for the Character hub.
     pub character: CharacterClient,
+    /// Paginated asset reads for the Character hub.
+    pub assets: AssetsClient,
+    /// Static data export for id→name resolution; `None` until `sde.sqlite` is
+    /// shipped/built (names then fall back to `Type {id}`).
+    pub sde: Option<Sde>,
     /// Collected notifications shown in the Alerts rail.
     pub notifications: tray::SharedCenter,
 }
@@ -86,7 +93,17 @@ fn build_state() -> AppState {
     let tokens: Arc<dyn TokenStore> = Arc::from(eve_core::auth::token_store::default_store());
     let token_manager = TokenManager::new(sso.clone(), tokens.clone());
     let character = CharacterClient::new(esi.clone(), token_manager.clone());
+    let assets = AssetsClient::new(esi.clone(), token_manager.clone());
     let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
+
+    // Open the prebuilt SDE if present; absence is fine (names degrade).
+    let sde = match tauri::async_runtime::block_on(Sde::open(config.sde_db_path())) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            tracing::info!("SDE unavailable ({e}); asset names will fall back to ids");
+            None
+        }
+    };
 
     AppState {
         config,
@@ -97,6 +114,8 @@ fn build_state() -> AppState {
         tokens,
         token_manager,
         character,
+        assets,
+        sde,
         notifications,
     }
 }
@@ -135,6 +154,7 @@ pub fn run() {
             commands::set_active_character,
             commands::remove_character,
             commands::get_character_sheet,
+            commands::get_top_holdings,
             commands::list_notifications,
             commands::unread_notifications,
             commands::mark_notifications_read,

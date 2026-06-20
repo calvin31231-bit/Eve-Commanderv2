@@ -5,7 +5,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { api, isTauri } from "./ipc";
-import type { Character, CharacterSheet, ServerStatus } from "./types";
+import type { Character, CharacterSheet, NamedAssetGroup, ServerStatus } from "./types";
 
 export interface Hub {
   id: string;
@@ -104,11 +104,13 @@ function formatDuration(seconds: number): string {
 
 function CharacterHub({ character }: { character: Character | null }): ReactNode {
   const [sheet, setSheet] = useState<CharacterSheet | null>(null);
+  const [holdings, setHoldings] = useState<NamedAssetGroup[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setSheet(null);
+    setHoldings([]);
     setError(null);
     if (!character) return;
     if (!isTauri()) {
@@ -121,6 +123,12 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
       .then(setSheet)
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
+    // Assets are heavier (paginated) — load independently; failures are
+    // non-fatal to the rest of the hub.
+    api
+      .getTopHoldings(character.id, 8)
+      .then(setHoldings)
+      .catch(() => undefined);
   }, [character?.id]);
 
   if (!character) {
@@ -169,6 +177,22 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
               </>
             )}
           </div>
+        </div>
+      )}
+      {holdings.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Top holdings</h3>
+          <table className="holdings">
+            <tbody>
+              {holdings.map((h) => (
+                <tr key={h.type_id}>
+                  <td>{h.name}</td>
+                  <td className="mono num">{ISK.format(h.quantity)}</td>
+                  <td className="loc">{h.locations} loc{h.locations === 1 ? "" : "s"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </>

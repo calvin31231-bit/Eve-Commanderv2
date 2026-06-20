@@ -19,6 +19,7 @@
 //! ESI API. There is no input automation, no game-memory reading, and no
 //! disallowed cache scraping. See `docs/EULA-notes.md`.
 
+pub mod assets;
 pub mod auth;
 pub mod character;
 pub mod config;

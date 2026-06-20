@@ -5,7 +5,13 @@
 // fail gracefully so the UI can still render for design work.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { Character, CharacterSheet, Notification, ServerStatus } from "./types";
+import type {
+  Character,
+  CharacterSheet,
+  NamedAssetGroup,
+  Notification,
+  ServerStatus,
+} from "./types";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -30,6 +36,8 @@ export const api = {
     call<void>("remove_character", { characterId }),
   getCharacterSheet: (characterId: number) =>
     call<CharacterSheet>("get_character_sheet", { characterId }),
+  getTopHoldings: (characterId: number, limit: number) =>
+    call<NamedAssetGroup[]>("get_top_holdings", { characterId, limit }),
   listNotifications: () => call<Notification[]>("list_notifications"),
   unreadNotifications: () => call<number>("unread_notifications"),
   markNotificationsRead: () => call<void>("mark_notifications_read"),

@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS cache (
     key        TEXT    PRIMARY KEY,
     body       BLOB    NOT NULL,
     etag       TEXT,
-    expires_at INTEGER NOT NULL  -- unix epoch seconds
+    expires_at INTEGER NOT NULL,  -- unix epoch seconds
+    pages      INTEGER            -- X-Pages count for paginated routes
 );
 CREATE INDEX IF NOT EXISTS idx_cache_expires ON cache(expires_at);
 "#;
@@ -79,20 +80,22 @@ impl SqliteCacheStore {
         let conn = self.conn.lock().expect("cache mutex poisoned");
         let row = conn
             .query_row(
-                "SELECT body, etag, expires_at FROM cache WHERE key = ?1",
+                "SELECT body, etag, expires_at, pages FROM cache WHERE key = ?1",
                 [key],
                 |r| {
                     let body: Vec<u8> = r.get(0)?;
                     let etag: Option<String> = r.get(1)?;
                     let expires: i64 = r.get(2)?;
-                    Ok((body, etag, expires))
+                    let pages: Option<u32> = r.get(3)?;
+                    Ok((body, etag, expires, pages))
                 },
             )
             .optional()?;
-        Ok(row.map(|(body, etag, expires)| CacheEntry {
+        Ok(row.map(|(body, etag, expires, pages)| CacheEntry {
             body,
             etag,
             expires_at: from_epoch(expires),
+            pages,
         }))
     }
 
@@ -100,12 +103,13 @@ impl SqliteCacheStore {
     fn try_put(&self, key: &str, entry: &CacheEntry) -> Result<()> {
         let conn = self.conn.lock().expect("cache mutex poisoned");
         conn.execute(
-            "INSERT INTO cache (key, body, etag, expires_at) VALUES (?1, ?2, ?3, ?4)
+            "INSERT INTO cache (key, body, etag, expires_at, pages) VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(key) DO UPDATE SET
                  body = excluded.body,
                  etag = excluded.etag,
-                 expires_at = excluded.expires_at",
-            rusqlite::params![key, entry.body, entry.etag, to_epoch(entry.expires_at)],
+                 expires_at = excluded.expires_at,
+                 pages = excluded.pages",
+            rusqlite::params![key, entry.body, entry.etag, to_epoch(entry.expires_at), entry.pages],
         )?;
         Ok(())
     }
@@ -152,16 +156,20 @@ mod tests {
             body: b"{\"ok\":true}".to_vec(),
             etag: etag.map(String::from),
             expires_at: SystemTime::now() + Duration::from_secs(fresh_for_secs.max(0) as u64),
+            pages: None,
         }
     }
 
     #[test]
     fn put_then_get_roundtrips() {
         let store = SqliteCacheStore::open_in_memory().unwrap();
-        store.put("/latest/status/", entry(300, Some("etag-1")));
+        let mut e = entry(300, Some("etag-1"));
+        e.pages = Some(7);
+        store.put("/latest/status/", e);
         let got = store.get("/latest/status/").expect("entry present");
         assert_eq!(got.body, b"{\"ok\":true}");
         assert_eq!(got.etag.as_deref(), Some("etag-1"));
+        assert_eq!(got.pages, Some(7)); // X-Pages survives the round-trip
         assert!(got.is_fresh(SystemTime::now()));
     }
 

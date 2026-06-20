@@ -18,6 +18,9 @@ pub struct CacheEntry {
     pub etag: Option<String>,
     /// Absolute time the entry becomes stale (from the `Expires` header).
     pub expires_at: SystemTime,
+    /// Total page count from the `X-Pages` header, for paginated routes. `None`
+    /// (treated as 1) when the route isn't paginated.
+    pub pages: Option<u32>,
 }
 
 impl CacheEntry {
@@ -75,6 +78,7 @@ mod tests {
             body: b"{}".to_vec(),
             etag: etag.map(String::from),
             expires_at,
+            pages: None,
         }
     }
 

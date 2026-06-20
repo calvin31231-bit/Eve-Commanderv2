@@ -28,6 +28,13 @@ export interface CharacterSheet {
   queue_seconds_remaining: number | null;
 }
 
+export interface NamedAssetGroup {
+  type_id: number;
+  name: string;
+  quantity: number;
+  locations: number;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {
