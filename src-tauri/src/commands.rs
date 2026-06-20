@@ -8,6 +8,7 @@ use eve_core::assets::{resolve_names, NamedAssetGroup};
 use eve_core::character::CharacterSheet;
 use eve_core::clones::ClonesSummary;
 use eve_core::industry::ActiveJob;
+use eve_core::market::OrderView;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
 use eve_core::sde::NamedType;
@@ -302,6 +303,74 @@ async fn view_for(state: &AppState, job: ActiveJob) -> IndustryJobView {
         status: job.status,
         end_date: job.end_date,
         seconds_remaining: job.seconds_remaining,
+    }
+}
+
+/// One open order with its SDE-resolved item name.
+#[derive(Debug, Serialize)]
+pub struct MarketOrderView {
+    pub order_id: i64,
+    pub item_name: String,
+    pub is_buy_order: bool,
+    pub price: f64,
+    pub volume_remain: i64,
+    pub volume_total: i64,
+    pub seconds_remaining: i64,
+}
+
+/// A character's open market orders: buy/sell rollup plus named per-order rows.
+#[derive(Debug, Serialize)]
+pub struct MarketView {
+    pub buy_count: usize,
+    pub sell_count: usize,
+    pub total_escrow: f64,
+    pub sell_value: f64,
+    pub orders: Vec<MarketOrderView>,
+}
+
+#[tauri::command]
+pub async fn get_market_orders(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<MarketView> {
+    let summary = state
+        .market
+        .summary(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut orders = Vec::with_capacity(summary.orders.len());
+    for o in summary.orders {
+        orders.push(order_view(&state, o).await);
+    }
+    Ok(MarketView {
+        buy_count: summary.buy_count,
+        sell_count: summary.sell_count,
+        total_escrow: summary.total_escrow,
+        sell_value: summary.sell_value,
+        orders,
+    })
+}
+
+/// Enrich one [`OrderView`] with its item name (falling back to the id).
+async fn order_view(state: &AppState, o: OrderView) -> MarketOrderView {
+    let item_name = match &state.sde {
+        Some(sde) => sde
+            .type_name(o.type_id)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| format!("Type {}", o.type_id)),
+        None => format!("Type {}", o.type_id),
+    };
+    MarketOrderView {
+        order_id: o.order_id,
+        item_name,
+        is_buy_order: o.is_buy_order,
+        price: o.price,
+        volume_remain: o.volume_remain,
+        volume_total: o.volume_total,
+        seconds_remaining: o.seconds_remaining,
     }
 }
 

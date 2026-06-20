@@ -23,6 +23,7 @@ use eve_core::config::Config;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
 use eve_core::industry::IndustryClient;
+use eve_core::market::MarketClient;
 use eve_core::notify::NotificationCenter;
 use eve_core::sde::Sde;
 use eve_core::wallet::WalletClient;
@@ -47,6 +48,8 @@ pub struct AppState {
     pub wallet: WalletClient,
     /// Industry job reads (with client-side countdowns) for the Economy hub.
     pub industry: IndustryClient,
+    /// Open market-order reads (escrow/value + expiry) for the Economy hub.
+    pub market: MarketClient,
     /// Static data export for id→name resolution; `None` until `sde.sqlite` is
     /// shipped/built (names then fall back to `Type {id}`).
     pub sde: Option<Sde>,
@@ -106,6 +109,7 @@ fn build_state() -> AppState {
     let clones = ClonesClient::new(esi.clone(), token_manager.clone());
     let wallet = WalletClient::new(esi.clone(), token_manager.clone());
     let industry = IndustryClient::new(esi.clone(), token_manager.clone());
+    let market = MarketClient::new(esi.clone(), token_manager.clone());
     let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
 
     // Open the prebuilt SDE if present; absence is fine (names degrade).
@@ -130,6 +134,7 @@ fn build_state() -> AppState {
         clones,
         wallet,
         industry,
+        market,
         sde,
         notifications,
     }
@@ -173,6 +178,7 @@ pub fn run() {
             commands::get_clones,
             commands::get_cashflow,
             commands::get_industry_jobs,
+            commands::get_market_orders,
             commands::list_notifications,
             commands::unread_notifications,
             commands::mark_notifications_read,

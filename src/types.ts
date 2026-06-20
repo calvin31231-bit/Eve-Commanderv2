@@ -70,6 +70,24 @@ export interface IndustryJobView {
   seconds_remaining: number;
 }
 
+export interface MarketOrderView {
+  order_id: number;
+  item_name: string;
+  is_buy_order: boolean;
+  price: number;
+  volume_remain: number;
+  volume_total: number;
+  seconds_remaining: number;
+}
+
+export interface MarketView {
+  buy_count: number;
+  sell_count: number;
+  total_escrow: number;
+  sell_value: number;
+  orders: MarketOrderView[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

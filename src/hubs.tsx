@@ -11,6 +11,7 @@ import type {
   CharacterSheet,
   ClonesView,
   IndustryJobView,
+  MarketView,
   NamedAssetGroup,
   ServerStatus,
 } from "./types";
@@ -268,33 +269,38 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
 
 function EconomyHub({ character }: { character: Character | null }): ReactNode {
   const [jobs, setJobs] = useState<IndustryJobView[]>([]);
+  const [market, setMarket] = useState<MarketView | null>(null);
   const [loadedAt, setLoadedAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [, forceTick] = useState(0);
 
   useEffect(() => {
     setJobs([]);
+    setMarket(null);
     setError(null);
     if (!character) return;
     if (!isTauri()) {
       setError("Design preview — connect the desktop shell to load live data.");
       return;
     }
+    setLoadedAt(Date.now());
     api
       .getIndustryJobs(character.id)
-      .then((j) => {
-        setJobs(j);
-        setLoadedAt(Date.now());
-      })
+      .then(setJobs)
       .catch((e) => setError(String(e)));
+    api
+      .getMarketOrders(character.id)
+      .then(setMarket)
+      .catch(() => undefined);
   }, [character?.id]);
 
   // Tick once a second so the countdowns advance without re-polling ESI.
+  const hasTimers = jobs.length > 0 || (market?.orders.length ?? 0) > 0;
   useEffect(() => {
-    if (jobs.length === 0) return;
+    if (!hasTimers) return;
     const t = window.setInterval(() => forceTick((n) => n + 1), 1000);
     return () => window.clearInterval(t);
-  }, [jobs.length]);
+  }, [hasTimers]);
 
   if (!character) {
     return (
@@ -306,6 +312,10 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
   }
 
   const elapsed = loadedAt ? Math.floor((Date.now() - loadedAt) / 1000) : 0;
+  const countdown = (seconds: number) => {
+    const remaining = Math.max(0, seconds - elapsed);
+    return remaining === 0 ? "Ready" : formatDuration(remaining);
+  };
 
   return (
     <>
@@ -335,6 +345,30 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
           </table>
         )}
       </div>
+      {market && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Market orders <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {market.sell_count} sell · {market.buy_count} buy</span></h3>
+          <div className="cashflow-totals">
+            <span className="pos">{ISK.format(market.sell_value)} ISK listed</span>
+            <span className="neg">{ISK.format(market.total_escrow)} ISK escrow</span>
+          </div>
+          {market.orders.length > 0 && (
+            <table className="holdings">
+              <tbody>
+                {market.orders.map((o) => (
+                  <tr key={o.order_id}>
+                    <td>
+                      <span className={o.is_buy_order ? "neg" : "pos"}>{o.is_buy_order ? "BUY" : "SELL"}</span> {o.item_name}
+                    </td>
+                    <td className="mono num">{ISK.format(o.price)}</td>
+                    <td className="loc">{countdown(o.seconds_remaining)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </>
   );
 }
