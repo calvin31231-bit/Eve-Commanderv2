@@ -46,6 +46,20 @@ export interface ClonesView {
   implants: NamedType[];
 }
 
+export interface RefTypeTotal {
+  ref_type: string;
+  total: number;
+  count: number;
+}
+
+export interface CashflowSummary {
+  income: number;
+  expenses: number;
+  net: number;
+  entry_count: number;
+  by_ref_type: RefTypeTotal[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

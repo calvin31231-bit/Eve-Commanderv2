@@ -6,6 +6,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CashflowSummary,
   Character,
   CharacterSheet,
   ClonesView,
@@ -41,6 +42,8 @@ export const api = {
     call<NamedAssetGroup[]>("get_top_holdings", { characterId, limit }),
   getClones: (characterId: number) =>
     call<ClonesView>("get_clones", { characterId }),
+  getCashflow: (characterId: number) =>
+    call<CashflowSummary>("get_cashflow", { characterId }),
   listNotifications: () => call<Notification[]>("list_notifications"),
   unreadNotifications: () => call<number>("unread_notifications"),
   markNotificationsRead: () => call<void>("mark_notifications_read"),

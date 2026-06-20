@@ -30,5 +30,6 @@ pub mod esi;
 pub mod model;
 pub mod notify;
 pub mod sde;
+pub mod wallet;
 
 pub use error::{Error, Result};

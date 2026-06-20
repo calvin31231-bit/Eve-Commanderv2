@@ -168,6 +168,19 @@ ul.implant-list li {
   border-top: 1px solid var(--border);
 }
 
+/* Cashflow card */
+.cashflow-totals {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.cashflow-totals .pos,
+table.holdings td.pos { color: #51cf66; }
+.cashflow-totals .neg,
+table.holdings td.neg { color: var(--danger); }
+
 /* Cards / panels */
 .card {
   background: var(--bg-panel);

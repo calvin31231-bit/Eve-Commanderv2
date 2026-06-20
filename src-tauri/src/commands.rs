@@ -10,6 +10,7 @@ use eve_core::clones::ClonesSummary;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
 use eve_core::sde::NamedType;
+use eve_core::wallet::CashflowSummary;
 
 use crate::AppState;
 
@@ -233,6 +234,20 @@ pub async fn get_clones(state: State<'_, AppState>, character_id: i64) -> CmdRes
         active_implant_count: summary.active_implants.len(),
         implants,
     })
+}
+
+/// Wallet cashflow summary (income/expenses/net + top categories) for a
+/// character, from its wallet journal.
+#[tauri::command]
+pub async fn get_cashflow(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<CashflowSummary> {
+    state
+        .wallet
+        .cashflow(character_id, 6)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// All collected notifications, most recent first (drives the Alerts rail).

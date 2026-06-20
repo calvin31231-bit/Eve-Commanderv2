@@ -24,6 +24,7 @@ use eve_core::db::Database;
 use eve_core::esi::EsiClient;
 use eve_core::notify::NotificationCenter;
 use eve_core::sde::Sde;
+use eve_core::wallet::WalletClient;
 
 /// Shared application state handed to every Tauri command.
 pub struct AppState {
@@ -41,6 +42,8 @@ pub struct AppState {
     pub assets: AssetsClient,
     /// Jump clone + implant reads for the Character hub.
     pub clones: ClonesClient,
+    /// Wallet journal + cashflow analytics for the Character hub.
+    pub wallet: WalletClient,
     /// Static data export for id→name resolution; `None` until `sde.sqlite` is
     /// shipped/built (names then fall back to `Type {id}`).
     pub sde: Option<Sde>,
@@ -98,6 +101,7 @@ fn build_state() -> AppState {
     let character = CharacterClient::new(esi.clone(), token_manager.clone());
     let assets = AssetsClient::new(esi.clone(), token_manager.clone());
     let clones = ClonesClient::new(esi.clone(), token_manager.clone());
+    let wallet = WalletClient::new(esi.clone(), token_manager.clone());
     let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
 
     // Open the prebuilt SDE if present; absence is fine (names degrade).
@@ -120,6 +124,7 @@ fn build_state() -> AppState {
         character,
         assets,
         clones,
+        wallet,
         sde,
         notifications,
     }
@@ -161,6 +166,7 @@ pub fn run() {
             commands::get_character_sheet,
             commands::get_top_holdings,
             commands::get_clones,
+            commands::get_cashflow,
             commands::list_notifications,
             commands::unread_notifications,
             commands::mark_notifications_read,

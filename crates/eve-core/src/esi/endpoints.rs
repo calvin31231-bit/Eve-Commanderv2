@@ -87,6 +87,12 @@ pub const CATALOG: &[Endpoint] = &[
         scope: Some("esi-wallet.read_character_wallet.v1"),
     },
     Endpoint {
+        key: "wallet_journal",
+        path: "/latest/characters/{cid}/wallet/journal/",
+        class: PollClass::Slow,
+        scope: Some("esi-wallet.read_character_wallet.v1"),
+    },
+    Endpoint {
         key: "online",
         path: "/latest/characters/{cid}/online/",
         class: PollClass::Fast,

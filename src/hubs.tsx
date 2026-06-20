@@ -5,7 +5,14 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { api, isTauri } from "./ipc";
-import type { Character, CharacterSheet, ClonesView, NamedAssetGroup, ServerStatus } from "./types";
+import type {
+  CashflowSummary,
+  Character,
+  CharacterSheet,
+  ClonesView,
+  NamedAssetGroup,
+  ServerStatus,
+} from "./types";
 
 export interface Hub {
   id: string;
@@ -102,10 +109,16 @@ function formatDuration(seconds: number): string {
   return `${m}m`;
 }
 
+// ESI ref_types are snake_case (e.g. "market_transaction"); show them as words.
+function prettyRefType(refType: string): string {
+  return refType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function CharacterHub({ character }: { character: Character | null }): ReactNode {
   const [sheet, setSheet] = useState<CharacterSheet | null>(null);
   const [holdings, setHoldings] = useState<NamedAssetGroup[]>([]);
   const [clones, setClones] = useState<ClonesView | null>(null);
+  const [cashflow, setCashflow] = useState<CashflowSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -113,6 +126,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     setSheet(null);
     setHoldings([]);
     setClones(null);
+    setCashflow(null);
     setError(null);
     if (!character) return;
     if (!isTauri()) {
@@ -134,6 +148,10 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     api
       .getClones(character.id)
       .then(setClones)
+      .catch(() => undefined);
+    api
+      .getCashflow(character.id)
+      .then(setCashflow)
       .catch(() => undefined);
   }, [character?.id]);
 
@@ -200,6 +218,31 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
               )}
             </div>
           )}
+        </div>
+      )}
+      {cashflow && cashflow.entry_count > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Cashflow <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {cashflow.entry_count} journal entries</span></h3>
+          <div className="cashflow-totals">
+            <span className="pos">+{ISK.format(cashflow.income)}</span>
+            <span className="neg">{ISK.format(cashflow.expenses)}</span>
+            <span className={cashflow.net >= 0 ? "pos" : "neg"}>
+              net {cashflow.net >= 0 ? "+" : ""}{ISK.format(cashflow.net)} ISK
+            </span>
+          </div>
+          <table className="holdings">
+            <tbody>
+              {cashflow.by_ref_type.map((r) => (
+                <tr key={r.ref_type}>
+                  <td>{prettyRefType(r.ref_type)}</td>
+                  <td className={`mono num ${r.total >= 0 ? "pos" : "neg"}`}>
+                    {r.total >= 0 ? "+" : ""}{ISK.format(r.total)}
+                  </td>
+                  <td className="loc">×{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
       {holdings.length > 0 && (
