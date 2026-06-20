@@ -142,8 +142,12 @@ fn redirect_port(redirect_uri: &str) -> CmdResult<u16> {
 fn open_in_browser(url: &str) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     let mut cmd = {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/C", "start", "", url]);
+        // Use explorer.exe, NOT `cmd /C start`: cmd treats the `&` in the OAuth
+        // query string as command separators and truncates the URL at the first
+        // one, dropping client_id/scope/state. explorer opens the URL verbatim
+        // in the default browser.
+        let mut c = std::process::Command::new("explorer.exe");
+        c.arg(url);
         c
     };
     #[cfg(target_os = "macos")]
