@@ -181,6 +181,32 @@ table.holdings td.pos { color: #51cf66; }
 .cashflow-totals .neg,
 table.holdings td.neg { color: var(--danger); }
 
+/* Account overview (Home) */
+.account-card { margin-bottom: 16px; }
+.account-headline {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.account-networth { font-size: 30px; margin: 4px 0 0; }
+.account-networth span { font-size: 14px; color: var(--text-dim); }
+.account-subtotals { display: flex; gap: 18px; font-size: 15px; }
+.account-subtotals small { color: var(--text-dim); font-size: 11px; display: block; }
+.account-breakdown { margin-top: 14px; }
+.account-breakdown th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  font-weight: 600;
+  padding: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.account-breakdown td.num { text-align: right; }
+
 /* Character picker (Home) */
 ul.char-list { list-style: none; margin: 0; padding: 0; }
 .char-row {

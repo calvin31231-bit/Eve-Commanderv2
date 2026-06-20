@@ -6,6 +6,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, isTauri } from "./ipc";
 import type {
+  AccountOverview,
   CashflowSummary,
   Character,
   CharacterSheet,
@@ -60,10 +61,53 @@ interface HomeProps {
 }
 
 function Home({ status, statusError, characters, onLogin, onSelectCharacter }: HomeProps): ReactNode {
+  const [account, setAccount] = useState<AccountOverview | null>(null);
+
+  useEffect(() => {
+    if (!isTauri() || characters.length === 0) {
+      setAccount(null);
+      return;
+    }
+    api.getAccountOverview().then(setAccount).catch(() => undefined);
+  }, [characters.length]);
+
   return (
     <>
       <h1>Welcome, Capsuleer</h1>
       <div className="sub">Your at-a-glance command center.</div>
+
+      {account && account.characters.length > 0 && (
+        <div className="card account-card">
+          <div className="account-headline">
+            <div>
+              <h3>Account net worth</h3>
+              <p className="mono account-networth">{ISK.format(account.total_net_worth)} <span>ISK</span></p>
+            </div>
+            <div className="account-subtotals">
+              <span>{ISK.format(account.total_wallet)} <small>wallet</small></span>
+              <span>{ISK.format(account.total_asset_value)} <small>assets</small></span>
+              <span>{ISK.format(account.total_sp)} <small>SP</small></span>
+            </div>
+          </div>
+          {account.characters.length > 1 && (
+            <table className="holdings account-breakdown">
+              <thead>
+                <tr><th>Character</th><th>Net worth</th><th>Wallet</th><th>SP</th></tr>
+              </thead>
+              <tbody>
+                {account.characters.map((c) => (
+                  <tr key={c.character_id}>
+                    <td>{c.name}</td>
+                    <td className="mono num pos">{ISK.format(c.net_worth)}</td>
+                    <td className="mono num">{ISK.format(c.wallet_balance)}</td>
+                    <td className="mono num">{ISK.format(c.total_sp)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="card-grid">
         <div className="card">

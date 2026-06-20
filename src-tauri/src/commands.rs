@@ -4,6 +4,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use eve_core::account::{aggregate, AccountOverview, CharacterWorth};
 use eve_core::assets::value_holdings;
 use eve_core::character::CharacterSheet;
 use eve_core::clones::ClonesSummary;
@@ -61,6 +62,34 @@ pub async fn server_status(state: State<'_, AppState>) -> CmdResult<ServerStatus
 #[tauri::command]
 pub async fn list_characters(state: State<'_, AppState>) -> CmdResult<Vec<Character>> {
     state.db.list_characters().await.map_err(|e| e.to_string())
+}
+
+/// Account-wide overview: net worth / SP / wallet aggregated across every added
+/// character, with a per-character breakdown. Each character's figures are
+/// best-effort — a character missing a scope or token contributes what it can
+/// (zeros) rather than failing the whole view.
+#[tauri::command]
+pub async fn get_account_overview(state: State<'_, AppState>) -> CmdResult<AccountOverview> {
+    let characters = state.db.list_characters().await.map_err(|e| e.to_string())?;
+    // Shared price reference (cached); best-effort.
+    let prices = state.prices.price_map().await.unwrap_or_default();
+
+    let mut worths = Vec::with_capacity(characters.len());
+    for c in characters {
+        // The three reads are independent — fetch them concurrently per character.
+        let (wallet, skills, holdings) = tokio::join!(
+            state.character.wallet_balance(c.id),
+            state.character.skills(c.id),
+            state.assets.all_holdings(c.id),
+        );
+        let wallet_balance = wallet.unwrap_or(0.0);
+        let total_sp = skills.map(|s| s.total_sp).unwrap_or(0);
+        let asset_value = holdings
+            .map(|groups| value_holdings(&groups, &prices, 0).total_value)
+            .unwrap_or(0.0);
+        worths.push(CharacterWorth::new(c.id, c.name, wallet_balance, asset_value, total_sp));
+    }
+    Ok(aggregate(worths))
 }
 
 /// How long we keep the loopback redirect server open waiting for the user to

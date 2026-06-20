@@ -125,6 +125,23 @@ export interface MailView {
   read: boolean;
 }
 
+export interface CharacterWorth {
+  character_id: number;
+  name: string;
+  wallet_balance: number;
+  asset_value: number;
+  total_sp: number;
+  net_worth: number;
+}
+
+export interface AccountOverview {
+  characters: CharacterWorth[];
+  total_net_worth: number;
+  total_wallet: number;
+  total_asset_value: number;
+  total_sp: number;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

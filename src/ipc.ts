@@ -6,6 +6,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AccountOverview,
   CashflowSummary,
   Character,
   CharacterSheet,
@@ -34,6 +35,7 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 export const api = {
   serverStatus: () => call<ServerStatus>("server_status"),
   listCharacters: () => call<Character[]>("list_characters"),
+  getAccountOverview: () => call<AccountOverview>("get_account_overview"),
   // Runs the whole SSO flow on the backend (opens the browser, captures the
   // loopback redirect) and resolves with the newly-added character.
   login: () => call<Character>("login"),
