@@ -11,6 +11,8 @@ import type {
   CharacterSheet,
   ClonesView,
   IndustryJobView,
+  MailHeader,
+  MailView,
   MarketView,
   MiningView,
   NamedAssetGroup,
@@ -115,6 +117,59 @@ function formatDuration(seconds: number): string {
 // ESI ref_types are snake_case (e.g. "market_transaction"); show them as words.
 function prettyRefType(refType: string): string {
   return refType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// A minimal EVEmail reader: header list with click-to-read body.
+function MailCard({ character }: { character: Character }): ReactNode {
+  const [headers, setHeaders] = useState<MailHeader[]>([]);
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [open, setOpen] = useState<MailView | null>(null);
+
+  useEffect(() => {
+    setHeaders([]);
+    setOpenId(null);
+    setOpen(null);
+    if (!isTauri()) return;
+    api.getMailHeaders(character.id).then(setHeaders).catch(() => undefined);
+  }, [character.id]);
+
+  function toggle(h: MailHeader) {
+    if (openId === h.mail_id) {
+      setOpenId(null);
+      setOpen(null);
+      return;
+    }
+    setOpenId(h.mail_id);
+    setOpen(null);
+    api.getMail(character.id, h.mail_id).then(setOpen).catch(() => undefined);
+  }
+
+  if (headers.length === 0) return null;
+  const unread = headers.filter((h) => !h.is_read).length;
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3>Mail {unread > 0 && <span style={{ color: "var(--accent)", fontWeight: 400 }}>· {unread} unread</span>}</h3>
+      <ul className="mail-list">
+        {headers.slice(0, 12).map((h) => (
+          <li key={h.mail_id}>
+            <button className={`mail-row${h.is_read ? "" : " unread"}`} onClick={() => toggle(h)}>
+              <span className="mail-subject">{h.subject || "(no subject)"}</span>
+              <span className="mail-date">{shortDate(h.timestamp)}</span>
+            </button>
+            {openId === h.mail_id && (
+              <pre className="mail-body">{open ? open.body : "Loading…"}</pre>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function CharacterHub({ character }: { character: Character | null }): ReactNode {
@@ -285,6 +340,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
+      <MailCard character={character} />
     </>
   );
 }

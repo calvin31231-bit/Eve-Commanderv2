@@ -28,6 +28,7 @@ pub mod db;
 pub mod error;
 pub mod esi;
 pub mod industry;
+pub mod mail;
 pub mod market;
 pub mod mining;
 pub mod model;

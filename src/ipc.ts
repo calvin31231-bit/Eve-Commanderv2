@@ -11,6 +11,8 @@ import type {
   CharacterSheet,
   ClonesView,
   IndustryJobView,
+  MailHeader,
+  MailView,
   MarketView,
   MiningView,
   NamedAssetGroup,
@@ -53,6 +55,10 @@ export const api = {
     call<MarketView>("get_market_orders", { characterId }),
   getMining: (characterId: number) =>
     call<MiningView>("get_mining", { characterId }),
+  getMailHeaders: (characterId: number) =>
+    call<MailHeader[]>("get_mail_headers", { characterId }),
+  getMail: (characterId: number, mailId: number) =>
+    call<MailView>("get_mail", { characterId, mailId }),
   listNotifications: () => call<Notification[]>("list_notifications"),
   unreadNotifications: () => call<number>("unread_notifications"),
   markNotificationsRead: () => call<void>("mark_notifications_read"),

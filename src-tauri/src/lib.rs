@@ -23,6 +23,7 @@ use eve_core::config::Config;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
 use eve_core::industry::IndustryClient;
+use eve_core::mail::MailClient;
 use eve_core::market::MarketClient;
 use eve_core::mining::MiningClient;
 use eve_core::notify::NotificationCenter;
@@ -53,6 +54,8 @@ pub struct AppState {
     pub market: MarketClient,
     /// Mining-ledger reads (aggregated by ore) for the Character hub.
     pub mining: MiningClient,
+    /// EVEmail reads (headers + body) for the Character hub.
+    pub mail: MailClient,
     /// Static data export for id→name resolution. Always present: the full
     /// prebuilt `sde.sqlite` if shipped, otherwise a common-items seed.
     pub sde: Sde,
@@ -114,6 +117,7 @@ fn build_state() -> AppState {
     let industry = IndustryClient::new(esi.clone(), token_manager.clone());
     let market = MarketClient::new(esi.clone(), token_manager.clone());
     let mining = MiningClient::new(esi.clone(), token_manager.clone());
+    let mail = MailClient::new(esi.clone(), token_manager.clone());
     let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
 
     // Use the full prebuilt SDE if shipped, else fall back to the common-items
@@ -144,6 +148,7 @@ fn build_state() -> AppState {
         industry,
         market,
         mining,
+        mail,
         sde,
         notifications,
     }
@@ -189,6 +194,8 @@ pub fn run() {
             commands::get_industry_jobs,
             commands::get_market_orders,
             commands::get_mining,
+            commands::get_mail_headers,
+            commands::get_mail,
             commands::list_notifications,
             commands::unread_notifications,
             commands::mark_notifications_read,

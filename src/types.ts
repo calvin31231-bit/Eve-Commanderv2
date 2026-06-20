@@ -100,6 +100,23 @@ export interface MiningView {
   ores: NamedOre[];
 }
 
+export interface MailHeader {
+  mail_id: number;
+  subject: string;
+  from: number;
+  timestamp: string;
+  is_read: boolean;
+  labels: number[];
+}
+
+export interface MailView {
+  subject: string;
+  from: number;
+  body: string;
+  timestamp: string;
+  read: boolean;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

@@ -8,6 +8,7 @@ use eve_core::assets::{resolve_names, NamedAssetGroup};
 use eve_core::character::CharacterSheet;
 use eve_core::clones::ClonesSummary;
 use eve_core::industry::ActiveJob;
+use eve_core::mail::{strip_markup, MailHeader};
 use eve_core::market::OrderView;
 use eve_core::mining::OreTotal;
 use eve_core::model::Character;
@@ -30,6 +31,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-wallet.read_character_wallet.v1",
     "esi-assets.read_assets.v1",
     "esi-industry.read_character_mining.v1",
+    "esi-mail.read_mail.v1",
     "esi-clones.read_clones.v1",
     "esi-clones.read_implants.v1",
     "esi-location.read_location.v1",
@@ -395,6 +397,50 @@ async fn resolve_type_name(state: &AppState, type_id: i64) -> String {
         .ok()
         .flatten()
         .unwrap_or_else(|| format!("Type {type_id}"))
+}
+
+/// The latest page of mail headers for a character.
+#[tauri::command]
+pub async fn get_mail_headers(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<MailHeader>> {
+    state
+        .mail
+        .headers(character_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// A single mail, body reduced to plain text.
+#[derive(Debug, Serialize)]
+pub struct MailView {
+    pub subject: String,
+    pub from: i64,
+    pub body: String,
+    pub timestamp: String,
+    pub read: bool,
+}
+
+/// Read one mail's body (EVE markup stripped to readable text).
+#[tauri::command]
+pub async fn get_mail(
+    state: State<'_, AppState>,
+    character_id: i64,
+    mail_id: i64,
+) -> CmdResult<MailView> {
+    let mail = state
+        .mail
+        .body(character_id, mail_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(MailView {
+        subject: mail.subject,
+        from: mail.from,
+        body: strip_markup(&mail.body),
+        timestamp: mail.timestamp,
+        read: mail.read,
+    })
 }
 
 /// All collected notifications, most recent first (drives the Alerts rail).
