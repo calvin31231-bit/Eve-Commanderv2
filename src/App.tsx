@@ -4,8 +4,20 @@ import { HUBS, renderHub } from "./hubs";
 import type { Character, ServerStatus } from "./types";
 import "./app.css";
 
+// Hubs are deep-linkable via the URL hash (e.g. #combat) so a view can be
+// restored on launch, linked to, or popped into its own window later.
+function initialHub(): string {
+  const fromHash = window.location.hash.replace(/^#/, "");
+  return HUBS.some((h) => h.id === fromHash) ? fromHash : "home";
+}
+
 export default function App() {
-  const [activeHub, setActiveHub] = useState("home");
+  const [activeHub, setActiveHub] = useState(initialHub);
+
+  function selectHub(id: string) {
+    setActiveHub(id);
+    window.location.hash = id;
+  }
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -46,7 +58,7 @@ export default function App() {
             key={h.id}
             className={h.id === activeHub ? "active" : ""}
             title={h.label}
-            onClick={() => setActiveHub(h.id)}
+            onClick={() => selectHub(h.id)}
           >
             {h.icon}
           </button>
