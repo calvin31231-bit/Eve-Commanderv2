@@ -111,6 +111,12 @@ pub const CATALOG: &[Endpoint] = &[
         scope: Some("esi-industry.read_character_jobs.v1"),
     },
     Endpoint {
+        key: "mining",
+        path: "/latest/characters/{cid}/mining/",
+        class: PollClass::Slow,
+        scope: Some("esi-industry.read_character_mining.v1"),
+    },
+    Endpoint {
         key: "market_orders",
         path: "/latest/characters/{cid}/orders/",
         class: PollClass::Medium,

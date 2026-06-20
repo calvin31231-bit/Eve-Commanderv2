@@ -88,6 +88,18 @@ export interface MarketView {
   orders: MarketOrderView[];
 }
 
+export interface NamedOre {
+  type_id: number;
+  name: string;
+  quantity: number;
+}
+
+export interface MiningView {
+  total_units: number;
+  day_count: number;
+  ores: NamedOre[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

@@ -12,6 +12,7 @@ import type {
   ClonesView,
   IndustryJobView,
   MarketView,
+  MiningView,
   NamedAssetGroup,
   ServerStatus,
 } from "./types";
@@ -121,6 +122,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
   const [holdings, setHoldings] = useState<NamedAssetGroup[]>([]);
   const [clones, setClones] = useState<ClonesView | null>(null);
   const [cashflow, setCashflow] = useState<CashflowSummary | null>(null);
+  const [mining, setMining] = useState<MiningView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -129,6 +131,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     setHoldings([]);
     setClones(null);
     setCashflow(null);
+    setMining(null);
     setError(null);
     if (!character) return;
     if (!isTauri()) {
@@ -154,6 +157,10 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     api
       .getCashflow(character.id)
       .then(setCashflow)
+      .catch(() => undefined);
+    api
+      .getMining(character.id)
+      .then(setMining)
       .catch(() => undefined);
   }, [character?.id]);
 
@@ -257,6 +264,21 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
                   <td>{h.name}</td>
                   <td className="mono num">{ISK.format(h.quantity)}</td>
                   <td className="loc">{h.locations} loc{h.locations === 1 ? "" : "s"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {mining && mining.total_units > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Mining <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {ISK.format(mining.total_units)} units over {mining.day_count} day{mining.day_count === 1 ? "" : "s"}</span></h3>
+          <table className="holdings">
+            <tbody>
+              {mining.ores.map((o) => (
+                <tr key={o.type_id}>
+                  <td>{o.name}</td>
+                  <td className="mono num">{ISK.format(o.quantity)}</td>
                 </tr>
               ))}
             </tbody>

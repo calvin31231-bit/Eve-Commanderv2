@@ -12,6 +12,7 @@ import type {
   ClonesView,
   IndustryJobView,
   MarketView,
+  MiningView,
   NamedAssetGroup,
   Notification,
   ServerStatus,
@@ -50,6 +51,8 @@ export const api = {
     call<IndustryJobView[]>("get_industry_jobs", { characterId }),
   getMarketOrders: (characterId: number) =>
     call<MarketView>("get_market_orders", { characterId }),
+  getMining: (characterId: number) =>
+    call<MiningView>("get_mining", { characterId }),
   listNotifications: () => call<Notification[]>("list_notifications"),
   unreadNotifications: () => call<number>("unread_notifications"),
   markNotificationsRead: () => call<void>("mark_notifications_read"),

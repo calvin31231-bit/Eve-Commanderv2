@@ -9,6 +9,7 @@ use eve_core::character::CharacterSheet;
 use eve_core::clones::ClonesSummary;
 use eve_core::industry::ActiveJob;
 use eve_core::market::OrderView;
+use eve_core::mining::OreTotal;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
 use eve_core::sde::NamedType;
@@ -28,6 +29,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-skills.read_skillqueue.v1",
     "esi-wallet.read_character_wallet.v1",
     "esi-assets.read_assets.v1",
+    "esi-industry.read_character_mining.v1",
     "esi-clones.read_clones.v1",
     "esi-clones.read_implants.v1",
     "esi-location.read_location.v1",
@@ -371,6 +373,59 @@ async fn order_view(state: &AppState, o: OrderView) -> MarketOrderView {
         volume_remain: o.volume_remain,
         volume_total: o.volume_total,
         seconds_remaining: o.seconds_remaining,
+    }
+}
+
+/// One ore total with its SDE-resolved name.
+#[derive(Debug, Serialize)]
+pub struct NamedOre {
+    pub type_id: i64,
+    pub name: String,
+    pub quantity: i64,
+}
+
+/// A character's mining ledger rollup: totals + named top ores.
+#[derive(Debug, Serialize)]
+pub struct MiningView {
+    pub total_units: i64,
+    pub day_count: usize,
+    pub ores: Vec<NamedOre>,
+}
+
+#[tauri::command]
+pub async fn get_mining(state: State<'_, AppState>, character_id: i64) -> CmdResult<MiningView> {
+    let summary = state
+        .mining
+        .summary(character_id, 8)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut ores = Vec::with_capacity(summary.by_ore.len());
+    for ore in summary.by_ore {
+        ores.push(named_ore(&state, ore).await);
+    }
+    Ok(MiningView {
+        total_units: summary.total_units,
+        day_count: summary.day_count,
+        ores,
+    })
+}
+
+/// Enrich one [`OreTotal`] with its item name (falling back to the id).
+async fn named_ore(state: &AppState, ore: OreTotal) -> NamedOre {
+    let name = match &state.sde {
+        Some(sde) => sde
+            .type_name(ore.type_id)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| format!("Type {}", ore.type_id)),
+        None => format!("Type {}", ore.type_id),
+    };
+    NamedOre {
+        type_id: ore.type_id,
+        name,
+        quantity: ore.quantity,
     }
 }
 
