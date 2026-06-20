@@ -45,14 +45,27 @@ application registered with EVE.
 
 ## 3. Configure
 
-Set the client id in your environment (the redirect URI defaults to the
-callback above):
+**Recommended — a `.env` file** (no shell wrangling, survives restarts). Copy
+the example and fill in your Client ID:
 
 ```bash
-export EVE_COMMANDER_CLIENT_ID=your_client_id_here
-# optional, only if you registered a different callback:
-# export EVE_COMMANDER_REDIRECT_URI=http://localhost:8787/callback
+cp .env.example .env      # PowerShell: copy .env.example .env
+# then edit .env and set EVE_COMMANDER_CLIENT_ID=...
 ```
+
+`.env` is git-ignored and loaded automatically at startup.
+
+**Or via an environment variable** (must be set in the *same* terminal, *before*
+launching, and the app must be restarted to pick up changes):
+
+```bash
+export EVE_COMMANDER_CLIENT_ID=your_client_id_here     # macOS/Linux
+```
+```powershell
+$env:EVE_COMMANDER_CLIENT_ID = "your_client_id_here"   # Windows PowerShell
+```
+
+A real environment variable takes precedence over `.env`.
 
 ## 4. Run
 

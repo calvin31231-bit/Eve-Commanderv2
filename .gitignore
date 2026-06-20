@@ -21,6 +21,7 @@ src-tauri/gen
 memory-vault/
 .env
 .env.*
+!.env.example
 
 # Editor / OS
 .DS_Store

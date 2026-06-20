@@ -69,8 +69,22 @@ pub struct AppState {
 /// Build the app config from environment / defaults. The ESI `client_id` and
 /// `redirect_uri` come from the registered ESI application.
 fn load_config() -> Config {
+    // Load a git-ignored `.env` (searching cwd upward) so the client id can be
+    // supplied from a file without shell env-var wrangling. Real environment
+    // variables still win — dotenvy never overrides what's already set.
+    let loaded = dotenvy::dotenv();
+    match &loaded {
+        Ok(path) => tracing::info!("loaded env file: {}", path.display()),
+        Err(_) => tracing::debug!("no .env file found (using process environment)"),
+    }
+
     let data_dir = data_dir().join("eve-commander");
     let client_id = std::env::var("EVE_COMMANDER_CLIENT_ID").unwrap_or_default();
+    if client_id.is_empty() {
+        tracing::warn!(
+            "EVE_COMMANDER_CLIENT_ID is empty — set it (env var or .env file) or login will fail"
+        );
+    }
     let redirect = std::env::var("EVE_COMMANDER_REDIRECT_URI")
         .unwrap_or_else(|_| "http://localhost:8787/callback".to_string());
     Config::new(client_id, redirect, data_dir)

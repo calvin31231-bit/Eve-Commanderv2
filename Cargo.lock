@@ -984,6 +984,7 @@ dependencies = [
 name = "eve-commander"
 version = "0.1.0"
 dependencies = [
+ "dotenvy",
  "eve-core",
  "reqwest 0.12.28",
  "serde",
