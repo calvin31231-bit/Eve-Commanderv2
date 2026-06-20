@@ -186,18 +186,9 @@ pub async fn get_top_holdings(
         .await
         .map_err(|e| e.to_string())?;
 
-    match &state.sde {
-        Some(sde) => resolve_names(&groups, sde).await.map_err(|e| e.to_string()),
-        None => Ok(groups
-            .into_iter()
-            .map(|g| NamedAssetGroup {
-                type_id: g.type_id,
-                name: format!("Type {}", g.type_id),
-                quantity: g.quantity,
-                locations: g.locations,
-            })
-            .collect()),
-    }
+    resolve_names(&groups, &state.sde)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// The clone view: jump-clone count and the active clone's named implants.
@@ -218,20 +209,11 @@ pub async fn get_clones(state: State<'_, AppState>, character_id: i64) -> CmdRes
         .await
         .map_err(|e| e.to_string())?;
 
-    let implants = match &state.sde {
-        Some(sde) => sde
-            .name_types(&summary.active_implants)
-            .await
-            .map_err(|e| e.to_string())?,
-        None => summary
-            .active_implants
-            .iter()
-            .map(|&type_id| NamedType {
-                type_id,
-                name: format!("Type {type_id}"),
-            })
-            .collect(),
-    };
+    let implants = state
+        .sde
+        .name_types(&summary.active_implants)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(ClonesView {
         jump_clone_count: summary.jump_clone_count,
@@ -288,15 +270,7 @@ pub async fn get_industry_jobs(
 
 /// Enrich one [`ActiveJob`] with its display item name (falling back to the id).
 async fn view_for(state: &AppState, job: ActiveJob) -> IndustryJobView {
-    let item_name = match &state.sde {
-        Some(sde) => sde
-            .type_name(job.display_type_id)
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| format!("Type {}", job.display_type_id)),
-        None => format!("Type {}", job.display_type_id),
-    };
+    let item_name = resolve_type_name(state, job.display_type_id).await;
     IndustryJobView {
         job_id: job.job_id,
         activity: job.activity,
@@ -356,15 +330,7 @@ pub async fn get_market_orders(
 
 /// Enrich one [`OrderView`] with its item name (falling back to the id).
 async fn order_view(state: &AppState, o: OrderView) -> MarketOrderView {
-    let item_name = match &state.sde {
-        Some(sde) => sde
-            .type_name(o.type_id)
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| format!("Type {}", o.type_id)),
-        None => format!("Type {}", o.type_id),
-    };
+    let item_name = resolve_type_name(state, o.type_id).await;
     MarketOrderView {
         order_id: o.order_id,
         item_name,
@@ -413,20 +379,22 @@ pub async fn get_mining(state: State<'_, AppState>, character_id: i64) -> CmdRes
 
 /// Enrich one [`OreTotal`] with its item name (falling back to the id).
 async fn named_ore(state: &AppState, ore: OreTotal) -> NamedOre {
-    let name = match &state.sde {
-        Some(sde) => sde
-            .type_name(ore.type_id)
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| format!("Type {}", ore.type_id)),
-        None => format!("Type {}", ore.type_id),
-    };
     NamedOre {
         type_id: ore.type_id,
-        name,
+        name: resolve_type_name(state, ore.type_id).await,
         quantity: ore.quantity,
     }
+}
+
+/// Resolve a single type id to a name via the SDE, falling back to `Type {id}`.
+async fn resolve_type_name(state: &AppState, type_id: i64) -> String {
+    state
+        .sde
+        .type_name(type_id)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("Type {type_id}"))
 }
 
 /// All collected notifications, most recent first (drives the Alerts rail).

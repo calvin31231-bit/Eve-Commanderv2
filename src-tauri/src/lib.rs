@@ -53,9 +53,9 @@ pub struct AppState {
     pub market: MarketClient,
     /// Mining-ledger reads (aggregated by ore) for the Character hub.
     pub mining: MiningClient,
-    /// Static data export for id→name resolution; `None` until `sde.sqlite` is
-    /// shipped/built (names then fall back to `Type {id}`).
-    pub sde: Option<Sde>,
+    /// Static data export for id→name resolution. Always present: the full
+    /// prebuilt `sde.sqlite` if shipped, otherwise a common-items seed.
+    pub sde: Sde,
     /// Collected notifications shown in the Alerts rail.
     pub notifications: tray::SharedCenter,
 }
@@ -116,12 +116,16 @@ fn build_state() -> AppState {
     let mining = MiningClient::new(esi.clone(), token_manager.clone());
     let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
 
-    // Open the prebuilt SDE if present; absence is fine (names degrade).
+    // Use the full prebuilt SDE if shipped, else fall back to the common-items
+    // seed so frequent ids (minerals, ores, hubs, iconic ships) still resolve.
     let sde = match tauri::async_runtime::block_on(Sde::open(config.sde_db_path())) {
-        Ok(s) => Some(s),
-        Err(e) => {
-            tracing::info!("SDE unavailable ({e}); asset names will fall back to ids");
-            None
+        Ok(s) => {
+            tracing::info!("loaded prebuilt SDE");
+            s
+        }
+        Err(_) => {
+            tracing::info!("no prebuilt SDE; using common-items seed");
+            tauri::async_runtime::block_on(Sde::seeded()).expect("failed to build seed SDE")
         }
     };
 

@@ -6,6 +6,8 @@
 //! module defines the normalized subset our converter produces and the query
 //! API the rest of the app builds on (item/system lookups, name search).
 
+pub mod seed;
+
 use std::path::Path;
 use std::str::FromStr;
 
@@ -85,6 +87,20 @@ impl Sde {
             .await?;
         sqlx::raw_sql(SDE_SCHEMA).execute(&pool).await?;
         Ok(Self { pool })
+    }
+
+    /// Open an in-memory SDE pre-populated with the [`seed`] of common types and
+    /// systems. Used as the fallback when no full prebuilt `sde.sqlite` is
+    /// present, so common items still resolve to real names.
+    pub async fn seeded() -> Result<Self> {
+        let sde = Self::open_in_memory().await?;
+        for (type_id, name) in seed::SEED_TYPES {
+            sde.insert_type(*type_id, name, None).await?;
+        }
+        for (system_id, name, security) in seed::SEED_SYSTEMS {
+            sde.insert_system(*system_id, name, *security).await?;
+        }
+        Ok(sde)
     }
 
     /// Resolve a type id to its name.
@@ -197,5 +213,17 @@ mod tests {
         let named = sde.name_types(&[587, 99999]).await.unwrap();
         assert_eq!(named[0].name, "Rifter");
         assert_eq!(named[1].name, "Type 99999"); // unknown id falls back
+    }
+
+    #[tokio::test]
+    async fn seeded_resolves_common_items() {
+        let sde = Sde::seeded().await.unwrap();
+        // Minerals, ores, ships, and hubs from the curated seed resolve.
+        assert_eq!(sde.type_name(34).await.unwrap().as_deref(), Some("Tritanium"));
+        assert_eq!(sde.type_name(1230).await.unwrap().as_deref(), Some("Veldspar"));
+        assert_eq!(sde.type_name(587).await.unwrap().as_deref(), Some("Rifter"));
+        assert_eq!(sde.solar_system(30000142).await.unwrap().unwrap().name, "Jita");
+        // Unseeded ids still fall back gracefully.
+        assert_eq!(sde.type_name(123456).await.unwrap(), None);
     }
 }
