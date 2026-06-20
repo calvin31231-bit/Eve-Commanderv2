@@ -12,11 +12,13 @@ pub mod cache;
 pub mod cache_store;
 pub mod client;
 pub mod endpoints;
+pub mod poll;
 pub mod ratelimit;
 pub mod scheduler;
 
 pub use cache_store::SqliteCacheStore;
 pub use client::{CacheStore, EsiClient, MemoryCacheStore};
 pub use endpoints::{all_jobs, Endpoint, CATALOG};
+pub use poll::{plan_fetches, PlannedFetch};
 pub use ratelimit::ErrorBudget;
 pub use scheduler::{PollClass, PollJob, Scheduler};

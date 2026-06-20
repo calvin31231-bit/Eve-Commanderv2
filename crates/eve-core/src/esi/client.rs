@@ -86,6 +86,14 @@ impl EsiClient {
         Ok(serde_json::from_slice(&body)?)
     }
 
+    /// Fetch a path through the full cache-first pipeline and return the raw
+    /// body, without deserializing. The background poller uses this to **warm
+    /// the cache** (and update the error budget) so later typed reads are served
+    /// locally. `access_token` is `None` for public routes.
+    pub async fn get_raw(&self, path: &str, access_token: Option<&str>) -> Result<Vec<u8>> {
+        self.get_cached(path, access_token).await
+    }
+
     /// Core cache-first GET. Returns the (possibly cached) response body bytes.
     async fn get_cached(&self, path: &str, token: Option<&str>) -> Result<Vec<u8>> {
         // Respect the breaker before touching the network.

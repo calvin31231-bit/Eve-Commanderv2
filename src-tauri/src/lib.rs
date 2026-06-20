@@ -7,8 +7,11 @@
 //! `eve-core` crate carries the logic that is unit-tested everywhere.
 
 mod commands;
+mod poller;
 
 use std::sync::Arc;
+
+use tauri::Manager;
 
 use eve_core::auth::{LoginManager, SsoClient, TokenManager};
 use eve_core::auth::token_store::TokenStore;
@@ -96,6 +99,19 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .manage(state)
+        .setup(|app| {
+            // Start the background poll worker with cheap clones of the shared
+            // handles. It reloads the roster from the DB each tick, so it picks
+            // up characters added later in the session.
+            let state = app.state::<AppState>();
+            poller::spawn(
+                state.esi.clone(),
+                state.token_manager.clone(),
+                state.db.clone(),
+                state.config.clone(),
+            );
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::server_status,
             commands::list_characters,
