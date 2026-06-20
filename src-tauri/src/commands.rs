@@ -93,6 +93,14 @@ pub async fn login(state: State<'_, AppState>) -> CmdResult<Character> {
         .save_refresh_token(completed.character.id, &completed.refresh_token)
         .map_err(|e| e.to_string())?;
 
+    // Prime the in-memory token cache with the freshly-issued access token so
+    // the first poll for this character doesn't trigger an immediate refresh.
+    state.token_manager.prime(
+        completed.character.id,
+        completed.access_token,
+        completed.expires_in,
+    );
+
     Ok(completed.character)
 }
 

@@ -10,7 +10,7 @@ mod commands;
 
 use std::sync::Arc;
 
-use eve_core::auth::{LoginManager, SsoClient};
+use eve_core::auth::{LoginManager, SsoClient, TokenManager};
 use eve_core::auth::token_store::TokenStore;
 use eve_core::config::Config;
 use eve_core::db::Database;
@@ -24,6 +24,8 @@ pub struct AppState {
     pub login: LoginManager,
     pub db: Database,
     pub tokens: Arc<dyn TokenStore>,
+    /// Hands out valid access tokens (refreshing as needed) for ESI polling.
+    pub token_manager: TokenManager,
 }
 
 /// Build the app config from environment / defaults. The ESI `client_id` and
@@ -72,6 +74,7 @@ fn build_state() -> AppState {
         .expect("failed to open app database");
 
     let tokens: Arc<dyn TokenStore> = Arc::from(eve_core::auth::token_store::default_store());
+    let token_manager = TokenManager::new(sso.clone(), tokens.clone());
 
     AppState {
         config,
@@ -80,6 +83,7 @@ fn build_state() -> AppState {
         login: LoginManager::new(),
         db,
         tokens,
+        token_manager,
     }
 }
 

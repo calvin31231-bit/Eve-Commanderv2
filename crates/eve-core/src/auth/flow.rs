@@ -23,6 +23,10 @@ use super::token::decode_claims;
 #[derive(Debug, Clone)]
 pub struct CompletedLogin {
     pub character: Character,
+    /// Freshly-issued access token, used to prime the in-memory token cache so
+    /// the first poll doesn't trigger an immediate refresh. Short-lived; never
+    /// persisted to disk.
+    pub access_token: String,
     /// Long-lived secret — store ONLY in the OS keychain.
     pub refresh_token: String,
     /// Access-token lifetime in seconds.
@@ -79,6 +83,7 @@ impl LoginManager {
 
         Ok(CompletedLogin {
             character,
+            access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
             expires_in: tokens.expires_in,
         })
