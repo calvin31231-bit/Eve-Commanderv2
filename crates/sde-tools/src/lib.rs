@@ -19,6 +19,7 @@
 //! half-written table.
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -125,6 +126,21 @@ struct RawRequiredSkill {
     #[serde(rename = "skillTypeID")]
     skill_type_id: i64,
     level: i64,
+}
+
+/// One entry from CCP's `typeDogma.yaml`: a type's dogma attribute values. We
+/// only read the attributes that drive skills + skill requirements.
+#[derive(Debug, Deserialize)]
+struct RawTypeDogma {
+    #[serde(rename = "dogmaAttributes", default)]
+    dogma_attributes: Vec<RawDogmaAttr>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawDogmaAttr {
+    #[serde(rename = "attributeID")]
+    attribute_id: i64,
+    value: f64,
 }
 
 /// One normalized skill entry: rank + the two training attribute type ids.
@@ -342,6 +358,60 @@ impl Converter {
                 for s in rs.skills {
                     stmt.execute(params![type_id, s.skill_type_id, s.level])?;
                     written += 1;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest CCP's `typeDogma.yaml` directly, deriving **both** the `skills`
+    /// table (rank 275 + training attributes 180/181) and `type_required_skills`
+    /// (requiredSkill1..6 = attrs 182/183/184/1285/1289/1290 with their level
+    /// attrs 277/278/279/1286/1287/1288). This is the single real-CCP-file path
+    /// that lights up skill plans + can-I-fly without a hand-normalized step.
+    /// Returns the number of rows written across both tables.
+    pub fn ingest_type_dogma(&mut self, yaml: &str) -> Result<usize> {
+        // (requiredSkill attribute id, its level attribute id).
+        const REQ_PAIRS: [(i64, i64); 6] =
+            [(182, 277), (183, 278), (184, 279), (1285, 1286), (1289, 1287), (1290, 1288)];
+
+        let raw: BTreeMap<i64, RawTypeDogma> =
+            serde_yaml::from_str(yaml).context("parsing typeDogma YAML")?;
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut skill_stmt = tx.prepare(
+                "INSERT OR REPLACE INTO skills (type_id, rank, primary_attr, secondary_attr)
+                 VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            let mut req_stmt = tx.prepare(
+                "INSERT OR REPLACE INTO type_required_skills (type_id, skill_type_id, level)
+                 VALUES (?1, ?2, ?3)",
+            )?;
+            for (type_id, td) in raw {
+                let attrs: HashMap<i64, f64> = td
+                    .dogma_attributes
+                    .iter()
+                    .map(|a| (a.attribute_id, a.value))
+                    .collect();
+
+                // Skill training metadata: present iff the type has a rank (275).
+                if let Some(&rank) = attrs.get(&275) {
+                    let primary = attrs.get(&180).copied().unwrap_or(0.0) as i64;
+                    let secondary = attrs.get(&181).copied().unwrap_or(0.0) as i64;
+                    skill_stmt.execute(params![type_id, rank as i64, primary, secondary])?;
+                    written += 1;
+                }
+
+                // Required skills to use this type.
+                for (skill_attr, level_attr) in REQ_PAIRS {
+                    if let Some(&skill) = attrs.get(&skill_attr) {
+                        let level = attrs.get(&level_attr).copied().unwrap_or(1.0) as i64;
+                        req_stmt.execute(params![type_id, skill as i64, level.max(1)])?;
+                        written += 1;
+                    }
                 }
             }
         }
@@ -615,6 +685,59 @@ mod tests {
             .connection()
             .query_row(
                 "SELECT level FROM type_required_skills WHERE type_id = 587 AND skill_type_id = 3330",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(lvl, 3);
+    }
+
+    #[test]
+    fn type_dogma_derives_skills_and_requirements() {
+        let mut c = Converter::in_memory().unwrap();
+        // Type 3300 is a skill (rank 1, primary perception/167, secondary
+        // willpower/168). Type 587 (Rifter) requires skill 3327 at level 1.
+        let n = c
+            .ingest_type_dogma(
+                r#"
+3300:
+  dogmaAttributes:
+  - attributeID: 275
+    value: 1.0
+  - attributeID: 180
+    value: 167.0
+  - attributeID: 181
+    value: 168.0
+587:
+  dogmaAttributes:
+  - attributeID: 182
+    value: 3327.0
+  - attributeID: 277
+    value: 1.0
+  - attributeID: 183
+    value: 3301.0
+  - attributeID: 278
+    value: 3.0
+"#,
+            )
+            .unwrap();
+        // 1 skill row + 2 required-skill rows.
+        assert_eq!(n, 3);
+
+        let (rank, p, s): (i64, i64, i64) = c
+            .connection()
+            .query_row(
+                "SELECT rank, primary_attr, secondary_attr FROM skills WHERE type_id = 3300",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!((rank, p, s), (1, 167, 168));
+
+        let lvl: i64 = c
+            .connection()
+            .query_row(
+                "SELECT level FROM type_required_skills WHERE type_id = 587 AND skill_type_id = 3301",
                 [],
                 |r| r.get(0),
             )

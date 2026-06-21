@@ -87,12 +87,39 @@ pnpm tauri dev
 5. Add more characters from Home ("Add character"); click a character row to
    switch the active one.
 
+## Building the full SDE (unlocks reprocessing, BOM, skill plans, can-I-fly)
+
+The full Static Data Export is too large to ship in the repo, so generate it
+once locally. On Windows:
+
+```powershell
+pwsh -File scripts/build-sde.ps1
+```
+
+This downloads CCP's SDE, runs the `sde-convert` tool over the FSD YAML
+(`typeIDs`, `typeMaterials`, `blueprints`, `typeDogma`), and writes
+`sde.sqlite` into `%APPDATA%\eve-commander\` where the app finds it on the next
+launch. To run the converter by hand (any OS):
+
+```
+cargo run -p sde-tools --release -- \
+  --out <data_dir>/sde.sqlite \
+  --types       fsd/typeIDs.yaml \
+  --type-materials fsd/typeMaterials.yaml \
+  --blueprints  fsd/blueprints.yaml \
+  --type-dogma  fsd/typeDogma.yaml
+```
+
+`--type-dogma` derives both skill ranks/attributes and per-item required skills
+in one pass, so skill plans and the can-I-fly check go live too. Until the SDE
+is present those panels show a "needs full SDE" note and everything else works.
+
 ## Notes
 
 - **Names:** without a full prebuilt `sde.sqlite`, common items (minerals, ores,
   iconic ships, trade hubs) resolve via a built-in seed; everything else shows
-  `Type {id}`. Build the full SDE with `sde-tools` to resolve everything.
+  `Type {id}`. Build the full SDE (above) to resolve everything.
 - **Tokens:** refresh tokens are stored in the OS keychain (the desktop build
   enables the `keychain` feature); access tokens stay in memory.
-- **Data dir:** `~/.local/share/eve-commander` (Linux), platform-equivalent
-  elsewhere — holds `app.sqlite` and `cache.sqlite`.
+- **Data dir:** `~/.local/share/eve-commander` (Linux), `%APPDATA%\eve-commander`
+  (Windows) — holds `app.sqlite`, `cache.sqlite`, and the prebuilt `sde.sqlite`.

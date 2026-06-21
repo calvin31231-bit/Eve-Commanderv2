@@ -115,9 +115,17 @@ fn load_config() -> Config {
 }
 
 /// Minimal data-dir resolver without pulling in an extra crate at this stage.
+///
+/// Order: `XDG_DATA_HOME` (Linux override) → `APPDATA` (Windows roaming) →
+/// `HOME/.local/share` (Unix) → temp. Picking `APPDATA` on Windows gives a
+/// stable, user-visible location (`%APPDATA%\eve-commander`) instead of the
+/// volatile temp dir, so the prebuilt SDE and durable DB survive reboots.
 fn data_dir() -> std::path::PathBuf {
     if let Ok(dir) = std::env::var("XDG_DATA_HOME") {
         return std::path::PathBuf::from(dir);
+    }
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        return std::path::PathBuf::from(appdata);
     }
     if let Ok(home) = std::env::var("HOME") {
         return std::path::PathBuf::from(home).join(".local/share");
