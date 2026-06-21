@@ -198,6 +198,11 @@ export interface CharacterStatusView {
   training_seconds_remaining: number | null;
 }
 
+export interface AppSettings {
+  intensity: string;
+  notify_min: string;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

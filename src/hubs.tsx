@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, isTauri } from "./ipc";
 import type {
   AccountOverview,
+  AppSettings,
   CashflowSummary,
   Character,
   CharacterAttributes,
@@ -656,6 +657,67 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
   );
 }
 
+function ToolsHub(): ReactNode {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    api.getSettings().then(setSettings).catch(() => undefined);
+  }, []);
+
+  function update(patch: Partial<AppSettings>) {
+    if (!settings) return;
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    api
+      .setSettings(next.intensity, next.notify_min)
+      .then(() => {
+        setSaved(true);
+        window.setTimeout(() => setSaved(false), 1500);
+      })
+      .catch(() => undefined);
+  }
+
+  return (
+    <>
+      <h1>Tools &amp; Settings</h1>
+      <div className="sub">Data-freshness and notification preferences.</div>
+      {!isTauri() ? (
+        <div className="card"><p style={{ color: "var(--text-dim)" }}>Design preview — settings load in the desktop shell.</p></div>
+      ) : !settings ? (
+        <div className="card"><p style={{ color: "var(--text-dim)" }}>Loading…</p></div>
+      ) : (
+        <div className="card settings-card">
+          <label className="setting-row">
+            <div>
+              <div className="setting-name">Data freshness</div>
+              <div className="setting-help">How aggressively background polling refreshes. Never beats ESI cache timers.</div>
+            </div>
+            <select value={settings.intensity} onChange={(e) => update({ intensity: e.target.value })}>
+              <option value="Light">Light</option>
+              <option value="Balanced">Balanced</option>
+              <option value="Aggressive">Aggressive</option>
+            </select>
+          </label>
+          <label className="setting-row">
+            <div>
+              <div className="setting-name">Notify me at</div>
+              <div className="setting-help">Minimum severity that raises an OS notification. Lower events still collect in Alerts.</div>
+            </div>
+            <select value={settings.notify_min} onChange={(e) => update({ notify_min: e.target.value })}>
+              <option value="Info">Info &amp; up</option>
+              <option value="Warning">Warning &amp; up</option>
+              <option value="Critical">Critical only</option>
+            </select>
+          </label>
+          <div className="setting-saved" style={{ opacity: saved ? 1 : 0 }}>Saved ✓</div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function renderHub(hubId: string, home: HomeProps, activeCharacter: Character | null): ReactNode {
   switch (hubId) {
     case "home":
@@ -671,7 +733,7 @@ export function renderHub(hubId: string, home: HomeProps, activeCharacter: Chara
     case "corp":
       return <Placeholder title="Corp & Fleet" blurb="Members, SRP, structures, fleet boss, recruitment." />;
     case "tools":
-      return <Placeholder title="Tools" blurb="Reprocessing, insurance, LP, abyssal calculators." />;
+      return <ToolsHub />;
     default:
       return <Placeholder title="Unknown" blurb="" />;
   }

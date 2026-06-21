@@ -46,3 +46,9 @@ CREATE TABLE IF NOT EXISTS names (
     category TEXT
 );
 
+-- Application settings (key/value).
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+

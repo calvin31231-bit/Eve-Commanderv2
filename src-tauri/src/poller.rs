@@ -13,12 +13,13 @@
 //! tokio lifecycle wiring, which needs a running app to exercise.
 
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tauri::AppHandle;
 
 use eve_core::auth::TokenManager;
-use eve_core::config::Config;
+use eve_core::config::Intensity;
 use eve_core::db::Database;
 use eve_core::esi::{all_jobs, plan_fetches, EsiClient, Scheduler};
 use eve_core::notify::{Notification, Severity};
@@ -39,7 +40,7 @@ pub fn spawn(
     esi: EsiClient,
     tokens: TokenManager,
     db: Database,
-    config: Config,
+    intensity: Arc<RwLock<Intensity>>,
     notifications: SharedCenter,
 ) {
     tauri::async_runtime::spawn(async move {
@@ -48,8 +49,10 @@ pub fn spawn(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             ticker.tick().await;
+            // Read the live data-freshness setting each tick.
+            let current = intensity.read().map(|g| *g).unwrap_or_default();
             if let Err(e) =
-                run_tick(&app, &esi, &tokens, &db, &config, &notifications, &mut last_runs).await
+                run_tick(&app, &esi, &tokens, &db, current, &notifications, &mut last_runs).await
             {
                 tracing::warn!("poll tick failed: {e}");
             }
@@ -64,7 +67,7 @@ async fn run_tick(
     esi: &EsiClient,
     tokens: &TokenManager,
     db: &Database,
-    config: &Config,
+    intensity: Intensity,
     notifications: &SharedCenter,
     last_runs: &mut HashMap<(i64, &'static str), u64>,
 ) -> Result<(), String> {
@@ -95,7 +98,7 @@ async fn run_tick(
 
     // Rebuild the scheduler from the current roster, restoring last-run times so
     // cadence survives the rebuild.
-    let mut scheduler = Scheduler::new(config.intensity);
+    let mut scheduler = Scheduler::new(intensity);
     scheduler.add_jobs(all_jobs(&characters));
     for (&(character_id, endpoint), &last) in last_runs.iter() {
         scheduler.mark_ran(character_id, endpoint, last);

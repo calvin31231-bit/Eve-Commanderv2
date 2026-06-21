@@ -6,6 +6,7 @@
 
 pub mod characters;
 pub mod names;
+pub mod settings;
 
 use std::path::Path;
 use std::str::FromStr;

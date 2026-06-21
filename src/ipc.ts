@@ -7,6 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AccountOverview,
+  AppSettings,
   CashflowSummary,
   Character,
   CharacterAttributes,
@@ -81,6 +82,9 @@ export const api = {
     call<MailView>("get_mail", { characterId, mailId }),
   markMailRead: (characterId: number, mailId: number) =>
     call<void>("mark_mail_read", { characterId, mailId }),
+  getSettings: () => call<AppSettings>("get_settings"),
+  setSettings: (intensity: string, notifyMin: string) =>
+    call<void>("set_settings", { intensity, notifyMin }),
   listNotifications: () => call<Notification[]>("list_notifications"),
   unreadNotifications: () => call<number>("unread_notifications"),
   markNotificationsRead: () => call<void>("mark_notifications_read"),

@@ -24,6 +24,26 @@ pub enum Severity {
     Critical,
 }
 
+impl Severity {
+    /// Stable string form (for persistence / UI).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Severity::Info => "Info",
+            Severity::Warning => "Warning",
+            Severity::Critical => "Critical",
+        }
+    }
+
+    /// Parse from [`as_str`](Self::as_str); unknown values fall back to Warning.
+    pub fn parse(s: &str) -> Severity {
+        match s {
+            "Info" => Severity::Info,
+            "Critical" => Severity::Critical,
+            _ => Severity::Warning,
+        }
+    }
+}
+
 /// A single notification. De-duplication is by [`key`](Self::key).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Notification {

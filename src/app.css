@@ -472,3 +472,27 @@ ul.mail-list { list-style: none; margin: 0; padding: 0; }
   .card:hover, .hub-rail button:hover { transform: none; }
   * { transition: none !important; }
 }
+
+/* Settings (Tools hub) */
+.settings-card { max-width: 560px; }
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.setting-row:last-of-type { border-bottom: none; }
+.setting-name { font-weight: 600; font-size: 14px; }
+.setting-help { font-size: 12px; color: var(--text-dim); margin-top: 2px; max-width: 360px; }
+.setting-row select {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.setting-saved { color: var(--safe); font-size: 12px; transition: opacity 0.3s ease; }

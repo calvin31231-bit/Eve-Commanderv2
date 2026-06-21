@@ -65,6 +65,8 @@ pub struct AppState {
     pub names: NameResolver,
     /// Collected notifications shown in the Alerts rail.
     pub notifications: tray::SharedCenter,
+    /// Live data-freshness setting; the poller reads it each tick.
+    pub intensity: std::sync::Arc<std::sync::RwLock<eve_core::config::Intensity>>,
 }
 
 /// Build the app config from environment / defaults. The ESI `client_id` and
@@ -154,6 +156,23 @@ fn build_state() -> AppState {
 
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
+    // Load persisted settings (data-freshness intensity, notification threshold)
+    // and apply them.
+    let intensity_val = tauri::async_runtime::block_on(async {
+        eve_core::config::Intensity::parse(
+            &db.get_setting_or("intensity", config.intensity.as_str())
+                .await
+                .unwrap_or_else(|_| config.intensity.as_str().to_string()),
+        )
+    });
+    let intensity = std::sync::Arc::new(std::sync::RwLock::new(intensity_val));
+    if let Ok(notify_min) = tauri::async_runtime::block_on(db.get_setting_or("notify_min", "Warning"))
+    {
+        if let Ok(mut center) = notifications.lock() {
+            center.set_min_interrupt(eve_core::notify::Severity::parse(&notify_min));
+        }
+    }
+
     AppState {
         config,
         esi,
@@ -173,6 +192,7 @@ fn build_state() -> AppState {
         prices,
         names,
         notifications,
+        intensity,
     }
 }
 
@@ -198,7 +218,7 @@ pub fn run() {
                 state.esi.clone(),
                 state.token_manager.clone(),
                 state.db.clone(),
-                state.config.clone(),
+                state.intensity.clone(),
                 state.notifications.clone(),
             );
             Ok(())
@@ -226,6 +246,8 @@ pub fn run() {
             commands::get_mail_headers,
             commands::get_mail,
             commands::mark_mail_read,
+            commands::get_settings,
+            commands::set_settings,
             commands::list_notifications,
             commands::unread_notifications,
             commands::mark_notifications_read,

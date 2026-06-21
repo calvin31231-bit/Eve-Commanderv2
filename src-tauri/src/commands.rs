@@ -822,6 +822,62 @@ pub async fn mark_mail_read(
         .map_err(|e| e.to_string())
 }
 
+/// User-editable application settings.
+#[derive(Debug, Serialize)]
+pub struct AppSettings {
+    /// Data-freshness profile: "Light" | "Balanced" | "Aggressive".
+    pub intensity: String,
+    /// Minimum notification severity that interrupts: "Info" | "Warning" | "Critical".
+    pub notify_min: String,
+}
+
+/// Read the current settings.
+#[tauri::command]
+pub async fn get_settings(state: State<'_, AppState>) -> CmdResult<AppSettings> {
+    let intensity = state
+        .db
+        .get_setting_or("intensity", state.config.intensity.as_str())
+        .await
+        .map_err(|e| e.to_string())?;
+    let notify_min = state
+        .db
+        .get_setting_or("notify_min", "Warning")
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(AppSettings { intensity, notify_min })
+}
+
+/// Persist and apply settings live (poll intensity + notification threshold).
+#[tauri::command]
+pub async fn set_settings(
+    state: State<'_, AppState>,
+    intensity: String,
+    notify_min: String,
+) -> CmdResult<()> {
+    let parsed_intensity = eve_core::config::Intensity::parse(&intensity);
+    let parsed_sev = eve_core::notify::Severity::parse(&notify_min);
+
+    state
+        .db
+        .set_setting("intensity", parsed_intensity.as_str())
+        .await
+        .map_err(|e| e.to_string())?;
+    state
+        .db
+        .set_setting("notify_min", parsed_sev.as_str())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Apply live: the poller reads intensity each tick; the center is shared.
+    if let Ok(mut g) = state.intensity.write() {
+        *g = parsed_intensity;
+    }
+    if let Ok(mut center) = state.notifications.lock() {
+        center.set_min_interrupt(parsed_sev);
+    }
+    Ok(())
+}
+
 /// All collected notifications, most recent first (drives the Alerts rail).
 #[tauri::command]
 pub fn list_notifications(state: State<'_, AppState>) -> CmdResult<Vec<Notification>> {

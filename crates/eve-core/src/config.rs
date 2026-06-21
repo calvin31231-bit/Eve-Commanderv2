@@ -41,6 +41,24 @@ impl Intensity {
         }
     }
 
+    /// Stable string form (for persistence / UI).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Intensity::Light => "Light",
+            Intensity::Balanced => "Balanced",
+            Intensity::Aggressive => "Aggressive",
+        }
+    }
+
+    /// Parse from [`as_str`](Self::as_str); unknown values fall back to Balanced.
+    pub fn parse(s: &str) -> Intensity {
+        match s {
+            "Light" => Intensity::Light,
+            "Aggressive" => Intensity::Aggressive,
+            _ => Intensity::Balanced,
+        }
+    }
+
     /// Maximum number of concurrent in-flight ESI requests the scheduler will
     /// allow. Kept modest so we never spike the player's connection.
     pub fn max_in_flight(self) -> usize {
