@@ -43,6 +43,7 @@ pub mod notify;
 pub mod prices;
 pub mod reprocess;
 pub mod sde;
+pub mod skillplan;
 pub mod wallet;
 
 pub use error::{Error, Result};
