@@ -331,6 +331,22 @@ export interface ResolvedFit {
   unresolved: string[];
 }
 
+export interface SkillStepView {
+  skill_type_id: number;
+  name: string;
+  current_level: number;
+  target_level: number;
+  sp: number;
+  seconds: number;
+  known: boolean;
+}
+
+export interface SkillPlanView {
+  steps: SkillStepView[];
+  total_sp: number;
+  total_seconds: number;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

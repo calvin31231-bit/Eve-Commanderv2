@@ -48,6 +48,15 @@ pub struct Material {
     pub quantity: i64,
 }
 
+/// Skill training metadata: rank and the dogma attribute type ids that drive
+/// training speed (e.g. 165 intelligence, 166 memory).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillMeta {
+    pub rank: i64,
+    pub primary_attr: i64,
+    pub secondary_attr: i64,
+}
+
 /// A blueprint activity's product (manufacturing output / invention result).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlueprintProduct {
@@ -119,6 +128,15 @@ CREATE TABLE IF NOT EXISTS blueprint_products (
 );
 CREATE INDEX IF NOT EXISTS idx_bp_products_product
     ON blueprint_products(product_type_id, activity);
+
+-- Skill training metadata: rank (skillTimeConstant, dogma 275) and the two
+-- training attribute ids (primary 180, secondary 181 → attribute type ids).
+CREATE TABLE IF NOT EXISTS skills (
+    type_id        INTEGER PRIMARY KEY,
+    rank           INTEGER NOT NULL DEFAULT 1,
+    primary_attr   INTEGER NOT NULL DEFAULT 0,
+    secondary_attr INTEGER NOT NULL DEFAULT 0
+);
 "#;
 
 impl Sde {
@@ -253,6 +271,21 @@ impl Sde {
             .collect())
     }
 
+    /// Skill rank + training attributes for a skill type, if the SDE has it.
+    pub async fn skill_meta(&self, type_id: i64) -> Result<Option<SkillMeta>> {
+        let row = sqlx::query(
+            "SELECT rank, primary_attr, secondary_attr FROM skills WHERE type_id = ?1",
+        )
+        .bind(type_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| SkillMeta {
+            rank: r.get::<i64, _>("rank"),
+            primary_attr: r.get::<i64, _>("primary_attr"),
+            secondary_attr: r.get::<i64, _>("secondary_attr"),
+        }))
+    }
+
     /// Resolve a list of type ids to [`NamedType`]s, falling back to `Type {id}`
     /// for ids the version-pinned SDE doesn't know.
     pub async fn name_types(&self, ids: &[i64]) -> Result<Vec<NamedType>> {
@@ -364,6 +397,27 @@ impl Sde {
         .bind(activity)
         .bind(material_type_id)
         .bind(quantity)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Test/seed helper: insert skill training metadata.
+    pub async fn insert_skill(
+        &self,
+        type_id: i64,
+        rank: i64,
+        primary_attr: i64,
+        secondary_attr: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO skills (type_id, rank, primary_attr, secondary_attr)
+             VALUES (?1, ?2, ?3, ?4)",
+        )
+        .bind(type_id)
+        .bind(rank)
+        .bind(primary_attr)
+        .bind(secondary_attr)
         .execute(&self.pool)
         .await?;
         Ok(())

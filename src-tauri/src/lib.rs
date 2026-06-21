@@ -278,6 +278,7 @@ pub fn run() {
             commands::reprocess_item,
             commands::plan_build,
             commands::parse_fit,
+            commands::cost_skill_plan,
             commands::get_contracts,
             commands::get_mining,
             commands::get_mail_headers,

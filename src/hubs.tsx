@@ -32,6 +32,7 @@ import type {
   ReprocessView,
   BuildPlanView,
   ResolvedFit,
+  SkillPlanView,
 } from "./types";
 
 export interface Hub {
@@ -554,8 +555,94 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
+      <SkillPlanner character={character} />
       <MailCard character={character} />
     </>
+  );
+}
+
+function SkillPlanner({ character }: { character: Character }): ReactNode {
+  const [targets, setTargets] = useState<
+    { skill_type_id: number; name: string; target_level: number }[]
+  >([]);
+  const [plan, setPlan] = useState<SkillPlanView | null>(null);
+
+  function recost(next: typeof targets) {
+    setTargets(next);
+    if (!isTauri() || next.length === 0) {
+      setPlan(null);
+      return;
+    }
+    api
+      .costSkillPlan(
+        character.id,
+        next.map((t) => ({ skill_type_id: t.skill_type_id, target_level: t.target_level })),
+      )
+      .then(setPlan)
+      .catch(() => setPlan(null));
+  }
+
+  return (
+    <div className="card skill-planner">
+      <h3>Skill Plan</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Add skills and target levels to estimate SP and training time at your attributes.
+      </p>
+      <ItemPicker
+        placeholder="Search a skill…"
+        onPick={(h) => {
+          if (targets.some((t) => t.skill_type_id === h.type_id)) return;
+          recost([...targets, { skill_type_id: h.type_id, name: h.name, target_level: 5 }]);
+        }}
+      />
+      {targets.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <tbody>
+            {targets.map((t, i) => {
+              const step = plan?.steps[i];
+              return (
+                <tr key={t.skill_type_id}>
+                  <td>{step?.name ?? t.name}</td>
+                  <td>
+                    <select
+                      value={t.target_level}
+                      onChange={(e) => {
+                        const next = [...targets];
+                        next[i] = { ...t, target_level: Number(e.target.value) };
+                        recost(next);
+                      }}
+                    >
+                      {[1, 2, 3, 4, 5].map((l) => (
+                        <option key={l} value={l}>
+                          {step ? `${step.current_level}→${l}` : `L${l}`}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="mono num">
+                    {step?.known ? formatDuration(step.seconds) : step ? "no SDE" : "…"}
+                  </td>
+                  <td>
+                    <button
+                      onClick={() => recost(targets.filter((_, j) => j !== i))}
+                      style={{ padding: "1px 8px" }}
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      {plan && plan.total_seconds > 0 && (
+        <div className="cashflow-totals" style={{ marginTop: 8 }}>
+          <span>{(plan.total_sp / 1000).toFixed(0)}k SP</span>
+          <span className="pos">{formatDuration(plan.total_seconds)} total</span>
+        </div>
+      )}
+    </div>
   );
 }
 

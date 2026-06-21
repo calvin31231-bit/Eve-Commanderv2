@@ -1206,6 +1206,117 @@ pub async fn plan_build(
     }))
 }
 
+/// One target row of a skill plan from the UI.
+#[derive(Debug, serde::Deserialize)]
+pub struct SkillTarget {
+    pub skill_type_id: i64,
+    pub target_level: i64,
+}
+
+/// A costed plan step with the skill name + current level filled in.
+#[derive(Debug, Serialize)]
+pub struct SkillStepView {
+    pub skill_type_id: i64,
+    pub name: String,
+    pub current_level: i64,
+    pub target_level: i64,
+    pub sp: i64,
+    pub seconds: i64,
+    /// False when the SDE has no rank/attributes for the skill (seed-only).
+    pub known: bool,
+}
+
+/// A costed skill plan for a character.
+#[derive(Debug, Serialize)]
+pub struct SkillPlanView {
+    pub steps: Vec<SkillStepView>,
+    pub total_sp: i64,
+    pub total_seconds: i64,
+}
+
+/// Map a dogma attribute type id to the character's attribute value.
+fn attr_value(a: &eve_core::character::CharacterAttributes, attr_id: i64) -> f64 {
+    let v = match attr_id {
+        165 => a.intelligence,
+        166 => a.memory,
+        167 => a.perception,
+        168 => a.willpower,
+        164 => a.charisma,
+        _ => 0,
+    };
+    v as f64
+}
+
+/// Cost a skill plan for a character: per-skill SP and training time (using the
+/// character's current levels + attributes and SDE skill ranks) plus totals.
+/// Skills the SDE doesn't know are returned with `known = false` and zero cost.
+#[tauri::command]
+pub async fn cost_skill_plan(
+    state: State<'_, AppState>,
+    character_id: i64,
+    targets: Vec<SkillTarget>,
+) -> CmdResult<SkillPlanView> {
+    use eve_core::skillplan::{sp_for_level, training_seconds};
+
+    let sheet = state
+        .character
+        .skills(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let attrs = state
+        .character
+        .attributes(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let current: std::collections::HashMap<i64, i64> = sheet
+        .skills
+        .iter()
+        .map(|s| (s.skill_id, s.trained_skill_level))
+        .collect();
+
+    let ids: Vec<i64> = targets.iter().map(|t| t.skill_type_id).collect();
+    let names = names_for(&state, &ids).await;
+
+    let mut steps = Vec::with_capacity(targets.len());
+    let mut total_sp = 0;
+    let mut total_seconds = 0;
+    for t in &targets {
+        let current_level = current.get(&t.skill_type_id).copied().unwrap_or(0);
+        let meta = state
+            .names
+            .sde()
+            .skill_meta(t.skill_type_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let (sp, seconds, known) = match meta {
+            Some(m) => {
+                let from = sp_for_level(m.rank, current_level);
+                let to = sp_for_level(m.rank, t.target_level);
+                let sp = (to - from).max(0);
+                let seconds = training_seconds(
+                    sp,
+                    attr_value(&attrs, m.primary_attr),
+                    attr_value(&attrs, m.secondary_attr),
+                );
+                (sp, seconds, true)
+            }
+            None => (0, 0, false),
+        };
+        total_sp += sp;
+        total_seconds += seconds;
+        steps.push(SkillStepView {
+            skill_type_id: t.skill_type_id,
+            name: named(&names, t.skill_type_id),
+            current_level,
+            target_level: t.target_level,
+            sp,
+            seconds,
+            known,
+        });
+    }
+    Ok(SkillPlanView { steps, total_sp, total_seconds })
+}
+
 /// Parse a pasted EFT fit and resolve its ship + modules to type ids via the
 /// SDE. Returns `null` when the EFT header is malformed. Unresolved names (those
 /// the current SDE doesn't know) are listed so the UI can flag them.

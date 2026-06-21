@@ -20,6 +20,7 @@ struct Args {
     systems: Option<PathBuf>,
     type_materials: Option<PathBuf>,
     blueprints: Option<PathBuf>,
+    skills: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args> {
@@ -28,6 +29,7 @@ fn parse_args() -> Result<Args> {
     let mut systems = None;
     let mut type_materials = None;
     let mut blueprints = None;
+    let mut skills = None;
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -39,6 +41,7 @@ fn parse_args() -> Result<Args> {
                 type_materials = Some(PathBuf::from(next_value(&mut it, &arg)?))
             }
             "--blueprints" => blueprints = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--skills" => skills = Some(PathBuf::from(next_value(&mut it, &arg)?)),
             "-h" | "--help" => {
                 print_usage();
                 std::process::exit(0);
@@ -52,10 +55,11 @@ fn parse_args() -> Result<Args> {
         && systems.is_none()
         && type_materials.is_none()
         && blueprints.is_none()
+        && skills.is_none()
     {
-        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints)");
+        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints/--skills)");
     }
-    Ok(Args { out, types, systems, type_materials, blueprints })
+    Ok(Args { out, types, systems, type_materials, blueprints, skills })
 }
 
 fn next_value(it: &mut impl Iterator<Item = String>, flag: &str) -> Result<String> {
@@ -67,7 +71,7 @@ fn print_usage() {
         "sde-convert — CCP SDE YAML → sde.sqlite\n\n\
          USAGE:\n  \
          sde-convert --out <sde.sqlite> [--types <typeIDs.yaml>] [--systems <systems.yaml>]\n  \
-         [--type-materials <typeMaterials.yaml>] [--blueprints <blueprints.yaml>]\n\n\
+         [--type-materials <typeMaterials.yaml>] [--blueprints <blueprints.yaml>] [--skills <skills.yaml>]\n\n\
          At least one input is required."
     );
 }
@@ -100,6 +104,12 @@ fn run() -> Result<()> {
             .with_context(|| format!("reading {}", p.display()))?;
         let n = conv.ingest_blueprints(&yaml)?;
         eprintln!("blueprints: {n} rows from {}", p.display());
+    }
+    if let Some(p) = &args.skills {
+        let yaml = std::fs::read_to_string(p)
+            .with_context(|| format!("reading {}", p.display()))?;
+        let n = conv.ingest_skills(&yaml)?;
+        eprintln!("skills: {n} rows from {}", p.display());
     }
 
     eprintln!("wrote {}", args.out.display());

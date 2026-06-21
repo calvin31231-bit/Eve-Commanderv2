@@ -34,6 +34,7 @@ import type {
   ReprocessView,
   BuildPlanView,
   ResolvedFit,
+  SkillPlanView,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -99,6 +100,10 @@ export const api = {
   planBuild: (productTypeId: number, runs: number, me: number, activity?: string) =>
     call<BuildPlanView | null>("plan_build", { productTypeId, runs, me, activity }),
   parseFit: (eft: string) => call<ResolvedFit | null>("parse_fit", { eft }),
+  costSkillPlan: (
+    characterId: number,
+    targets: { skill_type_id: number; target_level: number }[],
+  ) => call<SkillPlanView>("cost_skill_plan", { characterId, targets }),
   getMining: (characterId: number) =>
     call<MiningView>("get_mining", { characterId }),
   getMailHeaders: (characterId: number) =>

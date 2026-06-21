@@ -44,6 +44,12 @@ impl NameResolver {
         Self { esi, db, sde }
     }
 
+    /// Borrow the owned SDE handle (for SDE-backed lookups beyond name
+    /// resolution, e.g. skill ranks).
+    pub fn sde(&self) -> &Sde {
+        &self.sde
+    }
+
     /// Resolve `ids` to names. The returned map only contains ids that resolved;
     /// callers apply a `Type {id}` fallback for any that didn't.
     pub async fn resolve(&self, ids: &[i64]) -> Result<HashMap<i64, String>> {

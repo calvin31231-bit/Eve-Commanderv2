@@ -112,6 +112,17 @@ struct RawSystem {
     security: f64,
 }
 
+/// One normalized skill entry: rank + the two training attribute type ids.
+#[derive(Debug, Deserialize)]
+struct RawSkill {
+    #[serde(default = "default_portion")]
+    rank: i64,
+    #[serde(rename = "primaryAttribute", default)]
+    primary_attribute: i64,
+    #[serde(rename = "secondaryAttribute", default)]
+    secondary_attribute: i64,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -265,6 +276,34 @@ impl Converter {
                         written += 1;
                     }
                 }
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest a normalized skills map (`{type_id: {rank, primaryAttribute,
+    /// secondaryAttribute}}`, derived from dogma attributes 275/180/181).
+    /// Returns the number of rows written.
+    pub fn ingest_skills(&mut self, yaml: &str) -> Result<usize> {
+        let raw: BTreeMap<i64, RawSkill> =
+            serde_yaml::from_str(yaml).context("parsing skills YAML")?;
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO skills (type_id, rank, primary_attr, secondary_attr)
+                 VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            for (type_id, s) in raw {
+                stmt.execute(params![
+                    type_id,
+                    s.rank,
+                    s.primary_attribute,
+                    s.secondary_attribute
+                ])?;
+                written += 1;
             }
         }
         tx.commit()?;
@@ -484,6 +523,37 @@ mod tests {
             )
             .unwrap();
         assert_eq!(mat, 1000);
+    }
+
+    #[test]
+    fn ingests_skills() {
+        let mut c = Converter::in_memory().unwrap();
+        let n = c
+            .ingest_skills(
+                r#"
+3300:
+  rank: 1
+  primaryAttribute: 167
+  secondaryAttribute: 168
+3327:
+  rank: 3
+  primaryAttribute: 165
+  secondaryAttribute: 166
+"#,
+            )
+            .unwrap();
+        assert_eq!(n, 2);
+        let (rank, p, s): (i64, i64, i64) = c
+            .connection()
+            .query_row(
+                "SELECT rank, primary_attr, secondary_attr FROM skills WHERE type_id = 3327",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(rank, 3);
+        assert_eq!(p, 165);
+        assert_eq!(s, 166);
     }
 
     #[test]
