@@ -8,7 +8,7 @@ use eve_core::account::{aggregate, AccountOverview, CharacterWorth};
 use eve_core::assets::value_holdings;
 use eve_core::character::CharacterSheet;
 use eve_core::clones::ClonesSummary;
-use eve_core::mail::{strip_markup, MailHeader};
+use eve_core::mail::strip_markup;
 use eve_core::mining::estimated_yield;
 use eve_core::model::Character;
 use eve_core::notify::Notification;
@@ -34,6 +34,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-clones.read_clones.v1",
     "esi-clones.read_implants.v1",
     "esi-location.read_location.v1",
+    "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
     "esi-industry.read_character_jobs.v1",
     "esi-markets.read_character_orders.v1",
@@ -191,6 +192,80 @@ fn open_in_browser(url: &str) -> std::io::Result<()> {
         c
     };
     cmd.spawn().map(|_| ())
+}
+
+/// The live status strip: online, current system, ship, and skill in training.
+#[derive(Debug, Serialize)]
+pub struct CharacterStatusView {
+    pub online: bool,
+    pub system_name: String,
+    /// Custom ship name (may be empty).
+    pub ship_name: String,
+    /// Ship hull type name.
+    pub ship_type_name: String,
+    /// e.g. "Gunnery V", or null if nothing is training.
+    pub training: Option<String>,
+    pub training_seconds_remaining: Option<i64>,
+}
+
+/// Resolve a skill level (1–5) to its Roman numeral.
+fn roman(level: i64) -> &'static str {
+    match level {
+        1 => "I",
+        2 => "II",
+        3 => "III",
+        4 => "IV",
+        5 => "V",
+        _ => "",
+    }
+}
+
+/// Live character status for the always-on context bar.
+#[tauri::command]
+pub async fn get_character_status(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<CharacterStatusView> {
+    let raw = state
+        .character
+        .status(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Resolve system / ship / skill ids in one batch (0 = unknown, skipped).
+    let mut ids = Vec::new();
+    if raw.system_id != 0 {
+        ids.push(raw.system_id);
+    }
+    if raw.ship_type_id != 0 {
+        ids.push(raw.ship_type_id);
+    }
+    if let Some(s) = raw.training_skill_id {
+        ids.push(s);
+    }
+    let names = names_for(&state, &ids).await;
+
+    let training = raw.training_skill_id.map(|sid| {
+        let level = raw.training_level.unwrap_or(0);
+        format!("{} {}", named(&names, sid), roman(level)).trim().to_string()
+    });
+
+    Ok(CharacterStatusView {
+        online: raw.online,
+        system_name: if raw.system_id != 0 {
+            named(&names, raw.system_id)
+        } else {
+            "—".into()
+        },
+        ship_name: raw.ship_name,
+        ship_type_name: if raw.ship_type_id != 0 {
+            named(&names, raw.ship_type_id)
+        } else {
+            String::new()
+        },
+        training,
+        training_seconds_remaining: raw.training_seconds_remaining,
+    })
 }
 
 /// Fetch the Character-hub summary (skills + queue + wallet) for a character.
@@ -473,17 +548,41 @@ fn named(names: &std::collections::HashMap<i64, String>, id: i64) -> String {
     names.get(&id).cloned().unwrap_or_else(|| format!("Type {id}"))
 }
 
-/// The latest page of mail headers for a character.
+/// A mail header with its sender resolved to a name.
+#[derive(Debug, Serialize)]
+pub struct MailHeaderView {
+    pub mail_id: i64,
+    pub subject: String,
+    pub from_name: String,
+    pub timestamp: String,
+    pub is_read: bool,
+}
+
+/// The latest page of mail headers, with sender names resolved.
 #[tauri::command]
 pub async fn get_mail_headers(
     state: State<'_, AppState>,
     character_id: i64,
-) -> CmdResult<Vec<MailHeader>> {
-    state
+) -> CmdResult<Vec<MailHeaderView>> {
+    let headers = state
         .mail
         .headers(character_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    let sender_ids: Vec<i64> = headers.iter().map(|h| h.from).collect();
+    let names = names_for(&state, &sender_ids).await;
+
+    Ok(headers
+        .into_iter()
+        .map(|h| MailHeaderView {
+            from_name: if h.from != 0 { named(&names, h.from) } else { "—".into() },
+            mail_id: h.mail_id,
+            subject: h.subject,
+            timestamp: h.timestamp,
+            is_read: h.is_read,
+        })
+        .collect())
 }
 
 /// A single mail, body reduced to plain text.

@@ -112,6 +112,12 @@ pub const CATALOG: &[Endpoint] = &[
         scope: Some("esi-location.read_location.v1"),
     },
     Endpoint {
+        key: "ship",
+        path: "/latest/characters/{cid}/ship/",
+        class: PollClass::OnDemand,
+        scope: Some("esi-location.read_ship_type.v1"),
+    },
+    Endpoint {
         key: "industry_jobs",
         path: "/latest/characters/{cid}/industry/jobs/",
         class: PollClass::Medium,

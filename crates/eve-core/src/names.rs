@@ -76,18 +76,14 @@ impl NameResolver {
             return Ok(out);
         }
 
-        // 3. ESI, in batches. Failures are non-fatal — those ids just stay
-        //    unresolved (caller falls back). Successes are cached.
+        // 3. ESI, in batches. Resilient to bad ids (ESI 404s the whole batch if
+        //    any id is unresolvable, e.g. a mailing-list sender). Successes are
+        //    cached; ids that never resolve fall back at the call site.
         let mut to_cache: Vec<(i64, String, Option<String>)> = Vec::new();
         for chunk in still_missing.chunks(ESI_NAMES_BATCH) {
-            match self.resolve_via_esi(chunk).await {
-                Ok(names) => {
-                    for n in names {
-                        to_cache.push((n.id, n.name.clone(), Some(n.category)));
-                        out.insert(n.id, n.name);
-                    }
-                }
-                Err(e) => tracing::debug!("name resolve via ESI failed for {} ids: {e}", chunk.len()),
+            for n in self.resolve_resilient(chunk).await {
+                to_cache.push((n.id, n.name.clone(), Some(n.category)));
+                out.insert(n.id, n.name);
             }
         }
         if !to_cache.is_empty() {
@@ -95,6 +91,28 @@ impl NameResolver {
         }
 
         Ok(out)
+    }
+
+    /// Resolve a chunk via ESI, splitting in half on failure so a single
+    /// unresolvable id only loses itself rather than the whole batch.
+    async fn resolve_resilient(&self, ids: &[i64]) -> Vec<EsiName> {
+        let mut out = Vec::new();
+        let mut stack: Vec<(usize, usize)> = vec![(0, ids.len())];
+        while let Some((lo, hi)) = stack.pop() {
+            if lo >= hi {
+                continue;
+            }
+            match self.resolve_via_esi(&ids[lo..hi]).await {
+                Ok(names) => out.extend(names),
+                Err(_) if hi - lo <= 1 => {} // single bad id — drop it
+                Err(_) => {
+                    let mid = lo + (hi - lo) / 2;
+                    stack.push((lo, mid));
+                    stack.push((mid, hi));
+                }
+            }
+        }
+        out
     }
 
     /// Resolve a single id to a name (with `Type {id}` fallback).

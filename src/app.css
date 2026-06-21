@@ -51,7 +51,18 @@
   align-items: center;
   gap: 6px;
   color: var(--text-dim);
+  white-space: nowrap;
 }
+.context-bar .pill strong { color: var(--text); }
+.online-tag {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.online-tag.on { color: var(--safe); background: rgba(61, 220, 132, 0.14); }
+.online-tag.off { color: var(--text-dim); background: rgba(138, 152, 173, 0.12); }
 .context-bar .conn-dot {
   width: 9px;
   height: 9px;
@@ -293,6 +304,8 @@ ul.mail-list { list-style: none; margin: 0; padding: 0; }
   font-size: 13px;
 }
 .mail-row:hover { color: var(--accent); }
+.mail-main { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.mail-from { font-size: 11px; color: var(--text-dim); }
 .mail-row.unread .mail-subject { font-weight: 700; }
 .mail-row.unread .mail-subject::before {
   content: "●";

@@ -111,10 +111,9 @@ export interface MiningView {
 export interface MailHeader {
   mail_id: number;
   subject: string;
-  from: number;
+  from_name: string;
   timestamp: string;
   is_read: boolean;
-  labels: number[];
 }
 
 export interface MailView {
@@ -140,6 +139,15 @@ export interface AccountOverview {
   total_wallet: number;
   total_asset_value: number;
   total_sp: number;
+}
+
+export interface CharacterStatusView {
+  online: boolean;
+  system_name: string;
+  ship_name: string;
+  ship_type_name: string;
+  training: string | null;
+  training_seconds_remaining: number | null;
 }
 
 export type Severity = "Info" | "Warning" | "Critical";

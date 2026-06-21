@@ -149,6 +149,52 @@ impl CharacterSheet {
     }
 }
 
+/// Current location (ESI `GET /characters/{id}/location/`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterLocation {
+    pub solar_system_id: i64,
+    #[serde(default)]
+    pub station_id: Option<i64>,
+    #[serde(default)]
+    pub structure_id: Option<i64>,
+}
+
+/// Current ship (ESI `GET /characters/{id}/ship/`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterShip {
+    pub ship_type_id: i64,
+    #[serde(default)]
+    pub ship_name: String,
+    #[serde(default)]
+    pub ship_item_id: i64,
+}
+
+/// Online status (ESI `GET /characters/{id}/online/`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterOnline {
+    #[serde(default)]
+    pub online: bool,
+    #[serde(default)]
+    pub last_login: Option<String>,
+    #[serde(default)]
+    pub last_logout: Option<String>,
+    #[serde(default)]
+    pub logins: Option<i64>,
+}
+
+/// The live status strip's raw ids (names resolved by the caller).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterStatusRaw {
+    pub online: bool,
+    /// 0 when unknown (e.g. location scope not granted).
+    pub system_id: i64,
+    pub ship_type_id: i64,
+    pub ship_name: String,
+    pub training_skill_id: Option<i64>,
+    pub training_level: Option<i64>,
+    pub training_seconds_remaining: Option<i64>,
+}
+
 /// Typed, authenticated character reads over the cache-first ESI client.
 #[derive(Clone)]
 pub struct CharacterClient {
@@ -189,6 +235,57 @@ impl CharacterClient {
     /// The character's wallet balance in ISK. ESI returns a bare JSON number.
     pub async fn wallet_balance(&self, character_id: i64) -> Result<f64> {
         self.auth_get(character_id, "wallet_balance").await
+    }
+
+    /// The character's current location (solar system, station/structure).
+    pub async fn location(&self, character_id: i64) -> Result<CharacterLocation> {
+        self.auth_get(character_id, "location").await
+    }
+
+    /// The character's current ship (hull type + custom name).
+    pub async fn ship(&self, character_id: i64) -> Result<CharacterShip> {
+        self.auth_get(character_id, "ship").await
+    }
+
+    /// The character's online status.
+    pub async fn online(&self, character_id: i64) -> Result<CharacterOnline> {
+        self.auth_get(character_id, "online").await
+    }
+
+    /// Assemble the live status strip (online, location, ship, current training)
+    /// from four concurrent reads. Each read is best-effort — a missing scope
+    /// leaves that field at its default rather than failing the whole status.
+    /// Name resolution (system/ship/skill ids) is left to the caller.
+    pub async fn status(&self, character_id: i64) -> Result<CharacterStatusRaw> {
+        let (location, ship, online, queue) = tokio::join!(
+            self.location(character_id),
+            self.ship(character_id),
+            self.online(character_id),
+            self.skill_queue(character_id),
+        );
+
+        let now = OffsetDateTime::now_utc();
+        let mut training_skill_id = None;
+        let mut training_level = None;
+        let mut training_seconds_remaining = None;
+        if let Ok(q) = &queue {
+            if let Some(active) = q.active() {
+                training_skill_id = Some(active.skill_id);
+                training_level = Some(active.finished_level);
+                training_seconds_remaining =
+                    active.finish_at().map(|f| (f - now).whole_seconds().max(0));
+            }
+        }
+
+        Ok(CharacterStatusRaw {
+            online: online.map(|o| o.online).unwrap_or(false),
+            system_id: location.as_ref().map(|l| l.solar_system_id).unwrap_or(0),
+            ship_type_id: ship.as_ref().map(|s| s.ship_type_id).unwrap_or(0),
+            ship_name: ship.map(|s| s.ship_name).unwrap_or_default(),
+            training_skill_id,
+            training_level,
+            training_seconds_remaining,
+        })
     }
 
     /// Fetch skills, skill queue, and wallet concurrently and assemble the hub
@@ -288,6 +385,25 @@ mod tests {
         assert!(queue.is_empty());
         assert!(queue.active().is_none());
         assert!(queue.finishes_at().is_none());
+    }
+
+    #[test]
+    fn deserializes_status_reads() {
+        let loc: CharacterLocation =
+            serde_json::from_str(r#"{"solar_system_id": 30000142, "station_id": 60003760}"#).unwrap();
+        assert_eq!(loc.solar_system_id, 30000142);
+        assert_eq!(loc.station_id, Some(60003760));
+
+        let ship: CharacterShip = serde_json::from_str(
+            r#"{"ship_type_id": 587, "ship_name": "Pewpew", "ship_item_id": 1000000016991}"#,
+        )
+        .unwrap();
+        assert_eq!(ship.ship_type_id, 587);
+        assert_eq!(ship.ship_name, "Pewpew");
+
+        let online: CharacterOnline =
+            serde_json::from_str(r#"{"online": true, "last_login": "2026-06-21T00:00:00Z"}"#).unwrap();
+        assert!(online.online);
     }
 
     #[test]

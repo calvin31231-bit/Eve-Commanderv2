@@ -216,7 +216,10 @@ function MailCard({ character }: { character: Character }): ReactNode {
         {headers.slice(0, 12).map((h) => (
           <li key={h.mail_id}>
             <button className={`mail-row${h.is_read ? "" : " unread"}`} onClick={() => toggle(h)}>
-              <span className="mail-subject">{h.subject || "(no subject)"}</span>
+              <span className="mail-main">
+                <span className="mail-subject">{h.subject || "(no subject)"}</span>
+                <span className="mail-from">{h.from_name}</span>
+              </span>
               <span className="mail-date">{shortDate(h.timestamp)}</span>
             </button>
             {openId === h.mail_id && (

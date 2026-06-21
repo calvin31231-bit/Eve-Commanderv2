@@ -10,6 +10,7 @@ import type {
   CashflowSummary,
   Character,
   CharacterSheet,
+  CharacterStatusView,
   ClonesView,
   HoldingsView,
   IndustryJobView,
@@ -45,6 +46,8 @@ export const api = {
     call<void>("remove_character", { characterId }),
   getCharacterSheet: (characterId: number) =>
     call<CharacterSheet>("get_character_sheet", { characterId }),
+  getCharacterStatus: (characterId: number) =>
+    call<CharacterStatusView>("get_character_status", { characterId }),
   getTopHoldings: (characterId: number, limit: number) =>
     call<HoldingsView>("get_top_holdings", { characterId, limit }),
   getClones: (characterId: number) =>

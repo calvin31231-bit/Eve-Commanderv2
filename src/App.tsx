@@ -3,8 +3,18 @@ import { api, isTauri } from "./ipc";
 import { HUBS, renderHub } from "./hubs";
 import { Starfield } from "./Starfield";
 import { AgentAvatar, type Mood } from "./AgentAvatar";
-import type { Character, Notification, ServerStatus, Severity } from "./types";
+import type { Character, CharacterStatusView, Notification, ServerStatus, Severity } from "./types";
 import "./app.css";
+
+function fmtDuration(seconds: number): string {
+  if (seconds <= 0) return "done";
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
 
 const SEV_RANK: Record<Severity, number> = { Info: 1, Warning: 2, Critical: 3 };
 
@@ -47,6 +57,19 @@ export default function App() {
   }, []);
 
   const activeCharacter = characters.find((c) => c.active) ?? null;
+  const [charStatus, setCharStatus] = useState<CharacterStatusView | null>(null);
+
+  useEffect(() => {
+    if (!isTauri() || !activeCharacter) {
+      setCharStatus(null);
+      return;
+    }
+    const load = () =>
+      api.getCharacterStatus(activeCharacter.id).then(setCharStatus).catch(() => undefined);
+    load();
+    const t = window.setInterval(load, 30000);
+    return () => window.clearInterval(t);
+  }, [activeCharacter?.id]);
 
   // Aura's mood reflects the app state: unread alert severity, connection, roster.
   const unread = alerts.filter((a) => !a.read);
@@ -128,12 +151,28 @@ export default function App() {
       <header className="context-bar">
         <span className="pill">
           <strong>{activeCharacter ? activeCharacter.name : "No active character"}</strong>
+          {charStatus && (
+            <span className={`online-tag ${charStatus.online ? "on" : "off"}`}>
+              {charStatus.online ? "online" : "offline"}
+            </span>
+          )}
         </span>
-        <span className="pill">📍 —</span>
+        <span className="pill">📍 {charStatus?.system_name ?? "—"}</span>
+        {charStatus?.ship_type_name && (
+          <span className="pill" title={charStatus.ship_type_name}>
+            🚀 {charStatus.ship_name || charStatus.ship_type_name}
+          </span>
+        )}
         <span className="pill">
-          Safety <span className="badge safe">—</span>
+          ⏱{" "}
+          {charStatus?.training
+            ? `${charStatus.training}${
+                charStatus.training_seconds_remaining != null
+                  ? ` · ${fmtDuration(charStatus.training_seconds_remaining)}`
+                  : ""
+              }`
+            : "—"}
         </span>
-        <span className="pill">⏱ Training —</span>
         <span className="spacer" />
         <span className="pill">
           <span className={`conn-dot ${isTauri() ? (statusError ? "err" : "ok") : ""}`} />
