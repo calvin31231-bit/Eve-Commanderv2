@@ -1894,14 +1894,24 @@ const THREAT_BADGE: Record<string, string> = {
   Safe: "badge safe",
 };
 
+// A clipboard blob "looks like" a copied Local roster when it's several lines
+// of plausible character names (letters/digits/space/'-.) and nothing else.
+function looksLikeRoster(text: string): boolean {
+  const lines = text.split(/[\n\r]+/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return false;
+  const nameLike = lines.filter((l) => l.length <= 37 && /^[A-Za-z0-9'\-. ]+$/.test(l));
+  return nameLike.length >= 2 && nameLike.length >= lines.length - 1;
+}
+
 function ThreatScanner(): ReactNode {
   const [text, setText] = useState("");
   const [result, setResult] = useState<ThreatScanView | null>(null);
   const [loading, setLoading] = useState(false);
+  const [watch, setWatch] = useState(false);
 
-  function scan() {
+  function scan(input?: string) {
     if (!isTauri()) return;
-    const names = text
+    const names = (input ?? text)
       .split(/[\n\r]+/)
       .map((n) => n.trim())
       .filter(Boolean);
@@ -1915,12 +1925,35 @@ function ThreatScanner(): ReactNode {
       .finally(() => setLoading(false));
   }
 
+  // Clipboard-watch: the EULA-safe "automatic" mode. While on, poll the OS
+  // clipboard; when it changes to something that looks like a copied Local
+  // roster, drop it into the box and rescan — no further interaction needed.
+  useEffect(() => {
+    if (!watch || !isTauri()) return;
+    let last = "";
+    const tick = () => {
+      api
+        .readClipboard()
+        .then((clip) => {
+          if (clip && clip !== last && looksLikeRoster(clip)) {
+            last = clip;
+            setText(clip);
+            scan(clip);
+          }
+        })
+        .catch(() => undefined);
+    };
+    const t = window.setInterval(tick, 2000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watch]);
+
   return (
     <div className="card threat-scanner">
       <h3>Local Threat Scanner</h3>
       <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
-        In space, select all in the Local member list, copy, and paste the names here. Each pilot
-        is scored from zKillboard + sec status.
+        In space, select all in the Local member list and copy. Paste below, or enable Watch
+        clipboard to auto-rescan every time you copy Local.
       </p>
       <textarea
         value={text}
@@ -1929,9 +1962,15 @@ function ThreatScanner(): ReactNode {
         rows={6}
         style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }}
       />
-      <button onClick={scan} disabled={loading || !text.trim()} style={{ marginTop: 8 }}>
-        {loading ? "Scanning…" : "Scan pilots"}
-      </button>
+      <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+        <button onClick={() => scan()} disabled={loading || !text.trim()}>
+          {loading ? "Scanning…" : "Scan pilots"}
+        </button>
+        <label style={{ fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>
+          <input type="checkbox" checked={watch} onChange={(e) => setWatch(e.target.checked)} />
+          Watch clipboard
+        </label>
+      </div>
       {result && (
         <div style={{ marginTop: 10 }}>
           <p style={{ marginTop: 0 }}>{result.summary}</p>

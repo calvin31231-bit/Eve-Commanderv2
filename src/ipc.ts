@@ -117,6 +117,9 @@ export const api = {
   scanPilots: (names: string[]) => call<ThreatScanView>("scan_pilots", { names }),
   pilotBackground: (name: string) =>
     call<PilotBackgroundView>("pilot_background", { name }),
+  // Reads the OS clipboard via the clipboard-manager plugin (for the threat
+  // scanner's "watch" mode — copy Local in-game to auto-rescan).
+  readClipboard: () => call<string>("plugin:clipboard-manager|read_text"),
   gateCampCheck: (system: string) => call<GateCampView>("gate_camp_check", { system }),
   getSystemSafety: () => call<SystemSafetyView>("get_system_safety"),
   getCombatSummary: () => call<CombatLogView>("get_combat_summary"),
