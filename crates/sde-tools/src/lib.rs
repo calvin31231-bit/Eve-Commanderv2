@@ -41,10 +41,65 @@ struct RawType {
     #[serde(rename = "groupID")]
     group_id: Option<i64>,
     volume: Option<f64>,
+    /// Reprocessing batch size (ore = 100, most items 1). Defaults to 1.
+    #[serde(rename = "portionSize", default = "default_portion")]
+    portion_size: i64,
     /// Defaults to published when absent (older exports omit it for published
     /// items).
     #[serde(default = "default_true")]
     published: bool,
+}
+
+/// One `typeMaterials.yaml` entry: the materials a type reprocesses into.
+#[derive(Debug, Deserialize)]
+struct RawTypeMaterials {
+    #[serde(default)]
+    materials: Vec<RawMaterial>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawMaterial {
+    #[serde(rename = "materialTypeID")]
+    material_type_id: i64,
+    quantity: i64,
+}
+
+/// One `blueprints.yaml` entry: a blueprint's per-activity materials/products.
+#[derive(Debug, Deserialize)]
+struct RawBlueprint {
+    #[serde(default)]
+    activities: RawActivities,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawActivities {
+    manufacturing: Option<RawActivity>,
+    reaction: Option<RawActivity>,
+    invention: Option<RawActivity>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawActivity {
+    #[serde(default)]
+    materials: Vec<RawActivityMaterial>,
+    #[serde(default)]
+    products: Vec<RawActivityProduct>,
+    time: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawActivityMaterial {
+    #[serde(rename = "typeID")]
+    type_id: i64,
+    quantity: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawActivityProduct {
+    #[serde(rename = "typeID")]
+    type_id: i64,
+    quantity: i64,
+    probability: Option<f64>,
 }
 
 /// One entry from the normalized systems map.
@@ -59,6 +114,10 @@ struct RawSystem {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_portion() -> i64 {
+    1
 }
 
 /// Builds an `sde.sqlite` from CCP YAML inputs.
@@ -100,8 +159,8 @@ impl Converter {
         let mut written = 0usize;
         {
             let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO types (type_id, name, group_id, volume)
-                 VALUES (?1, ?2, ?3, ?4)",
+                "INSERT OR REPLACE INTO types (type_id, name, group_id, volume, portion_size)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
             )?;
             for (type_id, t) in raw {
                 if !t.published {
@@ -110,7 +169,7 @@ impl Converter {
                 let Some(name) = t.name.and_then(|n| n.en) else {
                     continue;
                 };
-                stmt.execute(params![type_id, name, t.group_id, t.volume])?;
+                stmt.execute(params![type_id, name, t.group_id, t.volume, t.portion_size])?;
                 written += 1;
             }
         }
@@ -134,6 +193,78 @@ impl Converter {
             for (system_id, s) in raw {
                 stmt.execute(params![system_id, s.name, s.region_id, s.security])?;
                 written += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest CCP's `typeMaterials.yaml` (reprocessing yields). Returns the
+    /// number of yield rows written.
+    pub fn ingest_type_materials(&mut self, yaml: &str) -> Result<usize> {
+        let raw: BTreeMap<i64, RawTypeMaterials> =
+            serde_yaml::from_str(yaml).context("parsing typeMaterials YAML")?;
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO type_materials (type_id, material_type_id, quantity)
+                 VALUES (?1, ?2, ?3)",
+            )?;
+            for (type_id, tm) in raw {
+                for m in tm.materials {
+                    stmt.execute(params![type_id, m.material_type_id, m.quantity])?;
+                    written += 1;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest CCP's `blueprints.yaml` (manufacturing / reaction / invention
+    /// materials and products). Returns the number of (material + product) rows
+    /// written across all activities.
+    pub fn ingest_blueprints(&mut self, yaml: &str) -> Result<usize> {
+        let raw: BTreeMap<i64, RawBlueprint> =
+            serde_yaml::from_str(yaml).context("parsing blueprints YAML")?;
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut mat_stmt = tx.prepare(
+                "INSERT OR REPLACE INTO blueprint_materials
+                 (blueprint_type_id, activity, material_type_id, quantity) VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            let mut prod_stmt = tx.prepare(
+                "INSERT OR REPLACE INTO blueprint_products
+                 (blueprint_type_id, activity, product_type_id, quantity, probability, time)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?;
+            for (bp_id, bp) in raw {
+                for (activity, act) in [
+                    ("manufacturing", bp.activities.manufacturing),
+                    ("reaction", bp.activities.reaction),
+                    ("invention", bp.activities.invention),
+                ] {
+                    let Some(act) = act else { continue };
+                    for m in &act.materials {
+                        mat_stmt.execute(params![bp_id, activity, m.type_id, m.quantity])?;
+                        written += 1;
+                    }
+                    for p in &act.products {
+                        prod_stmt.execute(params![
+                            bp_id,
+                            activity,
+                            p.type_id,
+                            p.quantity,
+                            p.probability,
+                            act.time
+                        ])?;
+                        written += 1;
+                    }
+                }
             }
         }
         tx.commit()?;
@@ -260,6 +391,120 @@ mod tests {
             mapped
         };
         assert_eq!(rows, vec!["Tritanium".to_string()]);
+    }
+
+    const TYPE_MATERIALS_YAML: &str = r#"
+1230:
+  materials:
+    - materialTypeID: 34
+      quantity: 415
+1228:
+  materials:
+    - materialTypeID: 34
+      quantity: 346
+    - materialTypeID: 35
+      quantity: 173
+"#;
+
+    const BLUEPRINTS_YAML: &str = r#"
+681:
+  activities:
+    manufacturing:
+      materials:
+        - typeID: 34
+          quantity: 1000
+        - typeID: 35
+          quantity: 200
+      products:
+        - typeID: 587
+          quantity: 1
+      time: 6000
+    invention:
+      products:
+        - typeID: 587
+          quantity: 1
+          probability: 0.34
+      time: 60000
+"#;
+
+    #[test]
+    fn ingests_type_materials() {
+        let mut c = Converter::in_memory().unwrap();
+        let n = c.ingest_type_materials(TYPE_MATERIALS_YAML).unwrap();
+        assert_eq!(n, 3); // 1 + 2 yield rows
+
+        let qty: i64 = c
+            .connection()
+            .query_row(
+                "SELECT quantity FROM type_materials WHERE type_id = 1230 AND material_type_id = 34",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(qty, 415);
+    }
+
+    #[test]
+    fn ingests_blueprints_with_activities() {
+        let mut c = Converter::in_memory().unwrap();
+        // 2 manufacturing materials + 1 product + 1 invention product = 4 rows.
+        let n = c.ingest_blueprints(BLUEPRINTS_YAML).unwrap();
+        assert_eq!(n, 4);
+
+        let (bp, qty): (i64, i64) = c
+            .connection()
+            .query_row(
+                "SELECT blueprint_type_id, quantity FROM blueprint_products
+                 WHERE product_type_id = 587 AND activity = 'manufacturing'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(bp, 681);
+        assert_eq!(qty, 1);
+
+        let prob: f64 = c
+            .connection()
+            .query_row(
+                "SELECT probability FROM blueprint_products
+                 WHERE blueprint_type_id = 681 AND activity = 'invention'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!((prob - 0.34).abs() < 1e-9);
+
+        let mat: i64 = c
+            .connection()
+            .query_row(
+                "SELECT quantity FROM blueprint_materials
+                 WHERE blueprint_type_id = 681 AND activity = 'manufacturing' AND material_type_id = 34",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(mat, 1000);
+    }
+
+    #[test]
+    fn ingests_portion_size() {
+        let mut c = Converter::in_memory().unwrap();
+        c.ingest_types(
+            r#"
+1230:
+  groupID: 462
+  name:
+    en: Veldspar
+  portionSize: 100
+  published: true
+"#,
+        )
+        .unwrap();
+        let ps: i64 = c
+            .connection()
+            .query_row("SELECT portion_size FROM types WHERE type_id = 1230", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ps, 100);
     }
 
     #[test]

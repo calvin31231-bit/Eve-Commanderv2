@@ -1064,6 +1064,145 @@ fn default_scan_types() -> Vec<i64> {
     ]
 }
 
+/// A refined-material line with its name resolved.
+#[derive(Debug, Serialize)]
+pub struct RefineYieldView {
+    pub type_id: i64,
+    pub name: String,
+    pub quantity: i64,
+    pub value: f64,
+}
+
+/// Reprocessing result: refined yields + refine-vs-sell verdict, or `null` when
+/// the SDE has no reprocessing data for the item (seed-only without full SDE).
+#[derive(Debug, Serialize)]
+pub struct ReprocessView {
+    pub portions: i64,
+    pub leftover_units: i64,
+    pub yields: Vec<RefineYieldView>,
+    pub refined_value: f64,
+    pub sell_value: f64,
+    pub advantage: f64,
+}
+
+/// Refine `units` of an item at a given efficiency (0..1, default 0.5), valuing
+/// the output against the public market price reference.
+#[tauri::command]
+pub async fn reprocess_item(
+    state: State<'_, AppState>,
+    type_id: i64,
+    units: i64,
+    efficiency: Option<f64>,
+) -> CmdResult<Option<ReprocessView>> {
+    let prices = state.prices.price_map().await.map_err(|e| e.to_string())?;
+    let eff = efficiency.unwrap_or(0.5);
+    let Some(result) = state
+        .reprocess
+        .refine(type_id, units, eff, &prices)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+    let ids: Vec<i64> = result.yields.iter().map(|y| y.type_id).collect();
+    let names = names_for(&state, &ids).await;
+    let vs = eve_core::reprocess::refine_vs_sell(
+        units,
+        result.refined_value,
+        prices.price(type_id).unwrap_or(0.0),
+    );
+    Ok(Some(ReprocessView {
+        portions: result.portions,
+        leftover_units: result.leftover_units,
+        yields: result
+            .yields
+            .into_iter()
+            .map(|y| RefineYieldView {
+                type_id: y.type_id,
+                name: named(&names, y.type_id),
+                quantity: y.quantity,
+                value: y.value,
+            })
+            .collect(),
+        refined_value: result.refined_value,
+        sell_value: vs.sell_value,
+        advantage: vs.advantage,
+    }))
+}
+
+/// A build-plan material line with its name resolved.
+#[derive(Debug, Serialize)]
+pub struct PlanLineView {
+    pub type_id: i64,
+    pub name: String,
+    pub quantity: i64,
+    pub unit_price: f64,
+    pub value: f64,
+}
+
+/// A priced bill-of-materials for a manufacturing/reaction job, or `null` when
+/// the SDE has no blueprint for the product (seed-only without full SDE).
+#[derive(Debug, Serialize)]
+pub struct BuildPlanView {
+    pub product_type_id: i64,
+    pub product_name: String,
+    pub runs: i64,
+    pub me: i64,
+    pub output_units: i64,
+    pub materials: Vec<PlanLineView>,
+    pub material_cost: f64,
+    pub product_value: f64,
+    pub profit: f64,
+    pub margin_pct: f64,
+}
+
+/// Plan a manufacturing (default) or reaction job: bill-of-materials after ME,
+/// priced against the market, with build-vs-buy profit.
+#[tauri::command]
+pub async fn plan_build(
+    state: State<'_, AppState>,
+    product_type_id: i64,
+    runs: i64,
+    me: i64,
+    activity: Option<String>,
+) -> CmdResult<Option<BuildPlanView>> {
+    let prices = state.prices.price_map().await.map_err(|e| e.to_string())?;
+    let activity = activity.unwrap_or_else(|| "manufacturing".to_string());
+    let Some(plan) = state
+        .industry_plan
+        .plan(product_type_id, runs.max(1), me, &activity, &prices)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+    let mut ids: Vec<i64> = plan.materials.iter().map(|m| m.type_id).collect();
+    ids.push(product_type_id);
+    let names = names_for(&state, &ids).await;
+    Ok(Some(BuildPlanView {
+        product_type_id: plan.product_type_id,
+        product_name: named(&names, product_type_id),
+        runs: plan.runs,
+        me: plan.me,
+        output_units: plan.output_units,
+        materials: plan
+            .materials
+            .into_iter()
+            .map(|m| PlanLineView {
+                type_id: m.type_id,
+                name: named(&names, m.type_id),
+                quantity: m.quantity,
+                unit_price: m.unit_price,
+                value: m.value,
+            })
+            .collect(),
+        material_cost: plan.material_cost,
+        product_value: plan.product_value,
+        profit: plan.profit,
+        margin_pct: plan.margin_pct,
+    }))
+}
+
 /// All collected notifications, most recent first (drives the Alerts rail).
 #[tauri::command]
 pub fn list_notifications(state: State<'_, AppState>) -> CmdResult<Vec<Notification>> {

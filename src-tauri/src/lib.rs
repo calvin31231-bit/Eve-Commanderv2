@@ -24,6 +24,7 @@ use eve_core::contracts::ContractsClient;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
 use eve_core::industry::IndustryClient;
+use eve_core::industry_plan::IndustryPlanClient;
 use eve_core::insurance::InsuranceClient;
 use eve_core::mail::MailClient;
 use eve_core::market::MarketClient;
@@ -32,6 +33,7 @@ use eve_core::mining::MiningClient;
 use eve_core::names::NameResolver;
 use eve_core::notify::NotificationCenter;
 use eve_core::prices::PricesClient;
+use eve_core::reprocess::ReprocessClient;
 use eve_core::sde::Sde;
 use eve_core::wallet::WalletClient;
 
@@ -69,6 +71,10 @@ pub struct AppState {
     pub mail: MailClient,
     /// Public market-price reference for asset/ore valuation.
     pub prices: PricesClient,
+    /// SDE-backed reprocessing/refining calculator (Economy hub).
+    pub reprocess: ReprocessClient,
+    /// SDE-backed industry build planner (BOM/ME/invention) for the Economy hub.
+    pub industry_plan: IndustryPlanClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -166,6 +172,8 @@ fn build_state() -> AppState {
         }
     };
 
+    let reprocess = ReprocessClient::new(sde.clone());
+    let industry_plan = IndustryPlanClient::new(sde.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -205,6 +213,8 @@ fn build_state() -> AppState {
         mining,
         mail,
         prices,
+        reprocess,
+        industry_plan,
         names,
         notifications,
         intensity,
@@ -260,6 +270,8 @@ pub fn run() {
             commands::search_items,
             commands::get_market_browse,
             commands::scan_station_trades,
+            commands::reprocess_item,
+            commands::plan_build,
             commands::get_contracts,
             commands::get_mining,
             commands::get_mail_headers,

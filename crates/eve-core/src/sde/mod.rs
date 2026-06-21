@@ -41,6 +41,26 @@ pub struct SolarSystem {
     pub security: f64,
 }
 
+/// A type id + quantity — a reprocessing yield row or a blueprint input.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Material {
+    pub type_id: i64,
+    pub quantity: i64,
+}
+
+/// A blueprint activity's product (manufacturing output / invention result).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlueprintProduct {
+    pub blueprint_type_id: i64,
+    pub product_type_id: i64,
+    /// Units produced per run.
+    pub quantity: i64,
+    /// Base success chance for invention (None for deterministic activities).
+    pub probability: Option<f64>,
+    /// Base activity time in seconds (ME/TE 0), if known.
+    pub time: Option<i64>,
+}
+
 /// Read-only handle to the static data.
 #[derive(Clone)]
 pub struct Sde {
@@ -51,10 +71,11 @@ pub struct Sde {
 /// the converter agree on shape.
 pub const SDE_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS types (
-    type_id  INTEGER PRIMARY KEY,
-    name     TEXT NOT NULL,
-    group_id INTEGER,
-    volume   REAL
+    type_id      INTEGER PRIMARY KEY,
+    name         TEXT NOT NULL,
+    group_id     INTEGER,
+    volume       REAL,
+    portion_size INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_types_name ON types(name);
 
@@ -65,6 +86,39 @@ CREATE TABLE IF NOT EXISTS solar_systems (
     security  REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_systems_name ON solar_systems(name);
+
+-- Reprocessing / refining yields (CCP invTypeMaterials): the materials a single
+-- portion of `type_id` reprocesses into. Quantities are pre-efficiency (100%).
+CREATE TABLE IF NOT EXISTS type_materials (
+    type_id          INTEGER NOT NULL,
+    material_type_id INTEGER NOT NULL,
+    quantity         INTEGER NOT NULL,
+    PRIMARY KEY (type_id, material_type_id)
+);
+
+-- Blueprint activity inputs (manufacturing / reaction / invention): the
+-- materials consumed per run at ME 0.
+CREATE TABLE IF NOT EXISTS blueprint_materials (
+    blueprint_type_id INTEGER NOT NULL,
+    activity          TEXT NOT NULL,
+    material_type_id  INTEGER NOT NULL,
+    quantity          INTEGER NOT NULL,
+    PRIMARY KEY (blueprint_type_id, activity, material_type_id)
+);
+
+-- Blueprint activity outputs: the product(s) of an activity, with per-run
+-- quantity and (for invention) base success probability.
+CREATE TABLE IF NOT EXISTS blueprint_products (
+    blueprint_type_id INTEGER NOT NULL,
+    activity          TEXT NOT NULL,
+    product_type_id   INTEGER NOT NULL,
+    quantity          INTEGER NOT NULL,
+    probability       REAL,
+    time              INTEGER,
+    PRIMARY KEY (blueprint_type_id, activity, product_type_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bp_products_product
+    ON blueprint_products(product_type_id, activity);
 "#;
 
 impl Sde {
@@ -125,6 +179,80 @@ impl Sde {
         }))
     }
 
+    /// Reprocessing batch size for a type (`portionSize`; ore is 100, most items
+    /// 1). Defaults to 1 for unknown ids so callers never divide by zero.
+    pub async fn portion_size(&self, type_id: i64) -> Result<i64> {
+        let row = sqlx::query("SELECT portion_size FROM types WHERE type_id = ?1")
+            .bind(type_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.get::<i64, _>("portion_size")).unwrap_or(1).max(1))
+    }
+
+    /// The materials one portion of `type_id` reprocesses into (pre-efficiency).
+    pub async fn reprocess_materials(&self, type_id: i64) -> Result<Vec<Material>> {
+        let rows = sqlx::query(
+            "SELECT material_type_id, quantity FROM type_materials WHERE type_id = ?1",
+        )
+        .bind(type_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| Material {
+                type_id: r.get::<i64, _>("material_type_id"),
+                quantity: r.get::<i64, _>("quantity"),
+            })
+            .collect())
+    }
+
+    /// The blueprint that produces `product_type_id` via `activity`
+    /// (e.g. "manufacturing", "reaction"), if any.
+    pub async fn blueprint_for_product(
+        &self,
+        product_type_id: i64,
+        activity: &str,
+    ) -> Result<Option<BlueprintProduct>> {
+        let row = sqlx::query(
+            "SELECT blueprint_type_id, product_type_id, quantity, probability, time
+             FROM blueprint_products WHERE product_type_id = ?1 AND activity = ?2",
+        )
+        .bind(product_type_id)
+        .bind(activity)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| BlueprintProduct {
+            blueprint_type_id: r.get::<i64, _>("blueprint_type_id"),
+            product_type_id: r.get::<i64, _>("product_type_id"),
+            quantity: r.get::<i64, _>("quantity"),
+            probability: r.get::<Option<f64>, _>("probability"),
+            time: r.get::<Option<i64>, _>("time"),
+        }))
+    }
+
+    /// The inputs a blueprint consumes per run of `activity` (at ME 0).
+    pub async fn blueprint_materials(
+        &self,
+        blueprint_type_id: i64,
+        activity: &str,
+    ) -> Result<Vec<Material>> {
+        let rows = sqlx::query(
+            "SELECT material_type_id, quantity FROM blueprint_materials
+             WHERE blueprint_type_id = ?1 AND activity = ?2",
+        )
+        .bind(blueprint_type_id)
+        .bind(activity)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| Material {
+                type_id: r.get::<i64, _>("material_type_id"),
+                quantity: r.get::<i64, _>("quantity"),
+            })
+            .collect())
+    }
+
     /// Resolve a list of type ids to [`NamedType`]s, falling back to `Type {id}`
     /// for ids the version-pinned SDE doesn't know.
     pub async fn name_types(&self, ids: &[i64]) -> Result<Vec<NamedType>> {
@@ -178,6 +306,82 @@ impl Sde {
             .bind(security)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    /// Test helper: set a type's reprocessing portion size.
+    pub async fn set_portion_size(&self, type_id: i64, portion_size: i64) -> Result<()> {
+        sqlx::query("UPDATE types SET portion_size = ?2 WHERE type_id = ?1")
+            .bind(type_id)
+            .bind(portion_size)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Test helper: insert a reprocessing yield row.
+    pub async fn insert_type_material(
+        &self,
+        type_id: i64,
+        material_type_id: i64,
+        quantity: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO type_materials (type_id, material_type_id, quantity)
+             VALUES (?1, ?2, ?3)",
+        )
+        .bind(type_id)
+        .bind(material_type_id)
+        .bind(quantity)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Test helper: insert a blueprint input row.
+    pub async fn insert_blueprint_material(
+        &self,
+        blueprint_type_id: i64,
+        activity: &str,
+        material_type_id: i64,
+        quantity: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO blueprint_materials
+             (blueprint_type_id, activity, material_type_id, quantity) VALUES (?1, ?2, ?3, ?4)",
+        )
+        .bind(blueprint_type_id)
+        .bind(activity)
+        .bind(material_type_id)
+        .bind(quantity)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Test helper: insert a blueprint product row.
+    pub async fn insert_blueprint_product(
+        &self,
+        blueprint_type_id: i64,
+        activity: &str,
+        product_type_id: i64,
+        quantity: i64,
+        probability: Option<f64>,
+        time: Option<i64>,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO blueprint_products
+             (blueprint_type_id, activity, product_type_id, quantity, probability, time)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .bind(blueprint_type_id)
+        .bind(activity)
+        .bind(product_type_id)
+        .bind(quantity)
+        .bind(probability)
+        .bind(time)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 }

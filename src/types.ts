@@ -278,6 +278,43 @@ export interface TradeOpportunity {
   daily_potential: number;
 }
 
+export interface RefineYieldView {
+  type_id: number;
+  name: string;
+  quantity: number;
+  value: number;
+}
+
+export interface ReprocessView {
+  portions: number;
+  leftover_units: number;
+  yields: RefineYieldView[];
+  refined_value: number;
+  sell_value: number;
+  advantage: number;
+}
+
+export interface PlanLineView {
+  type_id: number;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  value: number;
+}
+
+export interface BuildPlanView {
+  product_type_id: number;
+  product_name: string;
+  runs: number;
+  me: number;
+  output_units: number;
+  materials: PlanLineView[];
+  material_cost: number;
+  product_value: number;
+  profit: number;
+  margin_pct: number;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

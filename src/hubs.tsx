@@ -29,6 +29,8 @@ import type {
   MiningView,
   ServerStatus,
   TradeOpportunity,
+  ReprocessView,
+  BuildPlanView,
 } from "./types";
 
 export interface Hub {
@@ -722,6 +724,228 @@ function StationScanner(): ReactNode {
   );
 }
 
+// Shared item search box: resolves a typed query to an ItemHit and reports the
+// pick to the parent. Used by the reprocessing and build-planner cards.
+function ItemPicker({
+  placeholder,
+  onPick,
+}: {
+  placeholder: string;
+  onPick: (hit: ItemHit) => void;
+}): ReactNode {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<ItemHit[]>([]);
+
+  useEffect(() => {
+    if (!isTauri() || q.trim().length < 2) {
+      setHits([]);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      api.searchItems(q.trim(), 8).then(setHits).catch(() => undefined);
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [q]);
+
+  return (
+    <div className="market-search">
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} />
+      {hits.length > 0 && (
+        <ul className="market-results">
+          {hits.map((h) => (
+            <li key={h.type_id}>
+              <button
+                onClick={() => {
+                  onPick(h);
+                  setHits([]);
+                  setQ(h.name);
+                }}
+              >
+                {h.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ReprocessCalc(): ReactNode {
+  const [sel, setSel] = useState<ItemHit | null>(null);
+  const [units, setUnits] = useState(100);
+  const [eff, setEff] = useState(70);
+  const [data, setData] = useState<ReprocessView | null>(null);
+  const [missing, setMissing] = useState(false);
+
+  function run(item: ItemHit, u: number, e: number) {
+    setData(null);
+    setMissing(false);
+    api
+      .reprocessItem(item.type_id, u, e / 100)
+      .then((r) => (r ? setData(r) : setMissing(true)))
+      .catch(() => setMissing(true));
+  }
+
+  return (
+    <div className="card reprocess-calc">
+      <h3>Reprocessing Calculator</h3>
+      <ItemPicker
+        placeholder="Search an ore or item…"
+        onPick={(h) => {
+          setSel(h);
+          run(h, units, eff);
+        }}
+      />
+      {sel && (
+        <div className="cashflow-totals" style={{ marginTop: 8, gap: 12 }}>
+          <label style={{ fontSize: 12 }}>
+            Units{" "}
+            <input
+              type="number"
+              value={units}
+              style={{ width: 90 }}
+              onChange={(e) => {
+                const u = Number(e.target.value) || 0;
+                setUnits(u);
+                if (sel) run(sel, u, eff);
+              }}
+            />
+          </label>
+          <label style={{ fontSize: 12 }}>
+            Efficiency %{" "}
+            <input
+              type="number"
+              value={eff}
+              style={{ width: 70 }}
+              onChange={(e) => {
+                const v = Number(e.target.value) || 0;
+                setEff(v);
+                if (sel) run(sel, units, v);
+              }}
+            />
+          </label>
+        </div>
+      )}
+      {missing && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No reprocessing data for this item — needs the full prebuilt SDE.
+        </p>
+      )}
+      {data && (
+        <>
+          <table className="holdings" style={{ marginTop: 10 }}>
+            <tbody>
+              {data.yields.map((y) => (
+                <tr key={y.type_id}>
+                  <td>{y.name}</td>
+                  <td className="mono num">{y.quantity.toLocaleString()}</td>
+                  <td className="mono num pos">{ISK.format(y.value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="cashflow-totals" style={{ marginTop: 8 }}>
+            <span className="pos">Refined {ISK.format(data.refined_value)}</span>
+            <span>Sell {ISK.format(data.sell_value)}</span>
+            <span className={data.advantage >= 0 ? "pos" : "neg"}>
+              {data.advantage >= 0 ? "Refine" : "Sell"} +{ISK.format(Math.abs(data.advantage))}
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BuildPlanner(): ReactNode {
+  const [sel, setSel] = useState<ItemHit | null>(null);
+  const [runs, setRuns] = useState(1);
+  const [me, setMe] = useState(10);
+  const [data, setData] = useState<BuildPlanView | null>(null);
+  const [missing, setMissing] = useState(false);
+
+  function run(item: ItemHit, r: number, m: number) {
+    setData(null);
+    setMissing(false);
+    api
+      .planBuild(item.type_id, r, m)
+      .then((p) => (p ? setData(p) : setMissing(true)))
+      .catch(() => setMissing(true));
+  }
+
+  return (
+    <div className="card build-planner">
+      <h3>Build Planner</h3>
+      <ItemPicker
+        placeholder="Search an item to build…"
+        onPick={(h) => {
+          setSel(h);
+          run(h, runs, me);
+        }}
+      />
+      {sel && (
+        <div className="cashflow-totals" style={{ marginTop: 8, gap: 12 }}>
+          <label style={{ fontSize: 12 }}>
+            Runs{" "}
+            <input
+              type="number"
+              value={runs}
+              style={{ width: 70 }}
+              onChange={(e) => {
+                const r = Number(e.target.value) || 1;
+                setRuns(r);
+                if (sel) run(sel, r, me);
+              }}
+            />
+          </label>
+          <label style={{ fontSize: 12 }}>
+            ME{" "}
+            <input
+              type="number"
+              value={me}
+              style={{ width: 60 }}
+              onChange={(e) => {
+                const m = Number(e.target.value) || 0;
+                setMe(m);
+                if (sel) run(sel, runs, m);
+              }}
+            />
+          </label>
+        </div>
+      )}
+      {missing && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No blueprint data for this item — needs the full prebuilt SDE.
+        </p>
+      )}
+      {data && (
+        <>
+          <table className="holdings" style={{ marginTop: 10 }}>
+            <tbody>
+              {data.materials.map((m) => (
+                <tr key={m.type_id}>
+                  <td>{m.name}</td>
+                  <td className="mono num">{m.quantity.toLocaleString()}</td>
+                  <td className="mono num neg">{ISK.format(m.value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="cashflow-totals" style={{ marginTop: 8 }}>
+            <span className="neg">Cost {ISK.format(data.material_cost)}</span>
+            <span>Sells {ISK.format(data.product_value)}</span>
+            <span className={data.profit >= 0 ? "pos" : "neg"}>
+              {data.profit >= 0 ? "Profit" : "Loss"} {ISK.format(data.profit)} (
+              {(data.margin_pct * 100).toFixed(1)}%)
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function EconomyHub({ character }: { character: Character | null }): ReactNode {
   const [jobs, setJobs] = useState<IndustryJobView[]>([]);
   const [market, setMarket] = useState<MarketView | null>(null);
@@ -784,6 +1008,8 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
       <div className="sub">Industry jobs, market, and more.</div>
       <MarketBrowser />
       <StationScanner />
+      <ReprocessCalc />
+      <BuildPlanner />
       {error && <div className="card" style={{ marginTop: 16 }}><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
       <div className="card" style={{ marginTop: 16 }}>
         <h3>Industry jobs {jobs.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {jobs.length} active</span>}</h3>

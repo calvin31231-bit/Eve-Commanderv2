@@ -30,6 +30,7 @@ pub mod db;
 pub mod error;
 pub mod esi;
 pub mod industry;
+pub mod industry_plan;
 pub mod insurance;
 pub mod mail;
 pub mod market;
@@ -39,6 +40,7 @@ pub mod model;
 pub mod names;
 pub mod notify;
 pub mod prices;
+pub mod reprocess;
 pub mod sde;
 pub mod wallet;
 
