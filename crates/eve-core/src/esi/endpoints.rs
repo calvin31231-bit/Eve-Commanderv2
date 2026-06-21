@@ -88,6 +88,12 @@ pub const CATALOG: &[Endpoint] = &[
         scope: Some("esi-skills.read_skillqueue.v1"),
     },
     Endpoint {
+        key: "attributes",
+        path: "/latest/characters/{cid}/attributes/",
+        class: PollClass::Slow,
+        scope: Some("esi-skills.read_skills.v1"),
+    },
+    Endpoint {
         key: "wallet_balance",
         path: "/latest/characters/{cid}/wallet/",
         class: PollClass::Fast,
@@ -97,6 +103,12 @@ pub const CATALOG: &[Endpoint] = &[
         key: "wallet_journal",
         path: "/latest/characters/{cid}/wallet/journal/",
         class: PollClass::Slow,
+        scope: Some("esi-wallet.read_character_wallet.v1"),
+    },
+    Endpoint {
+        key: "wallet_transactions",
+        path: "/latest/characters/{cid}/wallet/transactions/",
+        class: PollClass::Medium,
         scope: Some("esi-wallet.read_character_wallet.v1"),
     },
     Endpoint {

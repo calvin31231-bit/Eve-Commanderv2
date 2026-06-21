@@ -9,10 +9,13 @@ import type {
   AccountOverview,
   CashflowSummary,
   Character,
+  CharacterAttributes,
   CharacterProfile,
   CharacterSheet,
   CharacterStatusView,
   ClonesView,
+  QueuedSkillView,
+  TransactionView,
   HoldingsView,
   IndustryJobView,
   MailHeader,
@@ -51,6 +54,12 @@ export const api = {
     call<CharacterStatusView>("get_character_status", { characterId }),
   getCharacterProfile: (characterId: number) =>
     call<CharacterProfile>("get_character_profile", { characterId }),
+  getSkillQueue: (characterId: number) =>
+    call<QueuedSkillView[]>("get_skill_queue", { characterId }),
+  getAttributes: (characterId: number) =>
+    call<CharacterAttributes>("get_attributes", { characterId }),
+  getTransactions: (characterId: number, limit: number) =>
+    call<TransactionView[]>("get_transactions", { characterId, limit }),
   getTopHoldings: (characterId: number, limit: number) =>
     call<HoldingsView>("get_top_holdings", { characterId, limit }),
   getClones: (characterId: number) =>

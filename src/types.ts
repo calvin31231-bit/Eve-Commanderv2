@@ -148,6 +148,31 @@ export interface CharacterProfile {
   security_status: number;
 }
 
+export interface QueuedSkillView {
+  name: string;
+  finished_level: number;
+  queue_position: number;
+  seconds_remaining: number;
+}
+
+export interface CharacterAttributes {
+  intelligence: number;
+  memory: number;
+  perception: number;
+  willpower: number;
+  charisma: number;
+  bonus_remaps: number | null;
+}
+
+export interface TransactionView {
+  item_name: string;
+  is_buy: boolean;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  date: string;
+}
+
 export interface CharacterStatusView {
   online: boolean;
   system_name: string;

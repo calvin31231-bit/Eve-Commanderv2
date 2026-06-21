@@ -304,6 +304,52 @@ pub async fn get_character_status(
     })
 }
 
+/// A queued skill with its resolved name.
+#[derive(Debug, Serialize)]
+pub struct QueuedSkillView {
+    pub name: String,
+    pub finished_level: i64,
+    pub queue_position: i64,
+    pub seconds_remaining: i64,
+}
+
+/// The character's skill queue contents (named, with per-skill countdowns).
+#[tauri::command]
+pub async fn get_skill_queue(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<QueuedSkillView>> {
+    let upcoming = state
+        .character
+        .skill_queue_upcoming(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let ids: Vec<i64> = upcoming.iter().map(|s| s.skill_id).collect();
+    let names = names_for(&state, &ids).await;
+    Ok(upcoming
+        .into_iter()
+        .map(|s| QueuedSkillView {
+            name: format!("{} {}", named(&names, s.skill_id), roman(s.finished_level)),
+            finished_level: s.finished_level,
+            queue_position: s.queue_position,
+            seconds_remaining: s.seconds_remaining,
+        })
+        .collect())
+}
+
+/// The character's attributes (+ remap info).
+#[tauri::command]
+pub async fn get_attributes(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<eve_core::character::CharacterAttributes> {
+    state
+        .character
+        .attributes(character_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Fetch the Character-hub summary (skills + queue + wallet) for a character.
 #[tauri::command]
 pub async fn get_character_sheet(
@@ -650,6 +696,46 @@ pub async fn get_mail(
         timestamp: mail.timestamp,
         read: mail.read,
     })
+}
+
+/// A market transaction with its item name resolved.
+#[derive(Debug, Serialize)]
+pub struct TransactionView {
+    pub item_name: String,
+    pub is_buy: bool,
+    pub quantity: i64,
+    pub unit_price: f64,
+    pub total: f64,
+    pub date: String,
+}
+
+/// The character's most recent market transactions (item names resolved).
+#[tauri::command]
+pub async fn get_transactions(
+    state: State<'_, AppState>,
+    character_id: i64,
+    limit: usize,
+) -> CmdResult<Vec<TransactionView>> {
+    let mut txns = state
+        .wallet
+        .transactions(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    txns.truncate(limit);
+
+    let ids: Vec<i64> = txns.iter().map(|t| t.type_id).collect();
+    let names = names_for(&state, &ids).await;
+    Ok(txns
+        .into_iter()
+        .map(|t| TransactionView {
+            item_name: named(&names, t.type_id),
+            is_buy: t.is_buy,
+            quantity: t.quantity,
+            unit_price: t.unit_price,
+            total: t.unit_price * t.quantity as f64,
+            date: t.date,
+        })
+        .collect())
 }
 
 /// All collected notifications, most recent first (drives the Alerts rail).

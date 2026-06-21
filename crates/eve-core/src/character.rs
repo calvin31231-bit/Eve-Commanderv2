@@ -25,6 +25,32 @@ pub struct Skill {
     pub active_skill_level: i64,
 }
 
+/// Character attributes (ESI `GET /characters/{id}/attributes/`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterAttributes {
+    pub intelligence: i64,
+    pub memory: i64,
+    pub perception: i64,
+    pub willpower: i64,
+    pub charisma: i64,
+    #[serde(default)]
+    pub bonus_remaps: Option<i64>,
+    #[serde(default)]
+    pub accrued_remap_cooldown_date: Option<String>,
+    #[serde(default)]
+    pub last_remap_date: Option<String>,
+}
+
+/// A queued skill flattened for the UI, with its client-side countdown.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueuedSkill {
+    pub skill_id: i64,
+    pub finished_level: i64,
+    pub queue_position: i64,
+    /// Seconds until this entry finishes (0 if unknown/passed).
+    pub seconds_remaining: i64,
+}
+
 /// The character skill sheet (ESI `GET /characters/{id}/skills/`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillSheet {
@@ -106,6 +132,23 @@ impl SkillQueue {
     pub fn time_remaining(&self, now: OffsetDateTime) -> Option<Duration> {
         let end = self.finishes_at()?;
         Some((end - now).max(Duration::ZERO))
+    }
+
+    /// The queue as flattened [`QueuedSkill`]s with per-entry countdowns,
+    /// ordered by position. Names are resolved by the caller.
+    pub fn upcoming(&self, now: OffsetDateTime) -> Vec<QueuedSkill> {
+        self.entries
+            .iter()
+            .map(|e| QueuedSkill {
+                skill_id: e.skill_id,
+                finished_level: e.finished_level,
+                queue_position: e.queue_position,
+                seconds_remaining: e
+                    .finish_at()
+                    .map(|f| (f - now).whole_seconds().max(0))
+                    .unwrap_or(0),
+            })
+            .collect()
     }
 }
 
@@ -265,6 +308,18 @@ impl CharacterClient {
         self.auth_get(character_id, "online").await
     }
 
+    /// The character's attributes (+ remap info).
+    pub async fn attributes(&self, character_id: i64) -> Result<CharacterAttributes> {
+        self.auth_get(character_id, "attributes").await
+    }
+
+    /// The skill queue as flattened entries with per-skill countdowns (names
+    /// resolved by the caller).
+    pub async fn skill_queue_upcoming(&self, character_id: i64) -> Result<Vec<QueuedSkill>> {
+        let queue = self.skill_queue(character_id).await?;
+        Ok(queue.upcoming(OffsetDateTime::now_utc()))
+    }
+
     /// Public character info (corp/alliance/sec status). Unauthenticated.
     pub async fn public_info(&self, character_id: i64) -> Result<CharacterPublic> {
         let ep = endpoint("character_public")
@@ -407,6 +462,31 @@ mod tests {
         assert!(queue.is_empty());
         assert!(queue.active().is_none());
         assert!(queue.finishes_at().is_none());
+    }
+
+    #[test]
+    fn deserializes_attributes() {
+        let a: CharacterAttributes = serde_json::from_str(
+            r#"{"intelligence": 20, "memory": 21, "perception": 22, "willpower": 23, "charisma": 19, "bonus_remaps": 2}"#,
+        )
+        .unwrap();
+        assert_eq!(a.perception, 22);
+        assert_eq!(a.bonus_remaps, Some(2));
+    }
+
+    #[test]
+    fn skill_queue_upcoming_has_per_entry_countdowns() {
+        let json = r#"[
+            {"skill_id": 1, "finished_level": 3, "queue_position": 0, "finish_date": "2026-06-20T12:00:00Z"},
+            {"skill_id": 2, "finished_level": 4, "queue_position": 1, "finish_date": "2026-06-21T12:00:00Z"}
+        ]"#;
+        let queue = SkillQueue::new(serde_json::from_str(json).unwrap());
+        let now = OffsetDateTime::parse("2026-06-20T00:00:00Z", &Rfc3339).unwrap();
+        let up = queue.upcoming(now);
+        assert_eq!(up.len(), 2);
+        assert_eq!(up[0].skill_id, 1);
+        assert_eq!(up[0].seconds_remaining, 12 * 3600);
+        assert_eq!(up[1].seconds_remaining, 36 * 3600);
     }
 
     #[test]

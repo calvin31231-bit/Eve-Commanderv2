@@ -36,6 +36,23 @@ pub struct JournalEntry {
     pub reason: Option<String>,
 }
 
+/// One market transaction (ESI `GET /characters/{id}/wallet/transactions/`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Transaction {
+    pub transaction_id: i64,
+    pub date: String,
+    pub type_id: i64,
+    pub quantity: i64,
+    pub unit_price: f64,
+    pub is_buy: bool,
+    #[serde(default)]
+    pub is_personal: bool,
+    #[serde(default)]
+    pub client_id: i64,
+    #[serde(default)]
+    pub location_id: i64,
+}
+
 /// Net total for one `ref_type` category.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RefTypeTotal {
@@ -128,6 +145,17 @@ impl WalletClient {
         summary.by_ref_type.truncate(top_n);
         Ok(summary)
     }
+
+    /// The character's most recent market transactions (latest page; ESI uses a
+    /// `from_id` cursor for older ones, which we don't page yet).
+    pub async fn transactions(&self, character_id: i64) -> Result<Vec<Transaction>> {
+        let ep = endpoint("wallet_transactions")
+            .ok_or_else(|| Error::other("unknown endpoint 'wallet_transactions'"))?;
+        let token = self.tokens.access_token(character_id).await?;
+        self.esi
+            .get_auth_json::<Vec<Transaction>>(&ep.path_for(character_id), &token)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -185,6 +213,25 @@ mod tests {
         // market_transaction (2M) before brokers_fee (0.1M).
         assert_eq!(s.by_ref_type[1].ref_type, "market_transaction");
         assert_eq!(s.by_ref_type[2].ref_type, "brokers_fee");
+    }
+
+    #[test]
+    fn deserializes_transaction() {
+        let json = r#"{
+            "transaction_id": 1,
+            "date": "2026-06-20T10:00:00Z",
+            "type_id": 34,
+            "quantity": 1000,
+            "unit_price": 5.5,
+            "is_buy": true,
+            "is_personal": true,
+            "client_id": 1000,
+            "location_id": 60003760
+        }"#;
+        let t: Transaction = serde_json::from_str(json).unwrap();
+        assert_eq!(t.type_id, 34);
+        assert!(t.is_buy);
+        assert_eq!(t.quantity, 1000);
     }
 
     #[test]

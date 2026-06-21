@@ -215,6 +215,23 @@ table.holdings td.num { text-align: right; }
 table.holdings td.loc { text-align: right; color: var(--text-dim); width: 72px; }
 table.holdings tr:last-child td { border-bottom: none; }
 
+/* Skill queue + attributes lists (Character hub) */
+ul.queue-list, ul.attr-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 12px;
+}
+ul.queue-list li, ul.attr-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+}
+ul.queue-list .training-now { color: var(--accent); }
+
 /* Active implant list (Clones card) */
 ul.implant-list {
   list-style: none;

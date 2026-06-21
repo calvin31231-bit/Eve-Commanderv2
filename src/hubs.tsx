@@ -9,7 +9,10 @@ import type {
   AccountOverview,
   CashflowSummary,
   Character,
+  CharacterAttributes,
   CharacterProfile,
+  QueuedSkillView,
+  TransactionView,
   CharacterSheet,
   ClonesView,
   HoldingsView,
@@ -255,6 +258,9 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
   const [cashflow, setCashflow] = useState<CashflowSummary | null>(null);
   const [mining, setMining] = useState<MiningView | null>(null);
   const [profile, setProfile] = useState<CharacterProfile | null>(null);
+  const [queue, setQueue] = useState<QueuedSkillView[]>([]);
+  const [attrs, setAttrs] = useState<CharacterAttributes | null>(null);
+  const [txns, setTxns] = useState<TransactionView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -265,6 +271,9 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     setCashflow(null);
     setMining(null);
     setProfile(null);
+    setQueue([]);
+    setAttrs(null);
+    setTxns([]);
     setError(null);
     if (!character) return;
     if (!isTauri()) {
@@ -299,6 +308,9 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
       .getCharacterProfile(character.id)
       .then(setProfile)
       .catch(() => undefined);
+    api.getSkillQueue(character.id).then(setQueue).catch(() => undefined);
+    api.getAttributes(character.id).then(setAttrs).catch(() => undefined);
+    api.getTransactions(character.id, 10).then(setTxns).catch(() => undefined);
   }, [character?.id]);
 
   if (!character) {
@@ -362,9 +374,36 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
                 <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
                   {sheet.queue_len} skill{sheet.queue_len === 1 ? "" : "s"} queued
                 </p>
+                {queue.length > 0 && (
+                  <ul className="queue-list">
+                    {queue.slice(0, 5).map((q) => (
+                      <li key={q.queue_position}>
+                        <span className={q.queue_position === 0 ? "training-now" : ""}>{q.name}</span>
+                        <span className="mono">{q.seconds_remaining > 0 ? formatDuration(q.seconds_remaining) : "done"}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </>
             )}
           </div>
+          {attrs && (
+            <div className="card">
+              <h3>Attributes</h3>
+              <ul className="attr-list">
+                <li><span>Intelligence</span><span className="mono">{attrs.intelligence}</span></li>
+                <li><span>Memory</span><span className="mono">{attrs.memory}</span></li>
+                <li><span>Perception</span><span className="mono">{attrs.perception}</span></li>
+                <li><span>Willpower</span><span className="mono">{attrs.willpower}</span></li>
+                <li><span>Charisma</span><span className="mono">{attrs.charisma}</span></li>
+              </ul>
+              {attrs.bonus_remaps != null && (
+                <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 6 }}>
+                  {attrs.bonus_remaps} bonus remap{attrs.bonus_remaps === 1 ? "" : "s"} available
+                </p>
+              )}
+            </div>
+          )}
           {clones && (
             <div className="card">
               <h3>Clones</h3>
@@ -403,6 +442,25 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
                     {r.total >= 0 ? "+" : ""}{ISK.format(r.total)}
                   </td>
                   <td className="loc">×{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {txns.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Recent transactions</h3>
+          <table className="holdings">
+            <tbody>
+              {txns.map((t, i) => (
+                <tr key={i}>
+                  <td>
+                    <span className={t.is_buy ? "neg" : "pos"}>{t.is_buy ? "BUY" : "SELL"}</span> {t.item_name}
+                  </td>
+                  <td className="mono num">×{ISK.format(t.quantity)}</td>
+                  <td className={`mono num ${t.is_buy ? "neg" : "pos"}`}>{ISK.format(t.total)}</td>
+                  <td className="loc">{shortDate(t.date)}</td>
                 </tr>
               ))}
             </tbody>
