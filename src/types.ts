@@ -418,6 +418,14 @@ export interface ThreatScanView {
   unresolved: string[];
 }
 
+export interface GateCampView {
+  system: string;
+  found: boolean;
+  kills_last_hour: number;
+  level: "Safe" | "Neutral" | "Caution" | "Danger";
+  message: string;
+}
+
 export interface EntityDamage {
   entity: string;
   damage: number;

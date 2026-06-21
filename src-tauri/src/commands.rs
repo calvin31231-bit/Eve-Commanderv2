@@ -1455,6 +1455,49 @@ pub fn get_local_intel() -> Option<eve_core::logs::chatlog::LocalIntel> {
     Some(eve_core::logs::chatlog::summarize_local(&text))
 }
 
+/// Gate-camp assessment for a named system.
+#[derive(Debug, Serialize)]
+pub struct GateCampView {
+    pub system: String,
+    pub found: bool,
+    pub kills_last_hour: i64,
+    pub level: String,
+    pub message: String,
+}
+
+/// Assess gate-camp risk for a system by name: resolve it, count zKillboard
+/// kills there in the last hour, and flag the likelihood. `found` is false when
+/// the system name doesn't resolve.
+#[tauri::command]
+pub async fn gate_camp_check(
+    state: State<'_, AppState>,
+    system: String,
+) -> CmdResult<GateCampView> {
+    let system = system.trim().to_string();
+    let Some(system_id) = state.names.system_id(&system).await.map_err(|e| e.to_string())? else {
+        return Ok(GateCampView {
+            system,
+            found: false,
+            kills_last_hour: 0,
+            level: "Safe".into(),
+            message: "System not found.".into(),
+        });
+    };
+    let kills = state
+        .zkill
+        .system_kill_count(system_id, 3600)
+        .await
+        .unwrap_or(0);
+    let a = eve_core::intel::assess_gatecamp(kills);
+    Ok(GateCampView {
+        system,
+        found: true,
+        kills_last_hour: a.kills_last_hour,
+        level: a.level.as_str().to_string(),
+        message: a.message,
+    })
+}
+
 /// One scored pilot in a Local threat scan.
 #[derive(Debug, Serialize)]
 pub struct PilotThreatView {

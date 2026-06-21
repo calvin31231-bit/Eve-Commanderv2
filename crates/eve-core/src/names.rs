@@ -37,11 +37,13 @@ struct EsiStructure {
     name: String,
 }
 
-/// Response of `POST /universe/ids/` — only the characters bucket is needed.
+/// Response of `POST /universe/ids/` — characters + systems buckets.
 #[derive(Debug, Clone, Deserialize, Default)]
 struct EsiIds {
     #[serde(default)]
     characters: Vec<EsiNameOnly>,
+    #[serde(default)]
+    systems: Vec<EsiNameOnly>,
 }
 
 /// A name→id pair from `/universe/ids/` (it returns `name` + `id`, no category).
@@ -216,6 +218,22 @@ impl NameResolver {
             }
         }
         Ok(out)
+    }
+
+    /// Resolve a solar-system *name* to its id via ESI `POST /universe/ids/`.
+    /// (The prebuilt SDE may not ship the universe tables, so we go to ESI.)
+    pub async fn system_id(&self, name: &str) -> Result<Option<i64>> {
+        let body = [name.to_string()];
+        let res: EsiIds = self
+            .esi
+            .post_public_json::<[String], EsiIds>("/latest/universe/ids/", &body)
+            .await?;
+        let want = name.to_lowercase();
+        Ok(res
+            .systems
+            .into_iter()
+            .find(|s| s.name.to_lowercase() == want)
+            .map(|s| s.id))
     }
 }
 

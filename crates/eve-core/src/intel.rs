@@ -127,6 +127,34 @@ pub fn summarize(levels: &[ThreatLevel]) -> String {
     }
 }
 
+/// A gate-camp likelihood read for a system, from recent kill volume.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GateCampAssessment {
+    pub kills_last_hour: i64,
+    pub level: ThreatLevel,
+    pub message: String,
+}
+
+/// Assess gate-camp risk from the number of kills in a system in the last hour.
+/// Heuristic and deliberately conservative — recent kills mean *activity*, which
+/// near a chokepoint usually means a camp. Pure.
+pub fn assess_gatecamp(kills_last_hour: i64) -> GateCampAssessment {
+    let (level, message) = if kills_last_hour == 0 {
+        (ThreatLevel::Safe, "No kills in the last hour — clear for now.".to_string())
+    } else if kills_last_hour <= 3 {
+        (
+            ThreatLevel::Caution,
+            format!("{kills_last_hour} kill(s) in the last hour — some activity, stay alert."),
+        )
+    } else {
+        (
+            ThreatLevel::Danger,
+            format!("{kills_last_hour} kills in the last hour — likely an active camp."),
+        )
+    };
+    GateCampAssessment { kills_last_hour, level, message }
+}
+
 // ---- zKillboard client (live; exercised on the user's machine) -------------
 
 /// The subset of zKill's `stats` we score on. zKill nests sec status under
@@ -196,6 +224,30 @@ impl ZkillClient {
             .unwrap_or_default();
         Ok(stats)
     }
+
+    /// Count killmails in a system over the last `past_seconds` (zKill caps at
+    /// 3600s for the `pastSeconds` filter). Used for gate-camp assessment.
+    pub async fn system_kill_count(&self, system_id: i64, past_seconds: i64) -> Result<i64> {
+        let url = format!(
+            "https://zkillboard.com/api/systemID/{system_id}/pastSeconds/{past_seconds}/"
+        );
+        let resp = self
+            .http
+            .get(&url)
+            .header(reqwest::header::USER_AGENT, &self.user_agent)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(|e| crate::error::Error::other(format!("zkill request: {e}")))?;
+        // The response is a JSON array of recent killmails; its length is the
+        // kill count. An empty/odd body counts as zero.
+        let kills = resp
+            .json::<Vec<serde_json::Value>>()
+            .await
+            .map(|v| v.len() as i64)
+            .unwrap_or(0);
+        Ok(kills)
+    }
 }
 
 #[cfg(test)]
@@ -254,6 +306,13 @@ mod tests {
     fn summary_calls_out_hunters() {
         let levels = [ThreatLevel::Danger, ThreatLevel::Caution, ThreatLevel::Safe];
         assert!(summarize(&levels).contains("hunter"));
+    }
+
+    #[test]
+    fn gatecamp_levels_by_kill_volume() {
+        assert_eq!(assess_gatecamp(0).level, ThreatLevel::Safe);
+        assert_eq!(assess_gatecamp(2).level, ThreatLevel::Caution);
+        assert_eq!(assess_gatecamp(9).level, ThreatLevel::Danger);
     }
 
     #[test]

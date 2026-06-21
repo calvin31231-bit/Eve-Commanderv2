@@ -3,7 +3,7 @@ import { api, isTauri } from "./ipc";
 import { HUBS, renderHub, portraitUrl } from "./hubs";
 import { Starfield } from "./Starfield";
 import { AgentAvatar, type Mood } from "./AgentAvatar";
-import type { Character, CharacterStatusView, Notification, ServerStatus, Severity } from "./types";
+import type { Character, CharacterStatusView, LocalIntel, Notification, ServerStatus, Severity } from "./types";
 import "./app.css";
 
 function fmtDuration(seconds: number): string {
@@ -36,6 +36,7 @@ export default function App() {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [alerts, setAlerts] = useState<Notification[]>([]);
+  const [localIntel, setLocalIntel] = useState<LocalIntel | null>(null);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -48,11 +49,14 @@ export default function App() {
       .catch((e) => setStatusError(String(e)));
     api.listCharacters().then(setCharacters).catch(() => undefined);
 
-    // Poll the notification center for the Alerts rail.
-    const refreshAlerts = () =>
+    // Poll the notification center + local-log intel for the rail. Both are
+    // cheap local reads, so a tight 5s cadence keeps the rail feeling live.
+    const refresh = () => {
       api.listNotifications().then(setAlerts).catch(() => undefined);
-    refreshAlerts();
-    const timer = window.setInterval(refreshAlerts, 5000);
+      api.getLocalIntel().then(setLocalIntel).catch(() => undefined);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 5000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -198,12 +202,19 @@ export default function App() {
           </div>
         </div>
         <div className="sa-section">
-          <h3>System Safety / Killfeed</h3>
-          <div className="sa-empty">Live kills in your system &amp; neighbors appear here (Phase 4).</div>
-        </div>
-        <div className="sa-section">
-          <h3>Local Threat Scanner</h3>
-          <div className="sa-empty">Copy Local in-game to flag Safe / Pirate / Danger pilots (Phase 4).</div>
+          <h3>Local{localIntel?.system ? ` · ${localIntel.system}` : ""}</h3>
+          {!localIntel || localIntel.speakers.length === 0 ? (
+            <div className="sa-empty">
+              Pilots who speak in Local appear here from your chat logs. Use the Combat &amp; Intel hub
+              to paste-scan the full Local roster.
+            </div>
+          ) : (
+            <ul className="local-list">
+              {localIntel.speakers.slice(0, 12).map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          )}
         </div>
         <div className="sa-section">
           <h3>Fleet Proximity</h3>

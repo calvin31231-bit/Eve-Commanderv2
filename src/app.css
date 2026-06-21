@@ -202,6 +202,24 @@
   padding: 10px;
 }
 
+/* Live Local roster (pilots who have spoken, from chat logs) */
+.local-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  max-height: 220px;
+  overflow: auto;
+}
+.local-list li {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(138, 152, 173, 0.06);
+}
+
 /* Alerts list (notification center, "calm" — collected, glanceable) */
 .alert-list {
   list-style: none;

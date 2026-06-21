@@ -38,6 +38,7 @@ import type {
   DoctrineView,
   DscanResult,
   ThreatScanView,
+  GateCampView,
   CombatLogView,
 } from "./types";
 
@@ -1670,9 +1671,63 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
       />
       {sub === "fitting" && <FitImporter character={character} />}
       {sub === "dscan" && <DscanPanel />}
-      {sub === "threat" && <ThreatScanner />}
+      {sub === "threat" && (
+        <>
+          <ThreatScanner />
+          <GateCampCheck />
+        </>
+      )}
       {sub === "aar" && <CombatLogPanel />}
     </>
+  );
+}
+
+function GateCampCheck(): ReactNode {
+  const [system, setSystem] = useState("");
+  const [result, setResult] = useState<GateCampView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function check() {
+    if (!isTauri() || !system.trim()) return;
+    setLoading(true);
+    setResult(null);
+    api
+      .gateCampCheck(system.trim())
+      .then(setResult)
+      .catch(() => setResult(null))
+      .finally(() => setLoading(false));
+  }
+
+  return (
+    <div className="card gatecamp-check" style={{ marginTop: 16 }}>
+      <h3>Gate-Camp Check</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Recent kill volume in a system (zKillboard, last hour) as a camp signal.
+      </p>
+      <div className="market-search">
+        <input
+          value={system}
+          onChange={(e) => setSystem(e.target.value)}
+          placeholder="System name (e.g. Uedama)…"
+          onKeyDown={(e) => e.key === "Enter" && check()}
+        />
+      </div>
+      <button onClick={check} disabled={loading || !system.trim()} style={{ marginTop: 8 }}>
+        {loading ? "Checking…" : "Check"}
+      </button>
+      {result && (
+        <p style={{ marginTop: 10 }}>
+          {!result.found ? (
+            <span style={{ color: "var(--text-dim)" }}>System not found.</span>
+          ) : (
+            <>
+              <span className={THREAT_BADGE[result.level] ?? "badge"}>{result.level}</span>{" "}
+              {result.system} — {result.message}
+            </>
+          )}
+        </p>
+      )}
+    </div>
   );
 }
 
