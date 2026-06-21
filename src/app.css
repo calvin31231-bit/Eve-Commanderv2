@@ -9,6 +9,29 @@
     "rail context context"
     "rail main    sa";
   height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* Twinkling starfield painted behind the whole shell. */
+.starfield {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: block;
+}
+
+/* Translucent panels let the starfield/nebula whisper through the chrome. */
+.context-bar,
+.hub-rail,
+.sa-rail {
+  background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+  backdrop-filter: blur(6px);
+}
+/* The central viewport is transparent so stars show around the cards. */
+.main-canvas {
+  background: transparent;
 }
 
 /* Top context bar: active char, location, system safety, training, connection */
@@ -18,7 +41,6 @@
   align-items: center;
   gap: 18px;
   padding: 0 16px;
-  background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
 }
 .context-bar .spacer {
@@ -38,15 +60,21 @@
 }
 .context-bar .conn-dot.ok {
   background: var(--safe);
+  box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.5);
+  animation: conn-pulse 2.4s ease-out infinite;
 }
 .context-bar .conn-dot.err {
   background: var(--danger);
+}
+@keyframes conn-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.5); }
+  70% { box-shadow: 0 0 0 6px rgba(61, 220, 132, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0); }
 }
 
 /* Left hub rail */
 .hub-rail {
   grid-area: rail;
-  background: var(--bg-panel);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -58,6 +86,7 @@
   font-weight: 700;
   color: var(--accent);
   margin-bottom: 8px;
+  text-shadow: 0 0 12px rgba(54, 197, 244, 0.55);
 }
 .hub-rail button {
   width: 48px;
@@ -68,10 +97,31 @@
   border: 1px solid transparent;
   border-radius: 8px;
   font-size: 18px;
+  color: var(--text-dim);
+  position: relative;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+.hub-rail button:hover {
+  color: var(--text);
+  transform: translateY(-1px);
 }
 .hub-rail button.active {
   background: var(--bg-elevated);
   border-color: var(--accent-dim);
+  color: var(--accent);
+  box-shadow: 0 0 18px -6px var(--accent);
+}
+/* Accent indicator bar on the active hub. */
+.hub-rail button.active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
 }
 
 /* Main canvas */
@@ -92,7 +142,6 @@
 /* Situational Awareness rail */
 .sa-rail {
   grid-area: sa;
-  background: var(--bg-panel);
   border-left: 1px solid var(--border);
   overflow: auto;
   padding: 12px;
@@ -266,10 +315,22 @@ ul.mail-list { list-style: none; margin: 0; padding: 0; }
 
 /* Cards / panels */
 .card {
-  background: var(--bg-panel);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
+    color-mix(in srgb, var(--bg-panel) 94%, transparent);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 14px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+.card:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: 0 6px 22px -14px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(54, 197, 244, 0.05);
+  transform: translateY(-1px);
+}
+.card h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
 }
 .card-grid {
   display: grid;
@@ -288,3 +349,77 @@ ul.mail-list { list-style: none; margin: 0; padding: 0; }
 .badge.safe { background: rgba(61, 220, 132, 0.15); color: var(--safe); }
 .badge.caution { background: rgba(247, 181, 0, 0.15); color: var(--caution); }
 .badge.danger { background: rgba(255, 77, 79, 0.15); color: var(--danger); }
+
+/* ── Aura: AI companion avatar ─────────────────────────────────────────── */
+.agent-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.agent {
+  position: relative;
+  flex-shrink: 0;
+  animation: agent-float 6s ease-in-out infinite;
+}
+.agent::before {
+  content: "";
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--mood), transparent 62%);
+  opacity: 0.3;
+  filter: blur(7px);
+  animation: agent-breathe var(--pulse, 3.4s) ease-in-out infinite;
+}
+.agent svg { position: relative; width: 100%; height: 100%; display: block; }
+.agent-ring {
+  fill: none;
+  stroke: var(--mood);
+  stroke-width: 1.4;
+  stroke-dasharray: 5 7;
+  opacity: 0.7;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: agent-spin 16s linear infinite;
+}
+.agent-disc { fill: var(--bg-elevated); stroke: var(--mood); stroke-width: 1.3; }
+.agent-eye {
+  fill: var(--mood);
+  filter: drop-shadow(0 0 4px var(--mood));
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: agent-blink 5.5s ease-in-out infinite;
+}
+.agent-pupil { fill: var(--bg-elevated); }
+.agent-warning { --pulse: 2.1s; }
+.agent-critical { --pulse: 1.05s; }
+.agent-critical .agent-ring { animation-duration: 6s; }
+.agent-idle::before { opacity: 0.14; }
+
+.agent-meta { min-width: 0; }
+.agent-name { font-weight: 700; font-size: 14px; }
+.agent-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.agent-status { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+
+@keyframes agent-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes agent-breathe { 0%, 100% { opacity: 0.2; transform: scale(0.95); } 50% { opacity: 0.4; transform: scale(1.06); } }
+@keyframes agent-spin { to { transform: rotate(360deg); } }
+@keyframes agent-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.12); } }
+
+/* Respect reduced-motion: keep it calm. */
+@media (prefers-reduced-motion: reduce) {
+  .agent, .agent::before, .agent-ring, .agent-eye { animation: none; }
+  .context-bar .conn-dot.ok { animation: none; }
+  .card:hover, .hub-rail button:hover { transform: none; }
+  * { transition: none !important; }
+}

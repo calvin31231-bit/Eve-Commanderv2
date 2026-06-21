@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, isTauri } from "./ipc";
 import { HUBS, renderHub } from "./hubs";
-import type { Character, Notification, ServerStatus } from "./types";
+import { Starfield } from "./Starfield";
+import { AgentAvatar, type Mood } from "./AgentAvatar";
+import type { Character, Notification, ServerStatus, Severity } from "./types";
 import "./app.css";
+
+const SEV_RANK: Record<Severity, number> = { Info: 1, Warning: 2, Critical: 3 };
 
 // Hubs are deep-linkable via the URL hash (e.g. #combat) so a view can be
 // restored on launch, linked to, or popped into its own window later.
@@ -44,6 +48,30 @@ export default function App() {
 
   const activeCharacter = characters.find((c) => c.active) ?? null;
 
+  // Aura's mood reflects the app state: unread alert severity, connection, roster.
+  const unread = alerts.filter((a) => !a.read);
+  const topSev = unread.reduce((m, a) => Math.max(m, SEV_RANK[a.severity]), 0);
+  let mood: Mood = "calm";
+  let auraStatus = "All systems nominal.";
+  if (!isTauri()) {
+    mood = "idle";
+    auraStatus = "Standing by — desktop shell not attached.";
+  } else if (statusError) {
+    mood = "warning";
+    auraStatus = "I'm having trouble reaching ESI.";
+  } else if (topSev >= 3) {
+    mood = "critical";
+    auraStatus = `${unread.length} alert${unread.length === 1 ? "" : "s"} need your attention.`;
+  } else if (topSev >= 2) {
+    mood = "warning";
+    auraStatus = `${unread.length} thing${unread.length === 1 ? "" : "s"} worth a look.`;
+  } else if (characters.length > 0) {
+    mood = "happy";
+    auraStatus = "Everything looks good, capsuleer.";
+  } else {
+    auraStatus = "Ready when you are.";
+  }
+
   async function reloadCharacters() {
     const list = await api.listCharacters();
     setCharacters(list);
@@ -78,6 +106,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <Starfield />
       {/* Left hub rail */}
       <nav className="hub-rail">
         <div className="brand" title="EVE Commander">
@@ -119,6 +148,13 @@ export default function App() {
 
       {/* Right Situational Awareness rail — always present in every hub */}
       <aside className="sa-rail">
+        <div className="sa-section agent-section">
+          <AgentAvatar mood={mood} />
+          <div className="agent-meta">
+            <div className="agent-name">Aura <span className="agent-tag">AI</span></div>
+            <div className="agent-status">{auraStatus}</div>
+          </div>
+        </div>
         <div className="sa-section">
           <h3>System Safety / Killfeed</h3>
           <div className="sa-empty">Live kills in your system &amp; neighbors appear here (Phase 4).</div>

@@ -37,8 +37,15 @@ body,
 #root {
   margin: 0;
   height: 100%;
-  background: var(--bg);
   color: var(--text);
+}
+body {
+  /* Faint nebula glow for depth behind the starfield. */
+  background:
+    radial-gradient(1100px 760px at 78% -12%, rgba(54, 197, 244, 0.07), transparent 60%),
+    radial-gradient(880px 680px at 8% 112%, rgba(126, 92, 200, 0.08), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
 }
 
 button {
@@ -49,13 +56,20 @@ button {
   border-radius: 6px;
   padding: 6px 12px;
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 button:hover {
   border-color: var(--accent-dim);
 }
+button:active {
+  transform: translateY(1px);
+}
 button.primary {
   background: var(--accent-dim);
   border-color: var(--accent);
+}
+button.primary:hover {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 16px -4px var(--accent);
 }
 
 a {
