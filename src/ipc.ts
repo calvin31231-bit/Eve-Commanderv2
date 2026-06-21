@@ -11,6 +11,7 @@ import type {
   CashflowSummary,
   Character,
   CharacterGroup,
+  Contract,
   CharacterAttributes,
   CharacterProfile,
   CharacterSheet,
@@ -77,6 +78,8 @@ export const api = {
     call<IndustryJobView[]>("get_industry_jobs", { characterId }),
   getMarketOrders: (characterId: number) =>
     call<MarketView>("get_market_orders", { characterId }),
+  getContracts: (characterId: number, limit: number) =>
+    call<Contract[]>("get_contracts", { characterId, limit }),
   searchItems: (query: string, limit: number) =>
     call<ItemHit[]>("search_items", { query, limit }),
   getMarketBrowse: (typeId: number) =>

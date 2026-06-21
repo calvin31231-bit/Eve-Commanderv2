@@ -25,6 +25,7 @@ pub mod auth;
 pub mod character;
 pub mod clones;
 pub mod config;
+pub mod contracts;
 pub mod db;
 pub mod error;
 pub mod esi;

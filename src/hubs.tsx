@@ -12,6 +12,7 @@ import type {
   Character,
   CharacterAttributes,
   CharacterGroup,
+  Contract,
   CharacterProfile,
   QueuedSkillView,
   TransactionView,
@@ -648,6 +649,7 @@ function Sparkline({ values }: { values: number[] }): ReactNode {
 function EconomyHub({ character }: { character: Character | null }): ReactNode {
   const [jobs, setJobs] = useState<IndustryJobView[]>([]);
   const [market, setMarket] = useState<MarketView | null>(null);
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [loadedAt, setLoadedAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [, forceTick] = useState(0);
@@ -655,6 +657,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
   useEffect(() => {
     setJobs([]);
     setMarket(null);
+    setContracts([]);
     setError(null);
     if (!character) return;
     if (!isTauri()) {
@@ -669,6 +672,10 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
     api
       .getMarketOrders(character.id)
       .then(setMarket)
+      .catch(() => undefined);
+    api
+      .getContracts(character.id, 15)
+      .then(setContracts)
       .catch(() => undefined);
   }, [character?.id]);
 
@@ -746,6 +753,25 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+      {contracts.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Contracts <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {contracts.filter((c) => c.status === "outstanding" || c.status === "in_progress").length} active</span></h3>
+          <table className="holdings">
+            <tbody>
+              {contracts.map((c) => {
+                const amount = c.reward > 0 ? c.reward : c.price;
+                return (
+                  <tr key={c.contract_id}>
+                    <td>{c.title || prettyRefType(c.type)}</td>
+                    <td className="loc">{c.status.replace(/_/g, " ")}</td>
+                    <td className={`mono num ${c.reward > 0 ? "pos" : ""}`}>{amount > 0 ? ISK.format(amount) : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </>

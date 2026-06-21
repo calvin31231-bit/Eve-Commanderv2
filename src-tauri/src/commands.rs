@@ -38,6 +38,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-location.read_online.v1",
     "esi-industry.read_character_jobs.v1",
     "esi-markets.read_character_orders.v1",
+    "esi-contracts.read_character_contracts.v1",
 ];
 
 /// EVE server status (public ESI endpoint) — a good first end-to-end check.
@@ -927,6 +928,22 @@ pub async fn set_settings(
         center.set_min_interrupt(parsed_sev);
     }
     Ok(())
+}
+
+/// The character's contracts (active first), capped to a recent window.
+#[tauri::command]
+pub async fn get_contracts(
+    state: State<'_, AppState>,
+    character_id: i64,
+    limit: usize,
+) -> CmdResult<Vec<eve_core::contracts::Contract>> {
+    let mut cs = state
+        .contracts
+        .contracts(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    cs.truncate(limit);
+    Ok(cs)
 }
 
 /// A market-search result.

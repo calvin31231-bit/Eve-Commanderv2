@@ -209,6 +209,20 @@ export interface CharacterGroup {
   members: number[];
 }
 
+export interface Contract {
+  contract_id: number;
+  type: string;
+  status: string;
+  title: string;
+  date_issued: string;
+  date_expired: string;
+  price: number;
+  reward: number;
+  collateral: number;
+  volume: number;
+  for_corporation: boolean;
+}
+
 export interface ItemHit {
   type_id: number;
   name: string;
