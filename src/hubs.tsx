@@ -28,6 +28,7 @@ import type {
   MarketView,
   MiningView,
   ServerStatus,
+  TradeOpportunity,
 } from "./types";
 
 export interface Hub {
@@ -666,6 +667,61 @@ function Sparkline({ values }: { values: number[] }): ReactNode {
   );
 }
 
+function StationScanner(): ReactNode {
+  const [rows, setRows] = useState<TradeOpportunity[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function scan() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .scanStationTrades()
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }
+
+  return (
+    <div className="card station-scanner">
+      <h3>
+        Station Trade Scanner{" "}
+        <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· Jita</span>
+      </h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Best buy→sell flips on liquid items, net of 3% broker + 4.5% tax.
+      </p>
+      <button onClick={scan} disabled={loading}>
+        {loading ? "Scanning…" : rows ? "Rescan" : "Scan"}
+      </button>
+      {rows && rows.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Item</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Margin</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Profit/u</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Daily</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((o) => (
+              <tr key={o.type_id}>
+                <td>{o.name}</td>
+                <td className="mono num">{(o.margin_pct * 100).toFixed(1)}%</td>
+                <td className="mono num pos">{ISK.format(o.profit_per_unit)}</td>
+                <td className="mono num">{ISK.format(o.daily_potential)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {rows && rows.length === 0 && !loading && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No profitable flips found.</p>
+      )}
+    </div>
+  );
+}
+
 function EconomyHub({ character }: { character: Character | null }): ReactNode {
   const [jobs, setJobs] = useState<IndustryJobView[]>([]);
   const [market, setMarket] = useState<MarketView | null>(null);
@@ -727,6 +783,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
       <h1>Economy</h1>
       <div className="sub">Industry jobs, market, and more.</div>
       <MarketBrowser />
+      <StationScanner />
       {error && <div className="card" style={{ marginTop: 16 }}><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
       <div className="card" style={{ marginTop: 16 }}>
         <h3>Industry jobs {jobs.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {jobs.length} active</span>}</h3>

@@ -153,6 +153,69 @@ pub fn history_stats(days: &[HistoryDay]) -> HistoryStats {
     }
 }
 
+/// Broker fee + sales tax assumptions for station-trade profit math. Fractions
+/// (0.03 = 3%). Defaults are typical mid-skill highsec values; the UI lets the
+/// user override them.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct TradeFees {
+    /// Broker fee charged when placing an order (applied to both the buy and
+    /// the sell order in a station flip).
+    pub broker_fee: f64,
+    /// Sales tax charged on the value of a sell order.
+    pub sales_tax: f64,
+}
+
+impl Default for TradeFees {
+    fn default() -> Self {
+        Self { broker_fee: 0.03, sales_tax: 0.045 }
+    }
+}
+
+/// Per-unit station-trade economics for one item (buy low / sell high in place).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeMetrics {
+    pub buy_price: f64,
+    pub sell_price: f64,
+    /// Net profit as a fraction of acquisition cost (after fees + tax).
+    pub margin_pct: f64,
+    /// Net ISK profit per unit flipped.
+    pub profit_per_unit: f64,
+    pub daily_volume: i64,
+    /// Rough daily profit ceiling = profit_per_unit × daily_volume.
+    pub daily_potential: f64,
+}
+
+/// Station-flip economics for one item from its quote. Returns `None` when the
+/// book is one-sided or prices are non-positive. Pure.
+pub fn trade_metrics(quote: &MarketQuote, daily_volume: i64, fees: TradeFees) -> Option<TradeMetrics> {
+    let buy = quote.best_buy?;
+    let sell = quote.best_sell?;
+    if buy <= 0.0 || sell <= 0.0 {
+        return None;
+    }
+    // Acquire by outbidding the best buy order (pay the broker fee on it);
+    // realise by undercutting the best sell (pay broker fee + sales tax).
+    let cost = buy * (1.0 + fees.broker_fee);
+    let revenue = sell * (1.0 - fees.broker_fee - fees.sales_tax);
+    let profit = revenue - cost;
+    let margin_pct = if cost > 0.0 { profit / cost } else { 0.0 };
+    Some(TradeMetrics {
+        buy_price: buy,
+        sell_price: sell,
+        margin_pct,
+        profit_per_unit: profit,
+        daily_volume,
+        daily_potential: profit * daily_volume as f64,
+    })
+}
+
+/// A profitable station-trade candidate (type + its economics).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeOpportunity {
+    pub type_id: i64,
+    pub metrics: TradeMetrics,
+}
+
 /// Reads public regional market data.
 #[derive(Clone)]
 pub struct MarketDataClient {
@@ -193,6 +256,45 @@ impl MarketDataClient {
             };
             out.push(HubQuote { hub: hub.to_string(), best_sell, best_buy });
         }
+        Ok(out)
+    }
+
+    /// Scan a set of types in a region for station-trade opportunities. Fetches
+    /// each item's quote + daily volume best-effort (skipping ones that fail or
+    /// are one-sided) and returns the profitable flips sorted by daily profit
+    /// potential, highest first.
+    pub async fn scan(
+        &self,
+        region_id: i64,
+        type_ids: &[i64],
+        fees: TradeFees,
+    ) -> Result<Vec<TradeOpportunity>> {
+        let mut out = Vec::new();
+        for &type_id in type_ids {
+            let quote = match self.quote(region_id, type_id).await {
+                Ok(q) => q,
+                Err(e) => {
+                    tracing::warn!("scan: quote {type_id} failed: {e}");
+                    continue;
+                }
+            };
+            let daily_volume = self
+                .history(region_id, type_id)
+                .await
+                .map(|h| h.daily_volume_30d)
+                .unwrap_or(0);
+            if let Some(m) = trade_metrics(&quote, daily_volume, fees) {
+                if m.profit_per_unit > 0.0 {
+                    out.push(TradeOpportunity { type_id, metrics: m });
+                }
+            }
+        }
+        out.sort_by(|a, b| {
+            b.metrics
+                .daily_potential
+                .partial_cmp(&a.metrics.daily_potential)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         Ok(out)
     }
 }
@@ -258,5 +360,22 @@ mod tests {
         let s = history_stats(&[]);
         assert_eq!(s.last_average, None);
         assert!(s.recent.is_empty());
+    }
+
+    #[test]
+    fn trade_metrics_nets_fees_and_tax() {
+        // buy 100, sell 200, 3% broker, 4.5% tax.
+        let q = quote_from_orders(&[order(200.0, 10, false), order(100.0, 10, true)]);
+        let m = trade_metrics(&q, 500, TradeFees::default()).unwrap();
+        // cost = 100 * 1.03 = 103; revenue = 200 * (1 - 0.075) = 185; profit = 82.
+        assert!((m.profit_per_unit - 82.0).abs() < 1e-9);
+        assert!((m.margin_pct - 82.0 / 103.0).abs() < 1e-9);
+        assert!((m.daily_potential - 82.0 * 500.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn trade_metrics_none_on_one_sided_book() {
+        let q = quote_from_orders(&[order(10.0, 5, false)]);
+        assert!(trade_metrics(&q, 100, TradeFees::default()).is_none());
     }
 }

@@ -30,6 +30,7 @@ import type {
   MiningView,
   Notification,
   ServerStatus,
+  TradeOpportunity,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -84,6 +85,12 @@ export const api = {
     call<ItemHit[]>("search_items", { query, limit }),
   getMarketBrowse: (typeId: number) =>
     call<MarketBrowse>("get_market_browse", { typeId }),
+  scanStationTrades: (
+    typeIds?: number[],
+    brokerFee?: number,
+    salesTax?: number,
+  ) =>
+    call<TradeOpportunity[]>("scan_station_trades", { typeIds, brokerFee, salesTax }),
   getMining: (characterId: number) =>
     call<MiningView>("get_mining", { characterId }),
   getMailHeaders: (characterId: number) =>

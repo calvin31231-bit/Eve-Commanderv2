@@ -1002,6 +1002,68 @@ pub async fn get_market_browse(
     })
 }
 
+/// One station-trade candidate with its item name resolved.
+#[derive(Debug, Serialize)]
+pub struct TradeOpportunityView {
+    pub type_id: i64,
+    pub name: String,
+    pub buy_price: f64,
+    pub sell_price: f64,
+    pub margin_pct: f64,
+    pub profit_per_unit: f64,
+    pub daily_volume: i64,
+    pub daily_potential: f64,
+}
+
+/// Scan a list of item types at Jita for station-trade opportunities, ranked by
+/// daily profit potential. When `typeIds` is omitted, a curated default set of
+/// liquid items is scanned. `brokerFee`/`salesTax` are fractions (0.03 = 3%).
+#[tauri::command]
+pub async fn scan_station_trades(
+    state: State<'_, AppState>,
+    type_ids: Option<Vec<i64>>,
+    broker_fee: Option<f64>,
+    sales_tax: Option<f64>,
+) -> CmdResult<Vec<TradeOpportunityView>> {
+    let region = eve_core::marketdata::THE_FORGE;
+    let ids = type_ids.unwrap_or_else(default_scan_types);
+    let mut fees = eve_core::marketdata::TradeFees::default();
+    if let Some(b) = broker_fee {
+        fees.broker_fee = b;
+    }
+    if let Some(t) = sales_tax {
+        fees.sales_tax = t;
+    }
+    let opps = state
+        .marketdata
+        .scan(region, &ids, fees)
+        .await
+        .map_err(|e| e.to_string())?;
+    let names = names_for(&state, &opps.iter().map(|o| o.type_id).collect::<Vec<_>>()).await;
+    Ok(opps
+        .into_iter()
+        .map(|o| TradeOpportunityView {
+            type_id: o.type_id,
+            name: named(&names, o.type_id),
+            buy_price: o.metrics.buy_price,
+            sell_price: o.metrics.sell_price,
+            margin_pct: o.metrics.margin_pct,
+            profit_per_unit: o.metrics.profit_per_unit,
+            daily_volume: o.metrics.daily_volume,
+            daily_potential: o.metrics.daily_potential,
+        })
+        .collect())
+}
+
+/// A small curated set of liquid, commonly-flipped items for the default scan
+/// when the caller supplies no list (minerals, salvage, common modules/ships).
+fn default_scan_types() -> Vec<i64> {
+    vec![
+        34, 35, 36, 37, 38, 39, 40, 11399, // minerals
+        16240, 587, 597, 603, 593, 24698, 24702, // common hulls
+    ]
+}
+
 /// All collected notifications, most recent first (drives the Alerts rail).
 #[tauri::command]
 pub fn list_notifications(state: State<'_, AppState>) -> CmdResult<Vec<Notification>> {

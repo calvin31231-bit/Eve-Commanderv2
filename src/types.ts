@@ -267,6 +267,17 @@ export interface MarketBrowse {
   hubs: HubQuote[];
 }
 
+export interface TradeOpportunity {
+  type_id: number;
+  name: string;
+  buy_price: number;
+  sell_price: number;
+  margin_pct: number;
+  profit_per_unit: number;
+  daily_volume: number;
+  daily_potential: number;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

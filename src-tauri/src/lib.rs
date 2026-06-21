@@ -259,6 +259,7 @@ pub fn run() {
             commands::get_market_orders,
             commands::search_items,
             commands::get_market_browse,
+            commands::scan_station_trades,
             commands::get_contracts,
             commands::get_mining,
             commands::get_mail_headers,
