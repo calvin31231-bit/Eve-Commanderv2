@@ -141,6 +141,13 @@ export interface AccountOverview {
   total_sp: number;
 }
 
+export interface CharacterProfile {
+  name: string;
+  corporation: string;
+  alliance: string | null;
+  security_status: number;
+}
+
 export interface CharacterStatusView {
   online: boolean;
   system_name: string;

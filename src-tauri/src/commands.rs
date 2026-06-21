@@ -220,6 +220,42 @@ fn roman(level: i64) -> &'static str {
     }
 }
 
+/// Public character profile for the Character-hub header.
+#[derive(Debug, Serialize)]
+pub struct CharacterProfile {
+    pub name: String,
+    pub corporation: String,
+    pub alliance: Option<String>,
+    pub security_status: f64,
+}
+
+/// Corp/alliance/sec-status header for a character (portrait is built on the
+/// frontend from the public image server).
+#[tauri::command]
+pub async fn get_character_profile(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<CharacterProfile> {
+    let info = state
+        .character
+        .public_info(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut ids = vec![info.corporation_id];
+    if let Some(a) = info.alliance_id {
+        ids.push(a);
+    }
+    let names = names_for(&state, &ids).await;
+
+    Ok(CharacterProfile {
+        name: info.name,
+        corporation: named(&names, info.corporation_id),
+        alliance: info.alliance_id.map(|a| named(&names, a)),
+        security_status: info.security_status,
+    })
+}
+
 /// Live character status for the always-on context bar.
 #[tauri::command]
 pub async fn get_character_status(

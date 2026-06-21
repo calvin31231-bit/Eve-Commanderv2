@@ -9,6 +9,7 @@ import type {
   AccountOverview,
   CashflowSummary,
   Character,
+  CharacterProfile,
   CharacterSheet,
   ClonesView,
   HoldingsView,
@@ -142,7 +143,10 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter }: H
                       onClick={() => onSelectCharacter(c.id)}
                       title={c.active ? "Active character" : "Make active"}
                     >
-                      <span>{c.name}</span>
+                      <span className="char-row-id">
+                        <img className="avatar" src={portraitUrl(c.id, 32)} alt="" width={24} height={24} loading="lazy" />
+                        {c.name}
+                      </span>
                       {c.active && <span className="badge safe">active</span>}
                     </button>
                   </li>
@@ -174,6 +178,18 @@ function formatDuration(seconds: number): string {
 // ESI ref_types are snake_case (e.g. "market_transaction"); show them as words.
 function prettyRefType(refType: string): string {
   return refType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// EVE's public image server serves character portraits (no auth).
+export function portraitUrl(id: number, size = 64): string {
+  return `https://images.evetech.net/characters/${id}/portrait?size=${size}`;
+}
+
+function secColor(sec: number): string {
+  if (sec >= 4.5) return "var(--safe)";
+  if (sec >= 0) return "var(--text-dim)";
+  if (sec > -4.5) return "var(--caution)";
+  return "var(--danger)";
 }
 
 function shortDate(iso: string): string {
@@ -238,6 +254,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
   const [clones, setClones] = useState<ClonesView | null>(null);
   const [cashflow, setCashflow] = useState<CashflowSummary | null>(null);
   const [mining, setMining] = useState<MiningView | null>(null);
+  const [profile, setProfile] = useState<CharacterProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -247,6 +264,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     setClones(null);
     setCashflow(null);
     setMining(null);
+    setProfile(null);
     setError(null);
     if (!character) return;
     if (!isTauri()) {
@@ -277,6 +295,10 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
       .getMining(character.id)
       .then(setMining)
       .catch(() => undefined);
+    api
+      .getCharacterProfile(character.id)
+      .then(setProfile)
+      .catch(() => undefined);
   }, [character?.id]);
 
   if (!character) {
@@ -290,8 +312,26 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
 
   return (
     <>
-      <h1>{character.name}</h1>
-      <div className="sub">Skills, training, and wallet.</div>
+      <div className="char-header">
+        <img className="portrait" src={portraitUrl(character.id, 128)} alt="" width={56} height={56} loading="lazy" />
+        <div>
+          <h1>{character.name}</h1>
+          <div className="sub">
+            {profile ? (
+              <>
+                {profile.corporation}
+                {profile.alliance ? ` · ${profile.alliance}` : ""}
+                {" · "}
+                <span style={{ color: secColor(profile.security_status) }}>
+                  {profile.security_status.toFixed(1)} sec
+                </span>
+              </>
+            ) : (
+              "Skills, training, wallet, assets, and mail."
+            )}
+          </div>
+        </div>
+      </div>
       {error && !sheet && <div className="card"><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
       {loading && <div className="card"><p style={{ color: "var(--text-dim)" }}>Loading…</p></div>}
       {sheet && (

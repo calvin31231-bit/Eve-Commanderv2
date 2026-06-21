@@ -149,6 +149,19 @@ impl CharacterSheet {
     }
 }
 
+/// Public character info (ESI `GET /characters/{id}/` — no auth needed).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CharacterPublic {
+    pub name: String,
+    pub corporation_id: i64,
+    #[serde(default)]
+    pub alliance_id: Option<i64>,
+    #[serde(default)]
+    pub security_status: f64,
+    #[serde(default)]
+    pub birthday: Option<String>,
+}
+
 /// Current location (ESI `GET /characters/{id}/location/`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CharacterLocation {
@@ -250,6 +263,15 @@ impl CharacterClient {
     /// The character's online status.
     pub async fn online(&self, character_id: i64) -> Result<CharacterOnline> {
         self.auth_get(character_id, "online").await
+    }
+
+    /// Public character info (corp/alliance/sec status). Unauthenticated.
+    pub async fn public_info(&self, character_id: i64) -> Result<CharacterPublic> {
+        let ep = endpoint("character_public")
+            .ok_or_else(|| Error::other("unknown endpoint 'character_public'"))?;
+        self.esi
+            .get_public_json::<CharacterPublic>(&ep.path_for(character_id))
+            .await
     }
 
     /// Assemble the live status strip (online, location, ship, current training)
@@ -385,6 +407,18 @@ mod tests {
         assert!(queue.is_empty());
         assert!(queue.active().is_none());
         assert!(queue.finishes_at().is_none());
+    }
+
+    #[test]
+    fn deserializes_public_info() {
+        let p: CharacterPublic = serde_json::from_str(
+            r#"{"name": "Capsuleer", "corporation_id": 98000001, "alliance_id": 99000001, "security_status": 4.7, "birthday": "2018-01-01T00:00:00Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(p.name, "Capsuleer");
+        assert_eq!(p.corporation_id, 98000001);
+        assert_eq!(p.alliance_id, Some(99000001));
+        assert!((p.security_status - 4.7).abs() < 1e-9);
     }
 
     #[test]

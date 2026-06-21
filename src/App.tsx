@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, isTauri } from "./ipc";
-import { HUBS, renderHub } from "./hubs";
+import { HUBS, renderHub, portraitUrl } from "./hubs";
 import { Starfield } from "./Starfield";
 import { AgentAvatar, type Mood } from "./AgentAvatar";
 import type { Character, CharacterStatusView, Notification, ServerStatus, Severity } from "./types";
@@ -150,6 +150,9 @@ export default function App() {
       {/* Top context bar — always-foreground identity & status */}
       <header className="context-bar">
         <span className="pill">
+          {activeCharacter && (
+            <img className="avatar-sm" src={portraitUrl(activeCharacter.id, 32)} alt="" width={20} height={20} />
+          )}
           <strong>{activeCharacter ? activeCharacter.name : "No active character"}</strong>
           {charStatus && (
             <span className={`online-tag ${charStatus.online ? "on" : "off"}`}>

@@ -212,6 +212,7 @@ pub fn run() {
             commands::remove_character,
             commands::get_character_sheet,
             commands::get_character_status,
+            commands::get_character_profile,
             commands::get_top_holdings,
             commands::get_clones,
             commands::get_cashflow,

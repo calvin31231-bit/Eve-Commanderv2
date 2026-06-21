@@ -9,6 +9,7 @@ import type {
   AccountOverview,
   CashflowSummary,
   Character,
+  CharacterProfile,
   CharacterSheet,
   CharacterStatusView,
   ClonesView,
@@ -48,6 +49,8 @@ export const api = {
     call<CharacterSheet>("get_character_sheet", { characterId }),
   getCharacterStatus: (characterId: number) =>
     call<CharacterStatusView>("get_character_status", { characterId }),
+  getCharacterProfile: (characterId: number) =>
+    call<CharacterProfile>("get_character_profile", { characterId }),
   getTopHoldings: (characterId: number, limit: number) =>
     call<HoldingsView>("get_top_holdings", { characterId, limit }),
   getClones: (characterId: number) =>
