@@ -41,6 +41,12 @@ export interface HoldingsView {
   groups: ValuedAssetGroup[];
 }
 
+export interface LocationValueView {
+  location_name: string;
+  value: number;
+  item_count: number;
+}
+
 export interface NamedType {
   type_id: number;
   name: string;

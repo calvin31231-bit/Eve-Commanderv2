@@ -18,6 +18,7 @@ import type {
   TransactionView,
   HoldingsView,
   IndustryJobView,
+  LocationValueView,
   MailHeader,
   MailView,
   MarketView,
@@ -62,6 +63,8 @@ export const api = {
     call<TransactionView[]>("get_transactions", { characterId, limit }),
   getTopHoldings: (characterId: number, limit: number) =>
     call<HoldingsView>("get_top_holdings", { characterId, limit }),
+  getAssetsByLocation: (characterId: number, limit: number) =>
+    call<LocationValueView[]>("get_assets_by_location", { characterId, limit }),
   getClones: (characterId: number) =>
     call<ClonesView>("get_clones", { characterId }),
   getCashflow: (characterId: number) =>

@@ -94,6 +94,41 @@ pub struct ValuedHoldings {
     pub groups: Vec<ValuedGroup>,
 }
 
+/// Estimated value sitting at one location.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocationValue {
+    pub location_id: i64,
+    pub value: f64,
+    pub item_count: usize,
+}
+
+/// Aggregate **hangar** assets by location, valued via the price map. Only
+/// top-level hangar items are counted (items nested in ships/containers carry a
+/// container item-id as their "location", which isn't a place), so this reads as
+/// "value sitting in each station". Sorted by value descending.
+pub fn aggregate_by_location(items: &[AssetItem], prices: &PriceMap) -> Vec<LocationValue> {
+    let mut acc: HashMap<i64, (f64, usize)> = HashMap::new();
+    for item in items {
+        if item.location_flag != "Hangar" {
+            continue;
+        }
+        let entry = acc.entry(item.location_id).or_insert((0.0, 0));
+        entry.0 += prices.value(item.type_id, item.quantity);
+        entry.1 += 1;
+    }
+    let mut out: Vec<LocationValue> = acc
+        .into_iter()
+        .map(|(location_id, (value, item_count))| LocationValue { location_id, value, item_count })
+        .collect();
+    out.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.location_id.cmp(&b.location_id))
+    });
+    out
+}
+
 /// Value every group, total them, and return the `top_n` by value (descending).
 /// The total reflects all holdings; only the returned rows are truncated.
 pub fn value_holdings(groups: &[AssetGroup], prices: &PriceMap, top_n: usize) -> ValuedHoldings {
@@ -170,6 +205,12 @@ impl AssetsClient {
         let items = self.items(character_id).await?;
         Ok(aggregate_by_type(&items))
     }
+
+    /// Fetch assets and aggregate hangar value by location.
+    pub async fn by_location(&self, character_id: i64, prices: &PriceMap) -> Result<Vec<LocationValue>> {
+        let items = self.items(character_id).await?;
+        Ok(aggregate_by_location(&items, prices))
+    }
 }
 
 #[cfg(test)]
@@ -244,6 +285,23 @@ mod tests {
         assert_eq!(valued.groups[0].type_id, 587);
         assert_eq!(valued.groups[0].value, 2_000_000.0);
         assert_eq!(valued.groups[1].type_id, 34);
+    }
+
+    #[test]
+    fn aggregates_hangar_value_by_location() {
+        use crate::prices::{PriceMap, TypePrice};
+        let prices = PriceMap::from_prices(&[TypePrice { type_id: 34, average_price: 5.0, adjusted_price: 0.0 }]);
+        let mut a = item(34, 60000001, 1000); // Hangar, station A → 5000
+        a.location_flag = "Hangar".into();
+        let mut b = item(34, 60000002, 200); // Hangar, station B → 1000
+        b.location_flag = "Hangar".into();
+        let mut nested = item(34, 99999, 5000); // in a container → excluded
+        nested.location_flag = "Cargo".into();
+        let locs = aggregate_by_location(&[a, b, nested], &prices);
+        assert_eq!(locs.len(), 2);
+        assert_eq!(locs[0].location_id, 60000001);
+        assert_eq!(locs[0].value, 5000.0);
+        assert_eq!(locs[1].location_id, 60000002);
     }
 
     #[tokio::test]

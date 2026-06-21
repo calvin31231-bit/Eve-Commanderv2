@@ -17,6 +17,7 @@ import type {
   ClonesView,
   HoldingsView,
   IndustryJobView,
+  LocationValueView,
   MailHeader,
   MailView,
   MarketView,
@@ -259,6 +260,7 @@ function MailCard({ character }: { character: Character }): ReactNode {
 function CharacterHub({ character }: { character: Character | null }): ReactNode {
   const [sheet, setSheet] = useState<CharacterSheet | null>(null);
   const [holdings, setHoldings] = useState<HoldingsView | null>(null);
+  const [locations, setLocations] = useState<LocationValueView[]>([]);
   const [clones, setClones] = useState<ClonesView | null>(null);
   const [cashflow, setCashflow] = useState<CashflowSummary | null>(null);
   const [mining, setMining] = useState<MiningView | null>(null);
@@ -272,6 +274,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
   useEffect(() => {
     setSheet(null);
     setHoldings(null);
+    setLocations([]);
     setClones(null);
     setCashflow(null);
     setMining(null);
@@ -296,6 +299,10 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     api
       .getTopHoldings(character.id, 8)
       .then(setHoldings)
+      .catch(() => undefined);
+    api
+      .getAssetsByLocation(character.id, 6)
+      .then(setLocations)
       .catch(() => undefined);
     api
       .getClones(character.id)
@@ -500,6 +507,22 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
                   <td>{h.name}</td>
                   <td className="mono num">×{ISK.format(h.quantity)}</td>
                   <td className="mono num pos">{ISK.format(h.value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {locations.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Assets by location</h3>
+          <table className="holdings">
+            <tbody>
+              {locations.map((l, i) => (
+                <tr key={i}>
+                  <td>{l.location_name}</td>
+                  <td className="loc">{l.item_count} item{l.item_count === 1 ? "" : "s"}</td>
+                  <td className="mono num pos">{ISK.format(l.value)}</td>
                 </tr>
               ))}
             </tbody>

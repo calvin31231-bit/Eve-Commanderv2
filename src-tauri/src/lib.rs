@@ -217,6 +217,7 @@ pub fn run() {
             commands::get_attributes,
             commands::get_transactions,
             commands::get_top_holdings,
+            commands::get_assets_by_location,
             commands::get_clones,
             commands::get_cashflow,
             commands::get_industry_jobs,

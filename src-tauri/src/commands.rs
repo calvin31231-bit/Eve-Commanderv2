@@ -426,6 +426,44 @@ pub struct JumpCloneView {
     pub implants: Vec<NamedType>,
 }
 
+/// Value at one named location.
+#[derive(Debug, Serialize)]
+pub struct LocationValueView {
+    pub location_name: String,
+    pub value: f64,
+    pub item_count: usize,
+}
+
+/// Hangar asset value grouped by station/location (top `limit` by value).
+#[tauri::command]
+pub async fn get_assets_by_location(
+    state: State<'_, AppState>,
+    character_id: i64,
+    limit: usize,
+) -> CmdResult<Vec<LocationValueView>> {
+    let prices = state.prices.price_map().await.unwrap_or_default();
+    let mut locations = state
+        .assets
+        .by_location(character_id, &prices)
+        .await
+        .map_err(|e| e.to_string())?;
+    locations.truncate(limit);
+
+    let ids: Vec<i64> = locations.iter().map(|l| l.location_id).collect();
+    let names = names_for(&state, &ids).await;
+    Ok(locations
+        .into_iter()
+        .map(|l| LocationValueView {
+            location_name: names
+                .get(&l.location_id)
+                .cloned()
+                .unwrap_or_else(|| format!("Location {}", l.location_id)),
+            value: l.value,
+            item_count: l.item_count,
+        })
+        .collect())
+}
+
 /// The clone view: active implants plus a per-jump-clone breakdown.
 #[derive(Debug, Serialize)]
 pub struct ClonesView {
