@@ -33,6 +33,7 @@ pub mod esi;
 pub mod fitting;
 pub mod industry;
 pub mod industry_plan;
+pub mod intel;
 pub mod insurance;
 pub mod mail;
 pub mod market;

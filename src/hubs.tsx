@@ -37,6 +37,7 @@ import type {
   CanFlyView,
   DoctrineView,
   DscanResult,
+  ThreatScanView,
 } from "./types";
 
 export interface Hub {
@@ -1660,13 +1661,89 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
         tabs={[
           { id: "fitting", label: "Fitting" },
           { id: "dscan", label: "D-Scan" },
+          { id: "threat", label: "Threat Scanner" },
         ]}
         active={sub}
         onSelect={setSub}
       />
       {sub === "fitting" && <FitImporter character={character} />}
       {sub === "dscan" && <DscanPanel />}
+      {sub === "threat" && <ThreatScanner />}
     </>
+  );
+}
+
+const THREAT_BADGE: Record<string, string> = {
+  Danger: "badge danger",
+  Caution: "badge caution",
+  Neutral: "badge",
+  Safe: "badge safe",
+};
+
+function ThreatScanner(): ReactNode {
+  const [text, setText] = useState("");
+  const [result, setResult] = useState<ThreatScanView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function scan() {
+    if (!isTauri()) return;
+    const names = text
+      .split(/[\n\r]+/)
+      .map((n) => n.trim())
+      .filter(Boolean);
+    if (names.length === 0) return;
+    setLoading(true);
+    setResult(null);
+    api
+      .scanPilots(names)
+      .then(setResult)
+      .catch(() => setResult(null))
+      .finally(() => setLoading(false));
+  }
+
+  return (
+    <div className="card threat-scanner">
+      <h3>Local Threat Scanner</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        In space, select all in the Local member list, copy, and paste the names here. Each pilot
+        is scored from zKillboard + sec status.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={"One pilot name per line…"}
+        rows={6}
+        style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }}
+      />
+      <button onClick={scan} disabled={loading || !text.trim()} style={{ marginTop: 8 }}>
+        {loading ? "Scanning…" : "Scan pilots"}
+      </button>
+      {result && (
+        <div style={{ marginTop: 10 }}>
+          <p style={{ marginTop: 0 }}>{result.summary}</p>
+          <table className="holdings">
+            <tbody>
+              {result.pilots.map((p) => (
+                <tr key={p.name}>
+                  <td>
+                    <span className={THREAT_BADGE[p.level] ?? "badge"}>{p.level}</span> {p.name}
+                    <div style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                      {p.reasons.join(" · ")}
+                    </div>
+                  </td>
+                  <td className="mono num">{p.ships_destroyed > 0 ? `${p.ships_destroyed} kills` : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {result.unresolved.length > 0 && (
+            <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+              Unresolved: {result.unresolved.join(", ")}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

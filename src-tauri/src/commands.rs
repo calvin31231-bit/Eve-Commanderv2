@@ -1423,6 +1423,87 @@ pub fn parse_dscan(text: String) -> eve_core::dscan::DscanResult {
     eve_core::dscan::parse_dscan(&text)
 }
 
+/// One scored pilot in a Local threat scan.
+#[derive(Debug, Serialize)]
+pub struct PilotThreatView {
+    pub name: String,
+    pub level: String,
+    pub reasons: Vec<String>,
+    pub danger_ratio: i64,
+    pub ships_destroyed: i64,
+    pub sec_status: f64,
+}
+
+/// The result of scanning a list of pasted pilot names.
+#[derive(Debug, Serialize)]
+pub struct ThreatScanView {
+    pub pilots: Vec<PilotThreatView>,
+    pub summary: String,
+    /// Pasted names that didn't resolve to a character.
+    pub unresolved: Vec<String>,
+}
+
+/// Local threat scanner: resolve pasted pilot names to characters, pull each
+/// one's zKillboard stats, and score them Safe/Neutral/Caution/Danger. The
+/// deterministic score is computed in `eve_core::intel`; this just orchestrates
+/// the name→id and killboard fetches and sorts the most dangerous first.
+#[tauri::command]
+pub async fn scan_pilots(
+    state: State<'_, AppState>,
+    names: Vec<String>,
+) -> CmdResult<ThreatScanView> {
+    use eve_core::intel::{score_pilot, summarize, ThreatLevel};
+
+    let names: Vec<String> = names
+        .into_iter()
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .collect();
+    let id_map = state
+        .names
+        .character_ids(&names)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // (name, level, threat, stats) so we can sort by level before serializing.
+    let mut scored: Vec<(String, ThreatLevel, eve_core::intel::PilotThreat, eve_core::intel::PilotStats)> =
+        Vec::new();
+    let mut unresolved = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for name in &names {
+        let key = name.to_lowercase();
+        if !seen.insert(key.clone()) {
+            continue; // de-dup repeated names in the paste
+        }
+        match id_map.get(&key) {
+            Some(&id) => {
+                let stats = state.zkill.character_stats(id).await.unwrap_or_default();
+                let ps = stats.to_pilot_stats();
+                let threat = score_pilot(&ps);
+                scored.push((name.clone(), threat.level, threat, ps));
+            }
+            None => unresolved.push(name.clone()),
+        }
+    }
+
+    // Most dangerous first.
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+    let summary = summarize(&scored.iter().map(|s| s.1).collect::<Vec<_>>());
+    let pilots = scored
+        .into_iter()
+        .map(|(name, _, threat, ps)| PilotThreatView {
+            name,
+            level: threat.level.as_str().to_string(),
+            reasons: threat.reasons,
+            danger_ratio: ps.danger_ratio,
+            ships_destroyed: ps.ships_destroyed,
+            sec_status: ps.sec_status,
+        })
+        .collect();
+
+    Ok(ThreatScanView { pilots, summary, unresolved })
+}
+
 /// A single skill requirement the character hasn't met for a fit.
 #[derive(Debug, Serialize)]
 pub struct MissingSkillView {

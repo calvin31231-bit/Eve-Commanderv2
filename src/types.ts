@@ -403,6 +403,21 @@ export interface DscanResult {
   warnings: string[];
 }
 
+export interface PilotThreatView {
+  name: string;
+  level: "Safe" | "Neutral" | "Caution" | "Danger";
+  reasons: string[];
+  danger_ratio: number;
+  ships_destroyed: number;
+  sec_status: number;
+}
+
+export interface ThreatScanView {
+  pilots: PilotThreatView[];
+  summary: string;
+  unresolved: string[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

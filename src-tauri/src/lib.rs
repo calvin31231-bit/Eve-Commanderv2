@@ -27,6 +27,7 @@ use eve_core::fitting::FittingClient;
 use eve_core::industry::IndustryClient;
 use eve_core::industry_plan::IndustryPlanClient;
 use eve_core::insurance::InsuranceClient;
+use eve_core::intel::ZkillClient;
 use eve_core::mail::MailClient;
 use eve_core::market::MarketClient;
 use eve_core::marketdata::MarketDataClient;
@@ -81,6 +82,8 @@ pub struct AppState {
     pub industry_plan: IndustryPlanClient,
     /// SDE-backed EFT fit parser/resolver for the Combat & Intel hub.
     pub fitting: FittingClient,
+    /// zKillboard reads for the Local threat scanner (Combat & Intel hub).
+    pub zkill: ZkillClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -190,6 +193,7 @@ fn build_state() -> AppState {
     let reprocess = ReprocessClient::new(sde.clone());
     let industry_plan = IndustryPlanClient::new(sde.clone());
     let fitting = FittingClient::new(sde.clone());
+    let zkill = ZkillClient::new(config.user_agent.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -233,6 +237,7 @@ fn build_state() -> AppState {
         reprocess,
         industry_plan,
         fitting,
+        zkill,
         names,
         notifications,
         intensity,
@@ -294,6 +299,7 @@ pub fn run() {
             commands::can_fly_fit,
             commands::doctrine_check,
             commands::parse_dscan,
+            commands::scan_pilots,
             commands::cost_skill_plan,
             commands::get_contracts,
             commands::get_mining,

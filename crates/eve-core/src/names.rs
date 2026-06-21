@@ -37,6 +37,20 @@ struct EsiStructure {
     name: String,
 }
 
+/// Response of `POST /universe/ids/` — only the characters bucket is needed.
+#[derive(Debug, Clone, Deserialize, Default)]
+struct EsiIds {
+    #[serde(default)]
+    characters: Vec<EsiNameOnly>,
+}
+
+/// A name→id pair from `/universe/ids/` (it returns `name` + `id`, no category).
+#[derive(Debug, Clone, Deserialize)]
+struct EsiNameOnly {
+    id: i64,
+    name: String,
+}
+
 /// Player-owned (Upwell) structure ids start here; below this are NPC stations
 /// and other ids that `/universe/names/` already resolves.
 pub const STRUCTURE_ID_MIN: i64 = 1_000_000_000_000;
@@ -183,6 +197,25 @@ impl NameResolver {
         self.esi
             .post_public_json::<[i64], Vec<EsiName>>("/latest/universe/names/", ids)
             .await
+    }
+
+    /// Resolve character *names* to ids via ESI `POST /universe/ids/` (the
+    /// inverse of [`resolve`]). Used by the Local threat scanner to turn pasted
+    /// pilot names into ids. Matching is case-insensitive; the returned map is
+    /// keyed by the lowercased name. Names that don't match a character are
+    /// simply absent.
+    pub async fn character_ids(&self, names: &[String]) -> Result<HashMap<String, i64>> {
+        let mut out = HashMap::new();
+        for chunk in names.chunks(ESI_NAMES_BATCH) {
+            let res: EsiIds = self
+                .esi
+                .post_public_json::<[String], EsiIds>("/latest/universe/ids/", chunk)
+                .await?;
+            for c in res.characters {
+                out.insert(c.name.to_lowercase(), c.id);
+            }
+        }
+        Ok(out)
     }
 }
 
