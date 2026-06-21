@@ -1416,6 +1416,13 @@ pub async fn parse_fit(
     state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())
 }
 
+/// Parse pasted D-scan clipboard text into a grouped readout with danger
+/// callouts (combat probes, tackle hulls). Pure — needs no character or network.
+#[tauri::command]
+pub fn parse_dscan(text: String) -> eve_core::dscan::DscanResult {
+    eve_core::dscan::parse_dscan(&text)
+}
+
 /// A single skill requirement the character hasn't met for a fit.
 #[derive(Debug, Serialize)]
 pub struct MissingSkillView {

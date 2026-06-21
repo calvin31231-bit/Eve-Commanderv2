@@ -293,6 +293,7 @@ pub fn run() {
             commands::parse_fit,
             commands::can_fly_fit,
             commands::doctrine_check,
+            commands::parse_dscan,
             commands::cost_skill_plan,
             commands::get_contracts,
             commands::get_mining,

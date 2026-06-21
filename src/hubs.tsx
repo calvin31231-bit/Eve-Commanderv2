@@ -36,6 +36,7 @@ import type {
   SkillPlanView,
   CanFlyView,
   DoctrineView,
+  DscanResult,
 } from "./types";
 
 export interface Hub {
@@ -1650,12 +1651,71 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
 }
 
 function CombatHub({ character }: { character: Character | null }): ReactNode {
+  const [sub, setSub] = useState("fitting");
   return (
     <>
       <h1>Combat &amp; Intel</h1>
-      <div className="sub">Fitting now; killboard, intel map, D-scan, and threat scanner land in Phase 4.</div>
-      <FitImporter character={character} />
+      <div className="sub">Fitting and D-scan; threat scanner + intel map land next.</div>
+      <SubTabs
+        tabs={[
+          { id: "fitting", label: "Fitting" },
+          { id: "dscan", label: "D-Scan" },
+        ]}
+        active={sub}
+        onSelect={setSub}
+      />
+      {sub === "fitting" && <FitImporter character={character} />}
+      {sub === "dscan" && <DscanPanel />}
     </>
+  );
+}
+
+function DscanPanel(): ReactNode {
+  const [text, setText] = useState("");
+  const [result, setResult] = useState<DscanResult | null>(null);
+
+  function scan() {
+    if (!isTauri()) return;
+    api.parseDscan(text).then(setResult).catch(() => setResult(null));
+  }
+
+  return (
+    <div className="card dscan-panel">
+      <h3>Directional Scan</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        In space, open the D-scan, "Copy to clipboard", and paste here for a grouped readout.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Paste D-scan results…"
+        rows={6}
+        style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }}
+      />
+      <button onClick={scan} disabled={!text.trim()} style={{ marginTop: 8 }}>
+        Scan
+      </button>
+      {result && (
+        <div style={{ marginTop: 10 }}>
+          {result.warnings.map((w, i) => (
+            <p key={i} style={{ margin: "2px 0" }}>
+              <span className="badge danger">!</span> {w}
+            </p>
+          ))}
+          <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{result.total} contacts</p>
+          <table className="holdings">
+            <tbody>
+              {result.groups.map((g) => (
+                <tr key={g.type_name}>
+                  <td>{g.type_name}</td>
+                  <td className="mono num">×{g.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 

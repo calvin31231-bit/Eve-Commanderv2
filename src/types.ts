@@ -392,6 +392,17 @@ export interface DoctrineView {
   unresolved: string[];
 }
 
+export interface DscanGroup {
+  type_name: string;
+  count: number;
+}
+
+export interface DscanResult {
+  total: number;
+  groups: DscanGroup[];
+  warnings: string[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

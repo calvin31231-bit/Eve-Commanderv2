@@ -38,6 +38,7 @@ import type {
   SkillPlanView,
   CanFlyView,
   DoctrineView,
+  DscanResult,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -106,6 +107,7 @@ export const api = {
   canFlyFit: (characterId: number, eft: string) =>
     call<CanFlyView>("can_fly_fit", { characterId, eft }),
   doctrineCheck: (eft: string) => call<DoctrineView>("doctrine_check", { eft }),
+  parseDscan: (text: string) => call<DscanResult>("parse_dscan", { text }),
   costSkillPlan: (
     characterId: number,
     targets: { skill_type_id: number; target_level: number }[],
