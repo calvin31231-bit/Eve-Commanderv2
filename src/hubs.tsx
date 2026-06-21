@@ -223,6 +223,11 @@ function MailCard({ character }: { character: Character }): ReactNode {
     setOpenId(h.mail_id);
     setOpen(null);
     api.getMail(character.id, h.mail_id).then(setOpen).catch(() => undefined);
+    // Mark read on the server and reflect it locally.
+    if (!h.is_read) {
+      api.markMailRead(character.id, h.mail_id).catch(() => undefined);
+      setHeaders((prev) => prev.map((x) => (x.mail_id === h.mail_id ? { ...x, is_read: true } : x)));
+    }
   }
 
   if (headers.length === 0) return null;
@@ -411,14 +416,32 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
               <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
                 jump clone{clones.jump_clone_count === 1 ? "" : "s"} · {clones.active_implant_count} active implant
                 {clones.active_implant_count === 1 ? "" : "s"}
+                {clones.home_location_name ? ` · home: ${clones.home_location_name}` : ""}
               </p>
               {clones.implants.length > 0 && (
-                <ul className="implant-list">
-                  {clones.implants.map((i) => (
-                    <li key={i.type_id}>{i.name}</li>
-                  ))}
-                </ul>
+                <>
+                  <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 2px" }}>Active clone</p>
+                  <ul className="implant-list">
+                    {clones.implants.map((i) => (
+                      <li key={i.type_id}>{i.name}</li>
+                    ))}
+                  </ul>
+                </>
               )}
+              {clones.jump_clones.map((jc) => (
+                <div key={jc.jump_clone_id} style={{ marginTop: 8 }}>
+                  <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 2px" }}>
+                    {jc.name || "Jump clone"} · {jc.location_name}
+                  </p>
+                  <ul className="implant-list">
+                    {jc.implants.length === 0 ? (
+                      <li style={{ opacity: 0.6 }}>no implants</li>
+                    ) : (
+                      jc.implants.map((i) => <li key={i.type_id}>{i.name}</li>)
+                    )}
+                  </ul>
+                </div>
+              ))}
             </div>
           )}
         </div>

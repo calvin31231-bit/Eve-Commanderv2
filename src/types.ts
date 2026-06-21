@@ -46,10 +46,20 @@ export interface NamedType {
   name: string;
 }
 
+export interface JumpCloneView {
+  jump_clone_id: number;
+  name: string | null;
+  location_name: string;
+  implants: NamedType[];
+}
+
 export interface ClonesView {
   jump_clone_count: number;
   active_implant_count: number;
   implants: NamedType[];
+  home_location_name: string | null;
+  jump_clones: JumpCloneView[];
+  last_jump_date: string | null;
 }
 
 export interface RefTypeTotal {

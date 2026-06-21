@@ -119,6 +119,35 @@ impl EsiClient {
         Ok(resp.json::<T>().await?)
     }
 
+    /// PUT a JSON body to an authenticated ESI path (write). ESI returns 204 on
+    /// success; no response body is parsed. Breaker-aware.
+    pub async fn put_auth_empty<B>(&self, path: &str, body: &B, access_token: &str) -> Result<()>
+    where
+        B: serde::Serialize + ?Sized,
+    {
+        let backoff = self.backoff();
+        if backoff > Duration::ZERO {
+            return Err(Error::RateLimited(backoff.as_secs()));
+        }
+        let url = format!("{ESI_BASE}{path}");
+        let resp = self
+            .http
+            .put(&url)
+            .header(reqwest::header::USER_AGENT, &self.user_agent)
+            .bearer_auth(access_token)
+            .json(body)
+            .send()
+            .await?;
+        if let Ok(mut budget) = self.budget.lock() {
+            let headers = resp.headers().clone();
+            budget.observe_headers(|k| headers.get(k).and_then(|v| v.to_str().ok()));
+        }
+        if !resp.status().is_success() {
+            return Err(Error::other(format!("ESI PUT {} returned {}", path, resp.status())));
+        }
+        Ok(())
+    }
+
     /// Fetch a path through the full cache-first pipeline and return the raw
     /// body, without deserializing. The background poller uses this to **warm
     /// the cache** (and update the error budget) so later typed reads are served

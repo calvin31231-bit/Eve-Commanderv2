@@ -120,6 +120,19 @@ impl MailClient {
         let token = self.tokens.access_token(character_id).await?;
         self.esi.get_auth_json::<Mail>(&path, &token).await
     }
+
+    /// Mark a mail as read (requires the `esi-mail.organize_mail.v1` scope).
+    pub async fn mark_read(&self, character_id: i64, mail_id: i64) -> Result<()> {
+        let path = format!("/latest/characters/{character_id}/mail/{mail_id}/");
+        let token = self.tokens.access_token(character_id).await?;
+        #[derive(serde::Serialize)]
+        struct MarkRead {
+            read: bool,
+        }
+        self.esi
+            .put_auth_empty(&path, &MarkRead { read: true }, &token)
+            .await
+    }
 }
 
 #[cfg(test)]

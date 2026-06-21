@@ -224,6 +224,7 @@ pub fn run() {
             commands::get_mining,
             commands::get_mail_headers,
             commands::get_mail,
+            commands::mark_mail_read,
             commands::list_notifications,
             commands::unread_notifications,
             commands::mark_notifications_read,

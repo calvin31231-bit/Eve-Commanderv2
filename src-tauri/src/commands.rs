@@ -7,7 +7,6 @@ use tauri::State;
 use eve_core::account::{aggregate, AccountOverview, CharacterWorth};
 use eve_core::assets::value_holdings;
 use eve_core::character::CharacterSheet;
-use eve_core::clones::ClonesSummary;
 use eve_core::mail::strip_markup;
 use eve_core::mining::estimated_yield;
 use eve_core::model::Character;
@@ -31,6 +30,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-assets.read_assets.v1",
     "esi-industry.read_character_mining.v1",
     "esi-mail.read_mail.v1",
+    "esi-mail.organize_mail.v1",
     "esi-clones.read_clones.v1",
     "esi-clones.read_implants.v1",
     "esi-location.read_location.v1",
@@ -417,38 +417,70 @@ pub async fn get_top_holdings(
     })
 }
 
-/// The clone view: jump-clone count and the active clone's named implants.
+/// One jump clone with resolved location + implant names.
+#[derive(Debug, Serialize)]
+pub struct JumpCloneView {
+    pub jump_clone_id: i64,
+    pub name: Option<String>,
+    pub location_name: String,
+    pub implants: Vec<NamedType>,
+}
+
+/// The clone view: active implants plus a per-jump-clone breakdown.
 #[derive(Debug, Serialize)]
 pub struct ClonesView {
     pub jump_clone_count: usize,
     pub active_implant_count: usize,
     pub implants: Vec<NamedType>,
+    pub home_location_name: Option<String>,
+    pub jump_clones: Vec<JumpCloneView>,
+    pub last_jump_date: Option<String>,
 }
 
-/// Jump clones + active implants (with SDE-resolved implant names) for a
-/// character.
+/// Jump clones (location + implants each) + active implants, all named.
 #[tauri::command]
 pub async fn get_clones(state: State<'_, AppState>, character_id: i64) -> CmdResult<ClonesView> {
-    let summary: ClonesSummary = state
-        .clones
-        .summary(character_id)
-        .await
-        .map_err(|e| e.to_string())?;
+    let (clones, active) = tokio::join!(
+        state.clones.clones(character_id),
+        state.clones.active_implants(character_id),
+    );
+    let clones = clones.map_err(|e| e.to_string())?;
+    let active = active.unwrap_or_default();
 
-    let names = names_for(&state, &summary.active_implants).await;
-    let implants = summary
-        .active_implants
-        .iter()
-        .map(|&type_id| NamedType {
-            type_id,
-            name: named(&names, type_id),
-        })
-        .collect();
+    // One batch resolve for every id across home, clones (location + implants),
+    // and the active set.
+    let mut ids: Vec<i64> = active.clone();
+    if let Some(h) = &clones.home_location {
+        ids.push(h.location_id);
+    }
+    for jc in &clones.jump_clones {
+        ids.push(jc.location_id);
+        ids.extend(&jc.implants);
+    }
+    let names = names_for(&state, &ids).await;
+    let named_types = |type_ids: &[i64]| -> Vec<NamedType> {
+        type_ids
+            .iter()
+            .map(|&type_id| NamedType { type_id, name: named(&names, type_id) })
+            .collect()
+    };
 
     Ok(ClonesView {
-        jump_clone_count: summary.jump_clone_count,
-        active_implant_count: summary.active_implants.len(),
-        implants,
+        jump_clone_count: clones.jump_clones.len(),
+        active_implant_count: active.len(),
+        implants: named_types(&active),
+        home_location_name: clones.home_location.as_ref().map(|h| named(&names, h.location_id)),
+        jump_clones: clones
+            .jump_clones
+            .iter()
+            .map(|jc| JumpCloneView {
+                jump_clone_id: jc.jump_clone_id,
+                name: jc.name.clone().filter(|n| !n.is_empty()),
+                location_name: named(&names, jc.location_id),
+                implants: named_types(&jc.implants),
+            })
+            .collect(),
+        last_jump_date: clones.last_clone_jump_date.clone(),
     })
 }
 
@@ -736,6 +768,20 @@ pub async fn get_transactions(
             date: t.date,
         })
         .collect())
+}
+
+/// Mark a mail as read (requires the organize-mail scope).
+#[tauri::command]
+pub async fn mark_mail_read(
+    state: State<'_, AppState>,
+    character_id: i64,
+    mail_id: i64,
+) -> CmdResult<()> {
+    state
+        .mail
+        .mark_read(character_id, mail_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// All collected notifications, most recent first (drives the Alerts rail).
