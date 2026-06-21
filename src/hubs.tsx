@@ -54,6 +54,39 @@ export const HUBS: Hub[] = [
   { id: "tools", label: "Tools", icon: "⚙" },
 ];
 
+interface SubTab {
+  id: string;
+  label: string;
+}
+
+/// A horizontal tab strip rendered under a hub title; the side rail keeps the
+/// major hubs, these switch the sections within one hub.
+function SubTabs({
+  tabs,
+  active,
+  onSelect,
+}: {
+  tabs: SubTab[];
+  active: string;
+  onSelect: (id: string) => void;
+}): ReactNode {
+  return (
+    <div className="subtabs" role="tablist">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={active === t.id}
+          className={`subtab${active === t.id ? " active" : ""}`}
+          onClick={() => onSelect(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Placeholder({ title, blurb }: { title: string; blurb: string }): ReactNode {
   return (
     <>
@@ -283,6 +316,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
   const [txns, setTxns] = useState<TransactionView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sub, setSub] = useState("overview");
 
   useEffect(() => {
     setSheet(null);
@@ -369,9 +403,20 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </div>
         </div>
       </div>
+      <SubTabs
+        tabs={[
+          { id: "overview", label: "Overview" },
+          { id: "wallet", label: "Wallet" },
+          { id: "assets", label: "Assets" },
+          { id: "skills", label: "Skill Plan" },
+          { id: "mail", label: "Mail" },
+        ]}
+        active={sub}
+        onSelect={setSub}
+      />
       {error && !sheet && <div className="card"><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
       {loading && <div className="card"><p style={{ color: "var(--text-dim)" }}>Loading…</p></div>}
-      {sheet && (
+      {sub === "overview" && sheet && (
         <div className="card-grid">
           <div className="card">
             <h3>Wallet</h3>
@@ -466,7 +511,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           )}
         </div>
       )}
-      {cashflow && cashflow.entry_count > 0 && (
+      {sub === "wallet" && cashflow && cashflow.entry_count > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <h3>Cashflow <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {cashflow.entry_count} journal entries</span></h3>
           <div className="cashflow-totals">
@@ -491,7 +536,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
-      {txns.length > 0 && (
+      {sub === "wallet" && txns.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <h3>Recent transactions</h3>
           <table className="holdings">
@@ -510,7 +555,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
-      {holdings && holdings.groups.length > 0 && (
+      {sub === "assets" && holdings && holdings.groups.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <h3>Top holdings <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {ISK.format(holdings.total_value)} ISK est.</span></h3>
           <table className="holdings">
@@ -526,7 +571,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
-      {locations.length > 0 && (
+      {sub === "assets" && locations.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <h3>Assets by location</h3>
           <table className="holdings">
@@ -542,7 +587,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
-      {mining && mining.total_units > 0 && (
+      {sub === "assets" && mining && mining.total_units > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <h3>Mining <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {ISK.format(mining.total_value)} ISK over {mining.day_count} day{mining.day_count === 1 ? "" : "s"}</span></h3>
           <table className="holdings">
@@ -558,8 +603,8 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
-      <SkillPlanner character={character} />
-      <MailCard character={character} />
+      {sub === "skills" && <SkillPlanner character={character} />}
+      {sub === "mail" && <MailCard character={character} />}
     </>
   );
 }
@@ -1123,6 +1168,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loadedAt, setLoadedAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [sub, setSub] = useState("market");
   const [, forceTick] = useState(0);
 
   useEffect(() => {
@@ -1176,13 +1222,32 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
   return (
     <>
       <h1>Economy</h1>
-      <div className="sub">Industry jobs, market, and more.</div>
-      <MarketBrowser />
-      <StationScanner />
-      <ReprocessCalc />
-      <BuildPlanner />
-      <PlanetsCard character={character} />
+      <div className="sub">Markets, industry, contracts, and planets.</div>
+      <SubTabs
+        tabs={[
+          { id: "market", label: "Market" },
+          { id: "industry", label: "Industry" },
+          { id: "contracts", label: "Contracts" },
+          { id: "planets", label: "Planets" },
+        ]}
+        active={sub}
+        onSelect={setSub}
+      />
       {error && <div className="card" style={{ marginTop: 16 }}><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
+      {sub === "market" && (
+        <>
+          <MarketBrowser />
+          <StationScanner />
+        </>
+      )}
+      {sub === "industry" && (
+        <>
+          <ReprocessCalc />
+          <BuildPlanner />
+        </>
+      )}
+      {sub === "planets" && <PlanetsCard character={character} />}
+      {sub === "industry" && (
       <div className="card" style={{ marginTop: 16 }}>
         <h3>Industry jobs {jobs.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {jobs.length} active</span>}</h3>
         {jobs.length === 0 && !error ? (
@@ -1206,7 +1271,8 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
           </table>
         )}
       </div>
-      {market && (
+      )}
+      {sub === "market" && market && (
         <div className="card" style={{ marginTop: 16 }}>
           <h3>Market orders <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {market.sell_count} sell · {market.buy_count} buy</span></h3>
           <div className="cashflow-totals">
@@ -1230,7 +1296,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
           )}
         </div>
       )}
-      {contracts.length > 0 && (
+      {sub === "contracts" && contracts.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <h3>Contracts <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {contracts.filter((c) => c.status === "outstanding" || c.status === "in_progress").length} active</span></h3>
           <table className="holdings">
@@ -1249,7 +1315,29 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
           </table>
         </div>
       )}
+      {sub === "contracts" && contracts.length === 0 && !error && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <p style={{ color: "var(--text-dim)" }}>No contracts.</p>
+        </div>
+      )}
+      {sub === "planets" && <PlanetsEmpty character={character} />}
     </>
+  );
+}
+
+/// Fallback note for the Planets tab when the character runs no colonies (the
+/// PlanetsCard renders nothing in that case).
+function PlanetsEmpty({ character }: { character: Character }): ReactNode {
+  const [colonies, setColonies] = useState<ColonyView[] | null>(null);
+  useEffect(() => {
+    if (!isTauri()) return;
+    api.getPlanets(character.id).then(setColonies).catch(() => setColonies([]));
+  }, [character.id]);
+  if (colonies === null || colonies.length > 0) return null;
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <p style={{ color: "var(--text-dim)" }}>No planetary colonies on this character.</p>
+    </div>
   );
 }
 
