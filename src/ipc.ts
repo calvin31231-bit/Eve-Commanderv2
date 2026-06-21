@@ -36,6 +36,7 @@ import type {
   ResolvedFit,
   SkillPlanView,
   CanFlyView,
+  DoctrineView,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -103,6 +104,7 @@ export const api = {
   parseFit: (eft: string) => call<ResolvedFit | null>("parse_fit", { eft }),
   canFlyFit: (characterId: number, eft: string) =>
     call<CanFlyView>("can_fly_fit", { characterId, eft }),
+  doctrineCheck: (eft: string) => call<DoctrineView>("doctrine_check", { eft }),
   costSkillPlan: (
     characterId: number,
     targets: { skill_type_id: number; target_level: number }[],

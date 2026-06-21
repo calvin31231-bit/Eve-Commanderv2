@@ -1361,8 +1361,6 @@ pub async fn can_fly_fit(
     character_id: i64,
     eft: String,
 ) -> CmdResult<CanFlyView> {
-    use eve_core::skillplan::{sp_for_level, training_seconds};
-
     let Some(fit) = state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())? else {
         return Ok(CanFlyView {
             ship: String::new(),
@@ -1374,7 +1372,28 @@ pub async fn can_fly_fit(
         });
     };
 
-    // Every resolved type id referenced by the fit (ship + items).
+    let required = required_skills_for_fit(&state, &fit).await.map_err(|e| e.to_string())?;
+    let skill_ids: Vec<i64> = required.keys().copied().collect();
+    let names = names_for(&state, &skill_ids).await;
+    let (missing, total_seconds) =
+        evaluate_character(&state, character_id, &required, &names).await.map_err(|e| e.to_string())?;
+
+    Ok(CanFlyView {
+        ship: fit.ship,
+        can_fly: missing.is_empty(),
+        missing,
+        total_seconds,
+        parsed: true,
+        unresolved: fit.unresolved,
+    })
+}
+
+/// The union of skills a resolved fit requires (ship + every module/charge/drone
+/// it could resolve), keeping the highest level demanded for each skill.
+async fn required_skills_for_fit(
+    state: &AppState,
+    fit: &eve_core::fitting::ResolvedFit,
+) -> eve_core::Result<std::collections::HashMap<i64, i64>> {
     let mut type_ids: Vec<i64> = Vec::new();
     if let Some(id) = fit.ship_type_id {
         type_ids.push(id);
@@ -1384,36 +1403,45 @@ pub async fn can_fly_fit(
             type_ids.push(id);
         }
     }
-
-    // Union of required skills, keeping the highest level demanded for each.
     let sde = state.names.sde();
     let mut required: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
     for &tid in &type_ids {
-        for req in sde.required_skills(tid).await.map_err(|e| e.to_string())? {
+        for req in sde.required_skills(tid).await? {
             let e = required.entry(req.type_id).or_insert(0);
             *e = (*e).max(req.quantity);
         }
     }
+    Ok(required)
+}
 
-    let sheet = state.character.skills(character_id).await.map_err(|e| e.to_string())?;
-    let attrs = state.character.attributes(character_id).await.map_err(|e| e.to_string())?;
+/// Compare a character's trained skills to a required-skills map, returning the
+/// unmet skills (with training time, longest-first) and the total time to clear
+/// them.
+async fn evaluate_character(
+    state: &AppState,
+    character_id: i64,
+    required: &std::collections::HashMap<i64, i64>,
+    names: &std::collections::HashMap<i64, String>,
+) -> eve_core::Result<(Vec<MissingSkillView>, i64)> {
+    use eve_core::skillplan::{sp_for_level, training_seconds};
+
+    let sheet = state.character.skills(character_id).await?;
+    let attrs = state.character.attributes(character_id).await?;
     let current: std::collections::HashMap<i64, i64> = sheet
         .skills
         .iter()
         .map(|s| (s.skill_id, s.trained_skill_level))
         .collect();
 
-    let skill_ids: Vec<i64> = required.keys().copied().collect();
-    let names = names_for(&state, &skill_ids).await;
-
+    let sde = state.names.sde();
     let mut missing = Vec::new();
     let mut total_seconds = 0;
-    for (skill_id, required_level) in required {
+    for (&skill_id, &required_level) in required {
         let current_level = current.get(&skill_id).copied().unwrap_or(0);
         if current_level >= required_level {
             continue;
         }
-        let seconds = match sde.skill_meta(skill_id).await.map_err(|e| e.to_string())? {
+        let seconds = match sde.skill_meta(skill_id).await? {
             Some(m) => {
                 let sp = (sp_for_level(m.rank, required_level) - sp_for_level(m.rank, current_level))
                     .max(0);
@@ -1428,21 +1456,87 @@ pub async fn can_fly_fit(
         total_seconds += seconds;
         missing.push(MissingSkillView {
             skill_type_id: skill_id,
-            name: named(&names, skill_id),
+            name: named(names, skill_id),
             required_level,
             current_level,
             seconds,
         });
     }
-    // Longest trains first — a sensible default training order.
     missing.sort_by(|a, b| b.seconds.cmp(&a.seconds));
+    Ok((missing, total_seconds))
+}
 
-    Ok(CanFlyView {
+/// One character's verdict against a doctrine fit.
+#[derive(Debug, Serialize)]
+pub struct DoctrinePilotView {
+    pub character_id: i64,
+    pub name: String,
+    pub can_fly: bool,
+    /// Number of skills still to train.
+    pub missing_count: i64,
+    /// Time to train every gap (0 when can_fly).
+    pub total_seconds: i64,
+}
+
+/// Doctrine-compliance result across the whole roster.
+#[derive(Debug, Serialize)]
+pub struct DoctrineView {
+    pub ship: String,
+    pub parsed: bool,
+    /// Pilots who can fly it now, then the rest sorted by least training time.
+    pub pilots: Vec<DoctrinePilotView>,
+    pub can_fly_count: i64,
+    pub unresolved: Vec<String>,
+}
+
+/// Check a doctrine fit against every added character: who can fly it now, and
+/// how long the rest need to train. The fit is parsed and its required skills
+/// resolved once, then each pilot is evaluated.
+#[tauri::command]
+pub async fn doctrine_check(state: State<'_, AppState>, eft: String) -> CmdResult<DoctrineView> {
+    let Some(fit) = state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())? else {
+        return Ok(DoctrineView {
+            ship: String::new(),
+            parsed: false,
+            pilots: Vec::new(),
+            can_fly_count: 0,
+            unresolved: Vec::new(),
+        });
+    };
+
+    let required = required_skills_for_fit(&state, &fit).await.map_err(|e| e.to_string())?;
+    let skill_ids: Vec<i64> = required.keys().copied().collect();
+    let names = names_for(&state, &skill_ids).await;
+
+    let characters = state.db.list_characters().await.map_err(|e| e.to_string())?;
+    let mut pilots = Vec::with_capacity(characters.len());
+    for c in characters {
+        // Best-effort per pilot: a missing scope/token contributes a skip, not a
+        // whole-roster failure.
+        let (missing, total_seconds) = evaluate_character(&state, c.id, &required, &names)
+            .await
+            .unwrap_or_else(|_| (Vec::new(), 0));
+        pilots.push(DoctrinePilotView {
+            character_id: c.id,
+            name: c.name,
+            can_fly: missing.is_empty(),
+            missing_count: missing.len() as i64,
+            total_seconds,
+        });
+    }
+    // Can-fly first, then ascending by training time.
+    pilots.sort_by(|a, b| {
+        b.can_fly
+            .cmp(&a.can_fly)
+            .then(a.total_seconds.cmp(&b.total_seconds))
+    });
+    let can_fly_count = pilots.iter().filter(|p| p.can_fly).count() as i64;
+
+    Ok(DoctrineView {
         ship: fit.ship,
-        can_fly: missing.is_empty(),
-        missing,
-        total_seconds,
         parsed: true,
+        pilots,
+        can_fly_count,
         unresolved: fit.unresolved,
     })
 }

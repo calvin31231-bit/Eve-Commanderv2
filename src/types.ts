@@ -364,6 +364,22 @@ export interface CanFlyView {
   unresolved: string[];
 }
 
+export interface DoctrinePilotView {
+  character_id: number;
+  name: string;
+  can_fly: boolean;
+  missing_count: number;
+  total_seconds: number;
+}
+
+export interface DoctrineView {
+  ship: string;
+  parsed: boolean;
+  pilots: DoctrinePilotView[];
+  can_fly_count: number;
+  unresolved: string[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

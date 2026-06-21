@@ -34,6 +34,7 @@ import type {
   ResolvedFit,
   SkillPlanView,
   CanFlyView,
+  DoctrineView,
 } from "./types";
 
 export interface Hub {
@@ -1340,12 +1341,14 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
   const [eft, setEft] = useState("");
   const [fit, setFit] = useState<ResolvedFit | null>(null);
   const [canFly, setCanFly] = useState<CanFlyView | null>(null);
+  const [doctrine, setDoctrine] = useState<DoctrineView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function parse() {
     setError(null);
     setFit(null);
     setCanFly(null);
+    setDoctrine(null);
     if (!isTauri()) {
       setError("Design preview — connect the desktop shell to parse fits.");
       return;
@@ -1360,6 +1363,12 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
     if (!character || !isTauri()) return;
     setCanFly(null);
     api.canFlyFit(character.id, eft).then(setCanFly).catch(() => setCanFly(null));
+  }
+
+  function checkDoctrine() {
+    if (!isTauri()) return;
+    setDoctrine(null);
+    api.doctrineCheck(eft).then(setDoctrine).catch(() => setDoctrine(null));
   }
 
   return (
@@ -1382,6 +1391,9 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
             Can {character.name} fly this?
           </button>
         )}
+        <button onClick={checkDoctrine} disabled={!eft.trim()}>
+          Check all pilots
+        </button>
       </div>
       {error && <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{error}</p>}
       {canFly && canFly.parsed && (
@@ -1418,6 +1430,35 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
               {canFly.unresolved.length} item(s) unresolved — skill needs unchecked (needs full SDE).
             </p>
           )}
+        </div>
+      )}
+      {doctrine && doctrine.parsed && (
+        <div style={{ marginTop: 10 }}>
+          <p>
+            <span className={doctrine.can_fly_count > 0 ? "badge safe" : "badge caution"}>
+              {doctrine.can_fly_count}/{doctrine.pilots.length} can fly
+            </span>{" "}
+            {doctrine.ship}
+          </p>
+          <table className="holdings">
+            <tbody>
+              {doctrine.pilots.map((p) => (
+                <tr key={p.character_id}>
+                  <td>{p.name}</td>
+                  <td className="mono num">
+                    {p.can_fly ? (
+                      <span className="badge safe">ready</span>
+                    ) : (
+                      `${p.missing_count} skill${p.missing_count === 1 ? "" : "s"}`
+                    )}
+                  </td>
+                  <td className="mono num">
+                    {p.can_fly ? "" : p.total_seconds > 0 ? formatDuration(p.total_seconds) : "no SDE"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
       {fit && (
