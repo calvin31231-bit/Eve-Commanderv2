@@ -115,6 +115,12 @@ impl NameResolver {
         out
     }
 
+    /// Prefix-search item types by name (via the SDE). Limited to the seed until
+    /// a full `sde.sqlite` is shipped.
+    pub async fn search_types(&self, prefix: &str, limit: i64) -> Result<Vec<crate::sde::ItemType>> {
+        self.sde.search_types(prefix, limit).await
+    }
+
     /// Resolve a single id to a name (with `Type {id}` fallback).
     pub async fn name_or_id(&self, id: i64) -> String {
         self.resolve(&[id])

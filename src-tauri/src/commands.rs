@@ -929,6 +929,54 @@ pub async fn set_settings(
     Ok(())
 }
 
+/// A market-search result.
+#[derive(Debug, Serialize)]
+pub struct ItemHit {
+    pub type_id: i64,
+    pub name: String,
+}
+
+/// Prefix-search item types by name (SDE; full coverage needs the prebuilt SDE).
+#[tauri::command]
+pub async fn search_items(
+    state: State<'_, AppState>,
+    query: String,
+    limit: i64,
+) -> CmdResult<Vec<ItemHit>> {
+    let hits = state
+        .names
+        .search_types(&query, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(hits
+        .into_iter()
+        .map(|t| ItemHit { type_id: t.type_id, name: t.name })
+        .collect())
+}
+
+/// Regional market view for an item: best quote + history stats (The Forge).
+#[derive(Debug, Serialize)]
+pub struct MarketBrowse {
+    pub quote: eve_core::marketdata::MarketQuote,
+    pub history: eve_core::marketdata::HistoryStats,
+}
+
+#[tauri::command]
+pub async fn get_market_browse(
+    state: State<'_, AppState>,
+    type_id: i64,
+) -> CmdResult<MarketBrowse> {
+    let region = eve_core::marketdata::THE_FORGE;
+    let (quote, history) = tokio::join!(
+        state.marketdata.quote(region, type_id),
+        state.marketdata.history(region, type_id),
+    );
+    Ok(MarketBrowse {
+        quote: quote.map_err(|e| e.to_string())?,
+        history: history.unwrap_or_else(|_| eve_core::marketdata::history_stats(&[])),
+    })
+}
+
 /// All collected notifications, most recent first (drives the Alerts rail).
 #[tauri::command]
 pub fn list_notifications(state: State<'_, AppState>) -> CmdResult<Vec<Notification>> {

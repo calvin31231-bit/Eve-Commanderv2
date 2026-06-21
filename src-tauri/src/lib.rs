@@ -25,6 +25,7 @@ use eve_core::esi::EsiClient;
 use eve_core::industry::IndustryClient;
 use eve_core::mail::MailClient;
 use eve_core::market::MarketClient;
+use eve_core::marketdata::MarketDataClient;
 use eve_core::mining::MiningClient;
 use eve_core::names::NameResolver;
 use eve_core::notify::NotificationCenter;
@@ -54,6 +55,8 @@ pub struct AppState {
     pub industry: IndustryClient,
     /// Open market-order reads (escrow/value + expiry) for the Economy hub.
     pub market: MarketClient,
+    /// Public regional market data (browser) for the Economy hub.
+    pub marketdata: MarketDataClient,
     /// Mining-ledger reads (aggregated by ore) for the Character hub.
     pub mining: MiningClient,
     /// EVEmail reads (headers + body) for the Character hub.
@@ -136,6 +139,7 @@ fn build_state() -> AppState {
     let wallet = WalletClient::new(esi.clone(), token_manager.clone());
     let industry = IndustryClient::new(esi.clone(), token_manager.clone());
     let market = MarketClient::new(esi.clone(), token_manager.clone());
+    let marketdata = MarketDataClient::new(esi.clone());
     let mining = MiningClient::new(esi.clone(), token_manager.clone());
     let mail = MailClient::new(esi.clone(), token_manager.clone());
     let prices = PricesClient::new(esi.clone());
@@ -187,6 +191,7 @@ fn build_state() -> AppState {
         wallet,
         industry,
         market,
+        marketdata,
         mining,
         mail,
         prices,
@@ -242,6 +247,8 @@ pub fn run() {
             commands::get_cashflow,
             commands::get_industry_jobs,
             commands::get_market_orders,
+            commands::search_items,
+            commands::get_market_browse,
             commands::get_mining,
             commands::get_mail_headers,
             commands::get_mail,

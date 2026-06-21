@@ -19,8 +19,10 @@ import type {
   ClonesView,
   HoldingsView,
   IndustryJobView,
+  ItemHit,
   LocationValueView,
   MailHeader,
+  MarketBrowse,
   MailView,
   MarketView,
   MiningView,
@@ -552,6 +554,81 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
   );
 }
 
+function MarketBrowser(): ReactNode {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<ItemHit[]>([]);
+  const [sel, setSel] = useState<ItemHit | null>(null);
+  const [data, setData] = useState<MarketBrowse | null>(null);
+
+  useEffect(() => {
+    if (!isTauri() || q.trim().length < 2) {
+      setHits([]);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      api.searchItems(q.trim(), 8).then(setHits).catch(() => undefined);
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [q]);
+
+  function pick(h: ItemHit) {
+    setSel(h);
+    setHits([]);
+    setQ(h.name);
+    setData(null);
+    api.getMarketBrowse(h.type_id).then(setData).catch(() => undefined);
+  }
+
+  return (
+    <div className="card market-browser">
+      <h3>Market <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· Jita / The Forge</span></h3>
+      <div className="market-search">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search an item…" />
+        {hits.length > 0 && (
+          <ul className="market-results">
+            {hits.map((h) => (
+              <li key={h.type_id}><button onClick={() => pick(h)}>{h.name}</button></li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {sel && data && (
+        <div className="market-quote">
+          <div className="market-name">{sel.name}</div>
+          <div className="cashflow-totals">
+            <span className="pos">{data.quote.best_sell != null ? `${ISK.format(data.quote.best_sell)} sell` : "no sell"}</span>
+            <span className="neg">{data.quote.best_buy != null ? `${ISK.format(data.quote.best_buy)} buy` : "no buy"}</span>
+            {data.quote.spread_pct != null && (
+              <span>{(data.quote.spread_pct * 100).toFixed(1)}% spread</span>
+            )}
+          </div>
+          <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+            30d avg {ISK.format(data.history.avg_30d)} · daily vol {ISK.format(data.history.daily_volume_30d)} ·{" "}
+            {data.quote.sell_orders} sell / {data.quote.buy_orders} buy orders
+          </p>
+          {data.history.recent.length > 1 && <Sparkline values={data.history.recent} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Sparkline({ values }: { values: number[] }): ReactNode {
+  const w = 240;
+  const h = 36;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const pts = values
+    .map((v, i) => `${(i / (values.length - 1)) * w},${h - ((v - min) / span) * h}`)
+    .join(" ");
+  return (
+    <svg className="sparkline" viewBox={`0 0 ${w} ${h}`} width={w} height={h} preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 function EconomyHub({ character }: { character: Character | null }): ReactNode {
   const [jobs, setJobs] = useState<IndustryJobView[]>([]);
   const [market, setMarket] = useState<MarketView | null>(null);
@@ -606,8 +683,9 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
     <>
       <h1>Economy</h1>
       <div className="sub">Industry jobs, market, and more.</div>
-      {error && <div className="card"><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
-      <div className="card">
+      <MarketBrowser />
+      {error && <div className="card" style={{ marginTop: 16 }}><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
+      <div className="card" style={{ marginTop: 16 }}>
         <h3>Industry jobs {jobs.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {jobs.length} active</span>}</h3>
         {jobs.length === 0 && !error ? (
           <p style={{ color: "var(--text-dim)" }}>No jobs in progress.</p>

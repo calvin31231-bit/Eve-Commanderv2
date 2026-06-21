@@ -209,6 +209,36 @@ export interface CharacterGroup {
   members: number[];
 }
 
+export interface ItemHit {
+  type_id: number;
+  name: string;
+}
+
+export interface MarketQuote {
+  best_sell: number | null;
+  best_buy: number | null;
+  spread: number | null;
+  spread_pct: number | null;
+  sell_volume: number;
+  buy_volume: number;
+  sell_orders: number;
+  buy_orders: number;
+}
+
+export interface HistoryStats {
+  last_average: number | null;
+  avg_30d: number;
+  high_30d: number;
+  low_30d: number;
+  daily_volume_30d: number;
+  recent: number[];
+}
+
+export interface MarketBrowse {
+  quote: MarketQuote;
+  history: HistoryStats;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

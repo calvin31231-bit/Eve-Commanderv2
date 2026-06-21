@@ -31,6 +31,7 @@ pub mod esi;
 pub mod industry;
 pub mod mail;
 pub mod market;
+pub mod marketdata;
 pub mod mining;
 pub mod model;
 pub mod names;

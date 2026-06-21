@@ -164,12 +164,25 @@ impl EsiClient {
         path: &str,
         access_token: &str,
     ) -> Result<Vec<T>> {
-        let (first, pages) = self.get_cached_meta(&page_url(path, 1), Some(access_token)).await?;
+        self.get_json_paged(path, Some(access_token)).await
+    }
+
+    /// Like [`get_auth_json_paged`](Self::get_auth_json_paged) but for a public
+    /// (unauthenticated) paginated route (e.g. region market orders).
+    pub async fn get_public_json_paged<T: DeserializeOwned>(&self, path: &str) -> Result<Vec<T>> {
+        self.get_json_paged(path, None).await
+    }
+
+    /// Core paginated fetch shared by the public/auth variants.
+    async fn get_json_paged<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        token: Option<&str>,
+    ) -> Result<Vec<T>> {
+        let (first, pages) = self.get_cached_meta(&page_url(path, 1), token).await?;
         let mut items: Vec<T> = serde_json::from_slice(&first)?;
         for page in 2..=pages {
-            let (body, _) = self
-                .get_cached_meta(&page_url(path, page), Some(access_token))
-                .await?;
+            let (body, _) = self.get_cached_meta(&page_url(path, page), token).await?;
             items.extend(serde_json::from_slice::<Vec<T>>(&body)?);
         }
         Ok(items)

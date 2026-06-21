@@ -20,7 +20,9 @@ import type {
   TransactionView,
   HoldingsView,
   IndustryJobView,
+  ItemHit,
   LocationValueView,
+  MarketBrowse,
   MailHeader,
   MailView,
   MarketView,
@@ -75,6 +77,10 @@ export const api = {
     call<IndustryJobView[]>("get_industry_jobs", { characterId }),
   getMarketOrders: (characterId: number) =>
     call<MarketView>("get_market_orders", { characterId }),
+  searchItems: (query: string, limit: number) =>
+    call<ItemHit[]>("search_items", { query, limit }),
+  getMarketBrowse: (typeId: number) =>
+    call<MarketBrowse>("get_market_browse", { typeId }),
   getMining: (characterId: number) =>
     call<MiningView>("get_mining", { characterId }),
   getMailHeaders: (characterId: number) =>
