@@ -14,6 +14,23 @@ use crate::esi::EsiClient;
 /// The Forge — Jita's region, the default market hub.
 pub const THE_FORGE: i64 = 10_000_002;
 
+/// The major trade-hub regions for cross-hub price comparison.
+pub const HUBS: &[(i64, &str)] = &[
+    (10_000_002, "Jita"),
+    (10_000_043, "Amarr"),
+    (10_000_032, "Dodixie"),
+    (10_000_030, "Rens"),
+    (10_000_042, "Hek"),
+];
+
+/// Best buy/sell for an item at one trade hub.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HubQuote {
+    pub hub: String,
+    pub best_sell: Option<f64>,
+    pub best_buy: Option<f64>,
+}
+
 /// One order from the regional order book.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegionOrder {
@@ -159,6 +176,24 @@ impl MarketDataClient {
         let path = format!("/latest/markets/{region_id}/history/?type_id={type_id}");
         let days = self.esi.get_public_json::<Vec<HistoryDay>>(&path).await?;
         Ok(history_stats(&days))
+    }
+
+    /// Best buy/sell for a type across the major trade hubs. Best-effort: a hub
+    /// that fails to fetch is reported with empty sides rather than aborting the
+    /// whole comparison.
+    pub async fn compare(&self, type_id: i64) -> Result<Vec<HubQuote>> {
+        let mut out = Vec::with_capacity(HUBS.len());
+        for &(region, hub) in HUBS {
+            let (best_sell, best_buy) = match self.quote(region, type_id).await {
+                Ok(q) => (q.best_sell, q.best_buy),
+                Err(e) => {
+                    tracing::warn!("compare: {hub} quote failed: {e}");
+                    (None, None)
+                }
+            };
+            out.push(HubQuote { hub: hub.to_string(), best_sell, best_buy });
+        }
+        Ok(out)
     }
 }
 

@@ -978,6 +978,8 @@ pub struct MarketBrowse {
     pub quote: eve_core::marketdata::MarketQuote,
     pub history: eve_core::marketdata::HistoryStats,
     pub insurance: Option<Vec<eve_core::insurance::InsuranceLevel>>,
+    /// Best buy/sell across the major trade hubs for cross-hub comparison.
+    pub hubs: Vec<eve_core::marketdata::HubQuote>,
 }
 
 #[tauri::command]
@@ -986,15 +988,17 @@ pub async fn get_market_browse(
     type_id: i64,
 ) -> CmdResult<MarketBrowse> {
     let region = eve_core::marketdata::THE_FORGE;
-    let (quote, history, insurance) = tokio::join!(
+    let (quote, history, insurance, hubs) = tokio::join!(
         state.marketdata.quote(region, type_id),
         state.marketdata.history(region, type_id),
         state.insurance.for_type(type_id),
+        state.marketdata.compare(type_id),
     );
     Ok(MarketBrowse {
         quote: quote.map_err(|e| e.to_string())?,
         history: history.unwrap_or_else(|_| eve_core::marketdata::history_stats(&[])),
         insurance: insurance.ok().flatten(),
+        hubs: hubs.unwrap_or_default(),
     })
 }
 

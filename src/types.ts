@@ -254,10 +254,17 @@ export interface InsuranceLevel {
   payout: number;
 }
 
+export interface HubQuote {
+  hub: string;
+  best_sell: number | null;
+  best_buy: number | null;
+}
+
 export interface MarketBrowse {
   quote: MarketQuote;
   history: HistoryStats;
   insurance: InsuranceLevel[] | null;
+  hubs: HubQuote[];
 }
 
 export type Severity = "Info" | "Warning" | "Critical";
