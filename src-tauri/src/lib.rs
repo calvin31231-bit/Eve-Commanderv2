@@ -91,6 +91,8 @@ pub struct AppState {
     pub notifications: tray::SharedCenter,
     /// Live data-freshness setting; the poller reads it each tick.
     pub intensity: std::sync::Arc<std::sync::RwLock<eve_core::config::Intensity>>,
+    /// Optional Discord webhook URL; interrupting notifications mirror here.
+    pub discord_webhook: std::sync::Arc<std::sync::RwLock<Option<String>>>,
 }
 
 /// Build the app config from environment / defaults. The ESI `client_id` and
@@ -212,6 +214,10 @@ fn build_state() -> AppState {
             center.set_min_interrupt(eve_core::notify::Severity::parse(&notify_min));
         }
     }
+    let webhook = tauri::async_runtime::block_on(db.get_setting_or("discord_webhook", ""))
+        .ok()
+        .filter(|s| !s.is_empty());
+    let discord_webhook = std::sync::Arc::new(std::sync::RwLock::new(webhook));
 
     AppState {
         config,
@@ -241,6 +247,7 @@ fn build_state() -> AppState {
         names,
         notifications,
         intensity,
+        discord_webhook,
     }
 }
 

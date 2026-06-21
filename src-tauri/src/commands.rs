@@ -969,6 +969,8 @@ pub struct AppSettings {
     pub intensity: String,
     /// Minimum notification severity that interrupts: "Info" | "Warning" | "Critical".
     pub notify_min: String,
+    /// Discord webhook URL for mirroring interrupting alerts ("" = off).
+    pub discord_webhook: String,
 }
 
 /// Read the current settings.
@@ -984,18 +986,27 @@ pub async fn get_settings(state: State<'_, AppState>) -> CmdResult<AppSettings> 
         .get_setting_or("notify_min", "Warning")
         .await
         .map_err(|e| e.to_string())?;
-    Ok(AppSettings { intensity, notify_min })
+    let discord_webhook = state
+        .db
+        .get_setting_or("discord_webhook", "")
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(AppSettings { intensity, notify_min, discord_webhook })
 }
 
-/// Persist and apply settings live (poll intensity + notification threshold).
+/// Persist and apply settings live (poll intensity + notification threshold +
+/// Discord webhook).
 #[tauri::command]
 pub async fn set_settings(
     state: State<'_, AppState>,
     intensity: String,
     notify_min: String,
+    discord_webhook: Option<String>,
 ) -> CmdResult<()> {
     let parsed_intensity = eve_core::config::Intensity::parse(&intensity);
     let parsed_sev = eve_core::notify::Severity::parse(&notify_min);
+    let webhook = discord_webhook.unwrap_or_default();
+    let webhook = webhook.trim().to_string();
 
     state
         .db
@@ -1007,6 +1018,11 @@ pub async fn set_settings(
         .set_setting("notify_min", parsed_sev.as_str())
         .await
         .map_err(|e| e.to_string())?;
+    state
+        .db
+        .set_setting("discord_webhook", &webhook)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Apply live: the poller reads intensity each tick; the center is shared.
     if let Ok(mut g) = state.intensity.write() {
@@ -1014,6 +1030,9 @@ pub async fn set_settings(
     }
     if let Ok(mut center) = state.notifications.lock() {
         center.set_min_interrupt(parsed_sev);
+    }
+    if let Ok(mut g) = state.discord_webhook.write() {
+        *g = if webhook.is_empty() { None } else { Some(webhook) };
     }
     Ok(())
 }

@@ -138,8 +138,8 @@ export const api = {
   removeGroupMember: (groupId: number, characterId: number) =>
     call<void>("remove_group_member", { groupId, characterId }),
   getSettings: () => call<AppSettings>("get_settings"),
-  setSettings: (intensity: string, notifyMin: string) =>
-    call<void>("set_settings", { intensity, notifyMin }),
+  setSettings: (intensity: string, notifyMin: string, discordWebhook: string) =>
+    call<void>("set_settings", { intensity, notifyMin, discordWebhook }),
   listNotifications: () => call<Notification[]>("list_notifications"),
   unreadNotifications: () => call<number>("unread_notifications"),
   markNotificationsRead: () => call<void>("mark_notifications_read"),

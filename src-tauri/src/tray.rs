@@ -64,5 +64,23 @@ pub fn dispatch(app: &AppHandle, center: &SharedCenter, notification: Notificati
             .title(&notification.title)
             .body(&notification.body)
             .show();
+
+        // Mirror to Discord if a webhook is configured (fire-and-forget; a
+        // webhook failure must never disturb the app).
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            let url = state
+                .discord_webhook
+                .read()
+                .ok()
+                .and_then(|g| g.clone());
+            if let Some(url) = url {
+                let note = notification.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = eve_core::discord::DiscordClient::new().send(&url, &note).await {
+                        tracing::debug!("discord dispatch failed: {e}");
+                    }
+                });
+            }
+        }
     }
 }

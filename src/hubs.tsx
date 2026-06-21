@@ -1446,7 +1446,7 @@ function ToolsHub(): ReactNode {
     const next = { ...settings, ...patch };
     setSettings(next);
     api
-      .setSettings(next.intensity, next.notify_min)
+      .setSettings(next.intensity, next.notify_min, next.discord_webhook)
       .then(() => {
         setSaved(true);
         window.setTimeout(() => setSaved(false), 1500);
@@ -1485,6 +1485,19 @@ function ToolsHub(): ReactNode {
               <option value="Warning">Warning &amp; up</option>
               <option value="Critical">Critical only</option>
             </select>
+          </label>
+          <label className="setting-row">
+            <div>
+              <div className="setting-name">Discord webhook</div>
+              <div className="setting-help">Mirror interrupting alerts to a Discord channel. Paste an incoming-webhook URL; leave blank to disable.</div>
+            </div>
+            <input
+              type="text"
+              value={settings.discord_webhook}
+              placeholder="https://discord.com/api/webhooks/…"
+              style={{ minWidth: 240 }}
+              onChange={(e) => update({ discord_webhook: e.target.value })}
+            />
           </label>
           <div className="setting-saved" style={{ opacity: saved ? 1 : 0 }}>Saved ✓</div>
         </div>

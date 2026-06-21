@@ -213,6 +213,7 @@ export interface CharacterStatusView {
 export interface AppSettings {
   intensity: string;
   notify_min: string;
+  discord_webhook: string;
 }
 
 export interface CharacterGroup {

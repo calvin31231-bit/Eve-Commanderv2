@@ -27,6 +27,7 @@ pub mod clones;
 pub mod config;
 pub mod contracts;
 pub mod db;
+pub mod discord;
 pub mod dscan;
 pub mod error;
 pub mod esi;
