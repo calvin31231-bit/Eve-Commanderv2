@@ -418,6 +418,33 @@ export interface ThreatScanView {
   unresolved: string[];
 }
 
+export interface EntityDamage {
+  entity: string;
+  damage: number;
+}
+
+export interface AarSummary {
+  damage_dealt: number;
+  damage_received: number;
+  duration_seconds: number;
+  dps_dealt: number;
+  dps_received: number;
+  event_count: number;
+  top_targets: EntityDamage[];
+  top_attackers: EntityDamage[];
+}
+
+export interface CombatLogView {
+  found: boolean;
+  summary: AarSummary | null;
+}
+
+export interface LocalIntel {
+  system: string | null;
+  speakers: string[];
+  line_count: number;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

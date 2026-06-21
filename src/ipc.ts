@@ -40,6 +40,8 @@ import type {
   DoctrineView,
   DscanResult,
   ThreatScanView,
+  CombatLogView,
+  LocalIntel,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -110,6 +112,8 @@ export const api = {
   doctrineCheck: (eft: string) => call<DoctrineView>("doctrine_check", { eft }),
   parseDscan: (text: string) => call<DscanResult>("parse_dscan", { text }),
   scanPilots: (names: string[]) => call<ThreatScanView>("scan_pilots", { names }),
+  getCombatSummary: () => call<CombatLogView>("get_combat_summary"),
+  getLocalIntel: () => call<LocalIntel | null>("get_local_intel"),
   costSkillPlan: (
     characterId: number,
     targets: { skill_type_id: number; target_level: number }[],

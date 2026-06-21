@@ -300,6 +300,8 @@ pub fn run() {
             commands::doctrine_check,
             commands::parse_dscan,
             commands::scan_pilots,
+            commands::get_combat_summary,
+            commands::get_local_intel,
             commands::cost_skill_plan,
             commands::get_contracts,
             commands::get_mining,

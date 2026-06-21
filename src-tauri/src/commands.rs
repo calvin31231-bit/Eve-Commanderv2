@@ -1423,6 +1423,38 @@ pub fn parse_dscan(text: String) -> eve_core::dscan::DscanResult {
     eve_core::dscan::parse_dscan(&text)
 }
 
+/// After-action / DPS summary of the latest combat log, plus a flag for whether
+/// any log was found (so the UI can distinguish "no fights" from "no logs dir").
+#[derive(Debug, Serialize)]
+pub struct CombatLogView {
+    pub found: bool,
+    pub summary: Option<eve_core::logs::gamelog::AarSummary>,
+}
+
+/// Read the most recent Gamelog and summarize it into an after-action report
+/// (damage dealt/received, DPS, top targets/attackers). Passive local-file read.
+#[tauri::command]
+pub fn get_combat_summary() -> CombatLogView {
+    let path = eve_core::logs::gamelogs_dir().and_then(|d| eve_core::logs::latest_log(&d, ""));
+    let Some(path) = path else {
+        return CombatLogView { found: false, summary: None };
+    };
+    let Some(text) = eve_core::logs::read_log(&path) else {
+        return CombatLogView { found: false, summary: None };
+    };
+    let events = eve_core::logs::gamelog::parse_gamelog(&text);
+    CombatLogView { found: true, summary: Some(eve_core::logs::gamelog::summarize_combat(&events)) }
+}
+
+/// Read the most recent Local chatlog and summarize who has spoken + the current
+/// system. Passive local-file read; the EULA-safe Local intel signal.
+#[tauri::command]
+pub fn get_local_intel() -> Option<eve_core::logs::chatlog::LocalIntel> {
+    let path = eve_core::logs::chatlogs_dir().and_then(|d| eve_core::logs::latest_log(&d, "Local"))?;
+    let text = eve_core::logs::read_log(&path)?;
+    Some(eve_core::logs::chatlog::summarize_local(&text))
+}
+
 /// One scored pilot in a Local threat scan.
 #[derive(Debug, Serialize)]
 pub struct PilotThreatView {

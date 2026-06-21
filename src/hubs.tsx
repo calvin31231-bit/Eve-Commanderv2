@@ -38,6 +38,7 @@ import type {
   DoctrineView,
   DscanResult,
   ThreatScanView,
+  CombatLogView,
 } from "./types";
 
 export interface Hub {
@@ -1662,6 +1663,7 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
           { id: "fitting", label: "Fitting" },
           { id: "dscan", label: "D-Scan" },
           { id: "threat", label: "Threat Scanner" },
+          { id: "aar", label: "Combat Log" },
         ]}
         active={sub}
         onSelect={setSub}
@@ -1669,7 +1671,80 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
       {sub === "fitting" && <FitImporter character={character} />}
       {sub === "dscan" && <DscanPanel />}
       {sub === "threat" && <ThreatScanner />}
+      {sub === "aar" && <CombatLogPanel />}
     </>
+  );
+}
+
+function CombatLogPanel(): ReactNode {
+  const [data, setData] = useState<CombatLogView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function load() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .getCombatSummary()
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }
+
+  const s = data?.summary;
+  return (
+    <div className="card combat-log">
+      <h3>Combat Log · After-Action</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Reads your latest Gamelog (Documents/EVE/logs) for DPS and a kill/damage breakdown.
+      </p>
+      <button onClick={load} disabled={loading}>
+        {loading ? "Reading…" : "Analyze latest log"}
+      </button>
+      {data && !data.found && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No Gamelog found — set EVE_COMMANDER_LOG_DIR if your logs aren't under Documents/EVE/logs.
+        </p>
+      )}
+      {s && (
+        <div style={{ marginTop: 10 }}>
+          <div className="cashflow-totals">
+            <span className="pos">{ISK.format(s.damage_dealt)} dealt · {s.dps_dealt.toFixed(0)} dps</span>
+            <span className="neg">{ISK.format(s.damage_received)} taken · {s.dps_received.toFixed(0)} dps</span>
+            <span style={{ color: "var(--text-dim)" }}>{formatDuration(s.duration_seconds)}</span>
+          </div>
+          {s.top_targets.length > 0 && (
+            <>
+              <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 2px" }}>Top targets</p>
+              <table className="holdings">
+                <tbody>
+                  {s.top_targets.map((t) => (
+                    <tr key={t.entity}>
+                      <td>{t.entity}</td>
+                      <td className="mono num pos">{ISK.format(t.damage)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          {s.top_attackers.length > 0 && (
+            <>
+              <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 2px" }}>Top attackers</p>
+              <table className="holdings">
+                <tbody>
+                  {s.top_attackers.map((t) => (
+                    <tr key={t.entity}>
+                      <td>{t.entity}</td>
+                      <td className="mono num neg">{ISK.format(t.damage)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
