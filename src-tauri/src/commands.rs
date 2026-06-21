@@ -1154,6 +1154,8 @@ pub struct BuildPlanView {
     pub product_value: f64,
     pub profit: f64,
     pub margin_pct: f64,
+    /// Base invention success chance (null for manufacturing/reaction).
+    pub probability: Option<f64>,
 }
 
 /// Plan a manufacturing (default) or reaction job: bill-of-materials after ME,
@@ -1200,6 +1202,7 @@ pub async fn plan_build(
         product_value: plan.product_value,
         profit: plan.profit,
         margin_pct: plan.margin_pct,
+        probability: plan.probability,
     }))
 }
 

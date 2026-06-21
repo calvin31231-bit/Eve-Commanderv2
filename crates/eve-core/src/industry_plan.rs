@@ -37,6 +37,10 @@ pub struct BuildPlan {
     pub profit: f64,
     /// Profit as a fraction of material cost.
     pub margin_pct: f64,
+    /// Base success chance for invention jobs (None for deterministic
+    /// manufacturing/reaction). Effective odds apply skill/decryptor multipliers
+    /// on top via [`invention_probability`].
+    pub probability: Option<f64>,
 }
 
 /// Units of a material a job consumes after Material Efficiency. CCP applies the
@@ -54,6 +58,7 @@ pub fn material_required(base_quantity: i64, runs: i64, me: i64) -> i64 {
 /// Build a priced bill-of-materials. `base_materials` are the blueprint's ME-0
 /// per-run inputs; `output_per_run` units of `product_type_id` come out each run.
 /// Pure.
+#[allow(clippy::too_many_arguments)]
 pub fn build_plan(
     product_type_id: i64,
     runs: i64,
@@ -62,6 +67,7 @@ pub fn build_plan(
     base_materials: &[Material],
     prices: &PriceMap,
     product_price: f64,
+    probability: Option<f64>,
 ) -> BuildPlan {
     let mut materials = Vec::with_capacity(base_materials.len());
     let mut material_cost = 0.0;
@@ -89,6 +95,7 @@ pub fn build_plan(
         product_value,
         profit,
         margin_pct,
+        probability,
     }
 }
 
@@ -139,6 +146,7 @@ impl IndustryPlanClient {
             &base,
             prices,
             product_price,
+            product.probability,
         )))
     }
 }
@@ -168,7 +176,7 @@ mod tests {
     #[test]
     fn build_plan_prices_and_reports_margin() {
         let base = vec![Material { type_id: 34, quantity: 1000 }];
-        let plan = build_plan(587, 1, 10, 1, &base, &prices(), 500_000.0);
+        let plan = build_plan(587, 1, 10, 1, &base, &prices(), 500_000.0, None);
         // 1000 trit × ME10 = 900 × 5 = 4500 cost; product 500k.
         assert_eq!(plan.materials[0].quantity, 900);
         assert!((plan.material_cost - 4500.0).abs() < 1e-9);

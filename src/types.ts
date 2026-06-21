@@ -313,6 +313,7 @@ export interface BuildPlanView {
   product_value: number;
   profit: number;
   margin_pct: number;
+  probability: number | null;
 }
 
 export type Severity = "Info" | "Warning" | "Critical";

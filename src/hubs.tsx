@@ -862,14 +862,15 @@ function BuildPlanner(): ReactNode {
   const [sel, setSel] = useState<ItemHit | null>(null);
   const [runs, setRuns] = useState(1);
   const [me, setMe] = useState(10);
+  const [activity, setActivity] = useState("manufacturing");
   const [data, setData] = useState<BuildPlanView | null>(null);
   const [missing, setMissing] = useState(false);
 
-  function run(item: ItemHit, r: number, m: number) {
+  function run(item: ItemHit, r: number, m: number, act: string) {
     setData(null);
     setMissing(false);
     api
-      .planBuild(item.type_id, r, m)
+      .planBuild(item.type_id, r, m, act)
       .then((p) => (p ? setData(p) : setMissing(true)))
       .catch(() => setMissing(true));
   }
@@ -881,7 +882,7 @@ function BuildPlanner(): ReactNode {
         placeholder="Search an item to build…"
         onPick={(h) => {
           setSel(h);
-          run(h, runs, me);
+          run(h, runs, me, activity);
         }}
       />
       {sel && (
@@ -895,7 +896,7 @@ function BuildPlanner(): ReactNode {
               onChange={(e) => {
                 const r = Number(e.target.value) || 1;
                 setRuns(r);
-                if (sel) run(sel, r, me);
+                if (sel) run(sel, r, me, activity);
               }}
             />
           </label>
@@ -908,9 +909,23 @@ function BuildPlanner(): ReactNode {
               onChange={(e) => {
                 const m = Number(e.target.value) || 0;
                 setMe(m);
-                if (sel) run(sel, runs, m);
+                if (sel) run(sel, runs, m, activity);
               }}
             />
+          </label>
+          <label style={{ fontSize: 12 }}>
+            Activity{" "}
+            <select
+              value={activity}
+              onChange={(e) => {
+                setActivity(e.target.value);
+                if (sel) run(sel, runs, me, e.target.value);
+              }}
+            >
+              <option value="manufacturing">Manufacturing</option>
+              <option value="reaction">Reaction</option>
+              <option value="invention">Invention</option>
+            </select>
           </label>
         </div>
       )}
@@ -939,6 +954,9 @@ function BuildPlanner(): ReactNode {
               {data.profit >= 0 ? "Profit" : "Loss"} {ISK.format(data.profit)} (
               {(data.margin_pct * 100).toFixed(1)}%)
             </span>
+            {data.probability != null && (
+              <span>Invention odds {(data.probability * 100).toFixed(0)}%</span>
+            )}
           </div>
         </>
       )}
