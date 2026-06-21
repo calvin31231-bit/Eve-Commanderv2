@@ -40,6 +40,7 @@ import type {
   ThreatScanView,
   PilotBackgroundView,
   GateCampView,
+  SystemSafetyView,
   CombatLogView,
 } from "./types";
 
@@ -1677,6 +1678,7 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
         tabs={[
           { id: "fitting", label: "Fitting" },
           { id: "dscan", label: "D-Scan" },
+          { id: "map", label: "Intel Map" },
           { id: "threat", label: "Threat Scanner" },
           { id: "aar", label: "Combat Log" },
         ]}
@@ -1685,6 +1687,7 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
       />
       {sub === "fitting" && <FitImporter character={character} />}
       {sub === "dscan" && <DscanPanel />}
+      {sub === "map" && <IntelMap />}
       {sub === "threat" && (
         <>
           <ThreatScanner />
@@ -1810,6 +1813,88 @@ function GateCampCheck(): ReactNode {
             </>
           )}
         </p>
+      )}
+    </div>
+  );
+}
+
+function killColor(kills: number): string {
+  if (kills === 0) return "#4ade80";
+  if (kills <= 5) return "#fbbf24";
+  return "#f87171";
+}
+
+function IntelMap(): ReactNode {
+  const [safety, setSafety] = useState<SystemSafetyView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function load() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .getSystemSafety()
+      .then(setSafety)
+      .catch(() => setSafety(null))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const W = 380;
+  const H = 320;
+  const cx = W / 2;
+  const cy = H / 2;
+  const R = 118;
+  const neighbors = safety?.neighbors.slice(0, 12) ?? [];
+
+  return (
+    <div className="card intel-map">
+      <h3>Intel Map <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· your neighbourhood</span></h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Your current system and adjacent systems, sized/coloured by kills in the last hour.
+      </p>
+      <button onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+      {safety && (!safety.found || !safety.current) && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          Needs an active character in space (location scope).
+        </p>
+      )}
+      {safety && safety.found && safety.current && (
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ marginTop: 8, maxWidth: W }}>
+          {neighbors.map((n, i) => {
+            const a = (i / Math.max(1, neighbors.length)) * Math.PI * 2 - Math.PI / 2;
+            const x = cx + R * Math.cos(a);
+            const y = cy + R * Math.sin(a);
+            return <line key={`e${n.system_id}`} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--border)" strokeWidth="1" />;
+          })}
+          {neighbors.map((n, i) => {
+            const a = (i / Math.max(1, neighbors.length)) * Math.PI * 2 - Math.PI / 2;
+            const x = cx + R * Math.cos(a);
+            const y = cy + R * Math.sin(a);
+            const r = 13 + Math.min(n.kills_last_hour, 10);
+            return (
+              <g key={n.system_id}>
+                <circle cx={x} cy={y} r={r} fill={killColor(n.kills_last_hour)} fillOpacity={0.85} />
+                <text x={x} y={y + 1} textAnchor="middle" fontSize="9" fill="#0b0f17" fontWeight="700">
+                  {n.kills_last_hour > 0 ? n.kills_last_hour : ""}
+                </text>
+                <text x={x} y={y + r + 11} textAnchor="middle" fontSize="10" fill="var(--text)">
+                  {n.name}
+                </text>
+              </g>
+            );
+          })}
+          <circle cx={cx} cy={cy} r={20 + Math.min(safety.current.kills_last_hour, 12)} fill={killColor(safety.current.kills_last_hour)} stroke="#fff" strokeWidth="1.5" />
+          <text x={cx} y={cy + 1} textAnchor="middle" fontSize="11" fill="#0b0f17" fontWeight="700">
+            {safety.current.kills_last_hour > 0 ? safety.current.kills_last_hour : "0"}
+          </text>
+          <text x={cx} y={cy + 34} textAnchor="middle" fontSize="11" fill="var(--text)" fontWeight="600">
+            {safety.current.name}
+          </text>
+        </svg>
       )}
     </div>
   );
