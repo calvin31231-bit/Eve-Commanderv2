@@ -312,6 +312,7 @@ pub fn run() {
             commands::doctrine_check,
             commands::parse_dscan,
             commands::scan_pilots,
+            commands::pilot_background,
             commands::gate_camp_check,
             commands::get_system_safety,
             commands::get_combat_summary,

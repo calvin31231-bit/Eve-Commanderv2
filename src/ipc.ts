@@ -40,6 +40,7 @@ import type {
   DoctrineView,
   DscanResult,
   ThreatScanView,
+  PilotBackgroundView,
   GateCampView,
   SystemSafetyView,
   CombatLogView,
@@ -114,6 +115,8 @@ export const api = {
   doctrineCheck: (eft: string) => call<DoctrineView>("doctrine_check", { eft }),
   parseDscan: (text: string) => call<DscanResult>("parse_dscan", { text }),
   scanPilots: (names: string[]) => call<ThreatScanView>("scan_pilots", { names }),
+  pilotBackground: (name: string) =>
+    call<PilotBackgroundView>("pilot_background", { name }),
   gateCampCheck: (system: string) => call<GateCampView>("gate_camp_check", { system }),
   getSystemSafety: () => call<SystemSafetyView>("get_system_safety"),
   getCombatSummary: () => call<CombatLogView>("get_combat_summary"),

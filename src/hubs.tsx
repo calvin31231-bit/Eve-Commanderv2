@@ -38,6 +38,7 @@ import type {
   DoctrineView,
   DscanResult,
   ThreatScanView,
+  PilotBackgroundView,
   GateCampView,
   CombatLogView,
 } from "./types";
@@ -1687,11 +1688,81 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
       {sub === "threat" && (
         <>
           <ThreatScanner />
+          <BackgroundCheck />
           <GateCampCheck />
         </>
       )}
       {sub === "aar" && <CombatLogPanel />}
     </>
+  );
+}
+
+function characterAgeDays(birthday: string | null): number | null {
+  if (!birthday) return null;
+  const born = new Date(birthday).getTime();
+  if (Number.isNaN(born)) return null;
+  return Math.floor((Date.now() - born) / 86_400_000);
+}
+
+function BackgroundCheck(): ReactNode {
+  const [name, setName] = useState("");
+  const [result, setResult] = useState<PilotBackgroundView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function check() {
+    if (!isTauri() || !name.trim()) return;
+    setLoading(true);
+    setResult(null);
+    api
+      .pilotBackground(name.trim())
+      .then(setResult)
+      .catch(() => setResult(null))
+      .finally(() => setLoading(false));
+  }
+
+  const ageDays = result ? characterAgeDays(result.birthday) : null;
+  return (
+    <div className="card background-check" style={{ marginTop: 16 }}>
+      <h3>Background Check</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        One pilot — affiliation, age, sec status, and killboard threat.
+      </p>
+      <div className="market-search">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Pilot name…"
+          onKeyDown={(e) => e.key === "Enter" && check()}
+        />
+      </div>
+      <button onClick={check} disabled={loading || !name.trim()} style={{ marginTop: 8 }}>
+        {loading ? "Checking…" : "Check"}
+      </button>
+      {result && !result.found && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No character by that name.</p>
+      )}
+      {result && result.found && (
+        <div style={{ marginTop: 10 }}>
+          <div className="market-name">
+            <span className={THREAT_BADGE[result.level] ?? "badge"}>{result.level}</span> {result.name}
+          </div>
+          <p style={{ color: "var(--text-dim)", fontSize: 12, margin: "4px 0" }}>
+            {result.corporation}
+            {result.alliance ? ` · ${result.alliance}` : ""}
+            {" · "}sec {result.security_status.toFixed(1)}
+            {ageDays != null ? ` · ${ageDays.toLocaleString()}d old` : ""}
+          </p>
+          <div className="cashflow-totals">
+            <span className="pos">{result.ships_destroyed.toLocaleString()} kills</span>
+            <span className="neg">{result.ships_lost.toLocaleString()} losses</span>
+            <span>{result.danger_ratio}% danger</span>
+          </div>
+          {result.reasons.length > 0 && (
+            <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{result.reasons.join(" · ")}</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

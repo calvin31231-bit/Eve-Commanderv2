@@ -1607,6 +1607,91 @@ pub async fn gate_camp_check(
     })
 }
 
+/// A single-pilot background check (affiliation + age + threat).
+#[derive(Debug, Serialize)]
+pub struct PilotBackgroundView {
+    pub found: bool,
+    pub name: String,
+    pub corporation: String,
+    pub alliance: Option<String>,
+    pub security_status: f64,
+    /// ISO birthday (the frontend renders character age from it).
+    pub birthday: Option<String>,
+    pub level: String,
+    pub reasons: Vec<String>,
+    pub danger_ratio: i64,
+    pub ships_destroyed: i64,
+    pub ships_lost: i64,
+}
+
+/// Background-check one pilot by name: resolve, pull ESI public info
+/// (corp/alliance/sec/age) + zKillboard stats, and score the threat. `found` is
+/// false when the name doesn't resolve to a character.
+#[tauri::command]
+pub async fn pilot_background(
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<PilotBackgroundView> {
+    use eve_core::intel::score_pilot;
+
+    let name = name.trim().to_string();
+    let empty = PilotBackgroundView {
+        found: false,
+        name: name.clone(),
+        corporation: String::new(),
+        alliance: None,
+        security_status: 0.0,
+        birthday: None,
+        level: "Safe".into(),
+        reasons: Vec::new(),
+        danger_ratio: 0,
+        ships_destroyed: 0,
+        ships_lost: 0,
+    };
+    let id_map = state
+        .names
+        .character_ids(std::slice::from_ref(&name))
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(&id) = id_map.get(&name.to_lowercase()) else {
+        return Ok(empty);
+    };
+
+    let public = state.character.public_info(id).await.ok();
+    let stats = state.zkill.character_stats(id).await.unwrap_or_default();
+    let ps = stats.to_pilot_stats();
+    let threat = score_pilot(&ps);
+
+    let mut ids = Vec::new();
+    if let Some(p) = &public {
+        ids.push(p.corporation_id);
+        if let Some(a) = p.alliance_id {
+            ids.push(a);
+        }
+    }
+    let names = names_for(&state, &ids).await;
+
+    Ok(PilotBackgroundView {
+        found: true,
+        name: public.as_ref().map(|p| p.name.clone()).unwrap_or(name),
+        corporation: public
+            .as_ref()
+            .map(|p| named(&names, p.corporation_id))
+            .unwrap_or_default(),
+        alliance: public
+            .as_ref()
+            .and_then(|p| p.alliance_id)
+            .map(|a| named(&names, a)),
+        security_status: public.as_ref().map(|p| p.security_status).unwrap_or(0.0),
+        birthday: public.as_ref().and_then(|p| p.birthday.clone()),
+        level: threat.level.as_str().to_string(),
+        reasons: threat.reasons,
+        danger_ratio: ps.danger_ratio,
+        ships_destroyed: ps.ships_destroyed,
+        ships_lost: ps.ships_lost,
+    })
+}
+
 /// One scored pilot in a Local threat scan.
 #[derive(Debug, Serialize)]
 pub struct PilotThreatView {

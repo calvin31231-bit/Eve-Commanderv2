@@ -419,6 +419,20 @@ export interface ThreatScanView {
   unresolved: string[];
 }
 
+export interface PilotBackgroundView {
+  found: boolean;
+  name: string;
+  corporation: string;
+  alliance: string | null;
+  security_status: number;
+  birthday: string | null;
+  level: "Safe" | "Neutral" | "Caution" | "Danger";
+  reasons: string[];
+  danger_ratio: number;
+  ships_destroyed: number;
+  ships_lost: number;
+}
+
 export interface GateCampView {
   system: string;
   found: boolean;
