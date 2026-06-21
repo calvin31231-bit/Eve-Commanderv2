@@ -34,6 +34,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-mail.organize_mail.v1",
     "esi-clones.read_clones.v1",
     "esi-clones.read_implants.v1",
+    "esi-universe.read_structures.v1",
     "esi-location.read_location.v1",
     "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
@@ -452,7 +453,7 @@ pub async fn get_assets_by_location(
     locations.truncate(limit);
 
     let ids: Vec<i64> = locations.iter().map(|l| l.location_id).collect();
-    let names = names_for(&state, &ids).await;
+    let names = names_with_structures(&state, character_id, &ids).await;
     Ok(locations
         .into_iter()
         .map(|l| LocationValueView {
@@ -497,7 +498,9 @@ pub async fn get_clones(state: State<'_, AppState>, character_id: i64) -> CmdRes
         ids.push(jc.location_id);
         ids.extend(&jc.implants);
     }
-    let names = names_for(&state, &ids).await;
+    // Clone locations are commonly citadels, which need authenticated structure
+    // resolution on top of the public name endpoint.
+    let names = names_with_structures(&state, character_id, &ids).await;
     let named_types = |type_ids: &[i64]| -> Vec<NamedType> {
         type_ids
             .iter()
@@ -761,6 +764,29 @@ async fn names_for(
 /// Look up a name in a resolved map, falling back to `Type {id}`.
 fn named(names: &std::collections::HashMap<i64, String>, id: i64) -> String {
     names.get(&id).cloned().unwrap_or_else(|| format!("Type {id}"))
+}
+
+/// Resolve a mix of ids that may include player-owned structure ids (citadels),
+/// which the public name endpoint can't resolve. Falls back to the character's
+/// token + the authenticated structures endpoint for any unresolved id in the
+/// structure range, so hangars/clones docked in a citadel show its real name.
+async fn names_with_structures(
+    state: &AppState,
+    character_id: i64,
+    ids: &[i64],
+) -> std::collections::HashMap<i64, String> {
+    let mut names = names_for(state, ids).await;
+    let structure_ids: Vec<i64> = ids
+        .iter()
+        .copied()
+        .filter(|&id| id >= eve_core::names::STRUCTURE_ID_MIN && !names.contains_key(&id))
+        .collect();
+    if !structure_ids.is_empty() {
+        if let Ok(token) = state.token_manager.access_token(character_id).await {
+            names.extend(state.names.resolve_structures(&structure_ids, &token).await);
+        }
+    }
+    names
 }
 
 /// A mail header with its sender resolved to a name.

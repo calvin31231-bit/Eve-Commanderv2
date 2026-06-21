@@ -31,6 +31,16 @@ struct EsiName {
     category: String,
 }
 
+/// Upwell structure detail from `/universe/structures/{id}/` (auth).
+#[derive(Debug, Clone, Deserialize)]
+struct EsiStructure {
+    name: String,
+}
+
+/// Player-owned (Upwell) structure ids start here; below this are NPC stations
+/// and other ids that `/universe/names/` already resolves.
+pub const STRUCTURE_ID_MIN: i64 = 1_000_000_000_000;
+
 /// Resolves ids to names via cache → SDE → ESI, caching ESI results.
 #[derive(Clone)]
 pub struct NameResolver {
@@ -97,6 +107,39 @@ impl NameResolver {
         }
 
         Ok(out)
+    }
+
+    /// Resolve Upwell structure ids (citadels, engineering complexes) to names
+    /// via the authenticated `/universe/structures/{id}/` endpoint, with the same
+    /// persistent caching as [`resolve`]. These ids are NOT resolvable through the
+    /// public `/universe/names/` endpoint, so hangar assets and clones docked in a
+    /// citadel would otherwise show a raw id. Requires the character's access
+    /// token + `esi-universe.read_structures.v1` (or docking access); ids that
+    /// fail are simply omitted and the caller keeps its fallback.
+    pub async fn resolve_structures(&self, ids: &[i64], token: &str) -> HashMap<i64, String> {
+        let mut unique: Vec<i64> = ids.to_vec();
+        unique.sort_unstable();
+        unique.dedup();
+
+        let mut out = self.db.cached_names(&unique).await.unwrap_or_default();
+        let missing: Vec<i64> = unique
+            .iter()
+            .copied()
+            .filter(|id| !out.contains_key(id))
+            .collect();
+
+        let mut to_cache = Vec::new();
+        for id in missing {
+            let path = format!("/latest/universe/structures/{id}/");
+            if let Ok(s) = self.esi.get_auth_json::<EsiStructure>(&path, token).await {
+                to_cache.push((id, s.name.clone(), Some("structure".to_string())));
+                out.insert(id, s.name);
+            }
+        }
+        if !to_cache.is_empty() {
+            let _ = self.db.cache_names(&to_cache).await;
+        }
+        out
     }
 
     /// Resolve a chunk via ESI, splitting in half on failure so a single
