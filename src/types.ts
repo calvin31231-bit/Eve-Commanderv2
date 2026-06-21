@@ -234,9 +234,16 @@ export interface HistoryStats {
   recent: number[];
 }
 
+export interface InsuranceLevel {
+  name: string;
+  cost: number;
+  payout: number;
+}
+
 export interface MarketBrowse {
   quote: MarketQuote;
   history: HistoryStats;
+  insurance: InsuranceLevel[] | null;
 }
 
 export type Severity = "Info" | "Warning" | "Critical";

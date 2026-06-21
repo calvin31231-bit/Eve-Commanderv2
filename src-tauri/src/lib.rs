@@ -23,6 +23,7 @@ use eve_core::config::Config;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
 use eve_core::industry::IndustryClient;
+use eve_core::insurance::InsuranceClient;
 use eve_core::mail::MailClient;
 use eve_core::market::MarketClient;
 use eve_core::marketdata::MarketDataClient;
@@ -57,6 +58,8 @@ pub struct AppState {
     pub market: MarketClient,
     /// Public regional market data (browser) for the Economy hub.
     pub marketdata: MarketDataClient,
+    /// Public ship insurance prices.
+    pub insurance: InsuranceClient,
     /// Mining-ledger reads (aggregated by ore) for the Character hub.
     pub mining: MiningClient,
     /// EVEmail reads (headers + body) for the Character hub.
@@ -140,6 +143,7 @@ fn build_state() -> AppState {
     let industry = IndustryClient::new(esi.clone(), token_manager.clone());
     let market = MarketClient::new(esi.clone(), token_manager.clone());
     let marketdata = MarketDataClient::new(esi.clone());
+    let insurance = InsuranceClient::new(esi.clone());
     let mining = MiningClient::new(esi.clone(), token_manager.clone());
     let mail = MailClient::new(esi.clone(), token_manager.clone());
     let prices = PricesClient::new(esi.clone());
@@ -192,6 +196,7 @@ fn build_state() -> AppState {
         industry,
         market,
         marketdata,
+        insurance,
         mining,
         mail,
         prices,

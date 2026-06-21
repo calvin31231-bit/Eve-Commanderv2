@@ -607,6 +607,22 @@ function MarketBrowser(): ReactNode {
             {data.quote.sell_orders} sell / {data.quote.buy_orders} buy orders
           </p>
           {data.history.recent.length > 1 && <Sparkline values={data.history.recent} />}
+          {data.insurance && data.insurance.length > 0 && (
+            <table className="holdings" style={{ marginTop: 10 }}>
+              <thead>
+                <tr><th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Insurance</th><th></th><th></th></tr>
+              </thead>
+              <tbody>
+                {data.insurance.map((lv) => (
+                  <tr key={lv.name}>
+                    <td>{lv.name}</td>
+                    <td className="mono num neg">{ISK.format(lv.cost)}</td>
+                    <td className="mono num pos">{ISK.format(lv.payout)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
     </div>
