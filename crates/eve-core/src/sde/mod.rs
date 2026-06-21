@@ -267,6 +267,16 @@ impl Sde {
         Ok(out)
     }
 
+    /// Resolve an exact type name to its id (case-insensitive). Used to turn the
+    /// names in a pasted fit into type ids.
+    pub async fn type_id_by_name(&self, name: &str) -> Result<Option<i64>> {
+        let row = sqlx::query("SELECT type_id FROM types WHERE name = ?1 COLLATE NOCASE")
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.get::<i64, _>("type_id")))
+    }
+
     /// Prefix-search item types by name (for the universal search bar).
     pub async fn search_types(&self, prefix: &str, limit: i64) -> Result<Vec<ItemType>> {
         let pattern = format!("{prefix}%");

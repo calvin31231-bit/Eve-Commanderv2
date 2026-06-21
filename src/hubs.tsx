@@ -31,6 +31,7 @@ import type {
   TradeOpportunity,
   ReprocessView,
   BuildPlanView,
+  ResolvedFit,
 } from "./types";
 
 export interface Hub {
@@ -1247,6 +1248,85 @@ function ToolsHub(): ReactNode {
   );
 }
 
+function FitImporter(): ReactNode {
+  const [eft, setEft] = useState("");
+  const [fit, setFit] = useState<ResolvedFit | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function parse() {
+    setError(null);
+    setFit(null);
+    if (!isTauri()) {
+      setError("Design preview — connect the desktop shell to parse fits.");
+      return;
+    }
+    api
+      .parseFit(eft)
+      .then((f) => (f ? setFit(f) : setError("Not a valid EFT fit (check the [Ship, Name] header).")))
+      .catch((e) => setError(String(e)));
+  }
+
+  return (
+    <div className="card fit-importer">
+      <h3>Fitting · EFT Import</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Paste an EFT block (from PYFA or the in-game fitting window) to parse and resolve it.
+      </p>
+      <textarea
+        value={eft}
+        onChange={(e) => setEft(e.target.value)}
+        placeholder={"[Rifter, My Rifter]\nDamage Control II\n200mm AutoCannon II, EMP S\n\nHobgoblin II x5"}
+        rows={8}
+        style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }}
+      />
+      <button onClick={parse} style={{ marginTop: 8 }}>Parse fit</button>
+      {error && <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{error}</p>}
+      {fit && (
+        <div style={{ marginTop: 10 }}>
+          <div className="market-name">
+            {fit.ship} · <span style={{ color: "var(--text-dim)" }}>{fit.name}</span>
+          </div>
+          <table className="holdings" style={{ marginTop: 8 }}>
+            <tbody>
+              {fit.items.map((it, i) => (
+                <tr key={i}>
+                  <td>
+                    {it.name}
+                    {it.charge && <span style={{ color: "var(--text-dim)" }}> · {it.charge}</span>}
+                  </td>
+                  <td className="mono num">{it.quantity > 1 ? `x${it.quantity}` : ""}</td>
+                  <td className="mono num">
+                    {it.type_id != null ? (
+                      <span className="badge safe">#{it.type_id}</span>
+                    ) : (
+                      <span className="badge caution">?</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {fit.unresolved.length > 0 && (
+            <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+              {fit.unresolved.length} name(s) unresolved — needs the full prebuilt SDE.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CombatHub(): ReactNode {
+  return (
+    <>
+      <h1>Combat &amp; Intel</h1>
+      <div className="sub">Fitting now; killboard, intel map, D-scan, and threat scanner land in Phase 4.</div>
+      <FitImporter />
+    </>
+  );
+}
+
 export function renderHub(hubId: string, home: HomeProps, activeCharacter: Character | null): ReactNode {
   switch (hubId) {
     case "home":
@@ -1256,7 +1336,7 @@ export function renderHub(hubId: string, home: HomeProps, activeCharacter: Chara
     case "economy":
       return <EconomyHub character={activeCharacter} />;
     case "combat":
-      return <Placeholder title="Combat & Intel" blurb="Killboard, intel map, D-scan, threat scanner, fitting, AAR." />;
+      return <CombatHub />;
     case "navigation":
       return <Placeholder title="Navigation & Logistics" blurb="Routes, capital/JF, courier, bookmarks." />;
     case "corp":

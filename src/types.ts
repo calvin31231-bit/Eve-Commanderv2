@@ -316,6 +316,21 @@ export interface BuildPlanView {
   probability: number | null;
 }
 
+export interface ResolvedItem {
+  type_id: number | null;
+  name: string;
+  charge: string | null;
+  quantity: number;
+}
+
+export interface ResolvedFit {
+  ship_type_id: number | null;
+  ship: string;
+  name: string;
+  items: ResolvedItem[];
+  unresolved: string[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

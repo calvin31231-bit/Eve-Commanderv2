@@ -1206,6 +1206,17 @@ pub async fn plan_build(
     }))
 }
 
+/// Parse a pasted EFT fit and resolve its ship + modules to type ids via the
+/// SDE. Returns `null` when the EFT header is malformed. Unresolved names (those
+/// the current SDE doesn't know) are listed so the UI can flag them.
+#[tauri::command]
+pub async fn parse_fit(
+    state: State<'_, AppState>,
+    eft: String,
+) -> CmdResult<Option<eve_core::fitting::ResolvedFit>> {
+    state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())
+}
+
 /// All collected notifications, most recent first (drives the Alerts rail).
 #[tauri::command]
 pub fn list_notifications(state: State<'_, AppState>) -> CmdResult<Vec<Notification>> {

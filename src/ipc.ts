@@ -33,6 +33,7 @@ import type {
   TradeOpportunity,
   ReprocessView,
   BuildPlanView,
+  ResolvedFit,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -97,6 +98,7 @@ export const api = {
     call<ReprocessView | null>("reprocess_item", { typeId, units, efficiency }),
   planBuild: (productTypeId: number, runs: number, me: number, activity?: string) =>
     call<BuildPlanView | null>("plan_build", { productTypeId, runs, me, activity }),
+  parseFit: (eft: string) => call<ResolvedFit | null>("parse_fit", { eft }),
   getMining: (characterId: number) =>
     call<MiningView>("get_mining", { characterId }),
   getMailHeaders: (characterId: number) =>

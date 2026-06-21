@@ -23,6 +23,7 @@ use eve_core::config::Config;
 use eve_core::contracts::ContractsClient;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
+use eve_core::fitting::FittingClient;
 use eve_core::industry::IndustryClient;
 use eve_core::industry_plan::IndustryPlanClient;
 use eve_core::insurance::InsuranceClient;
@@ -75,6 +76,8 @@ pub struct AppState {
     pub reprocess: ReprocessClient,
     /// SDE-backed industry build planner (BOM/ME/invention) for the Economy hub.
     pub industry_plan: IndustryPlanClient,
+    /// SDE-backed EFT fit parser/resolver for the Combat & Intel hub.
+    pub fitting: FittingClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -174,6 +177,7 @@ fn build_state() -> AppState {
 
     let reprocess = ReprocessClient::new(sde.clone());
     let industry_plan = IndustryPlanClient::new(sde.clone());
+    let fitting = FittingClient::new(sde.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -215,6 +219,7 @@ fn build_state() -> AppState {
         prices,
         reprocess,
         industry_plan,
+        fitting,
         names,
         notifications,
         intensity,
@@ -272,6 +277,7 @@ pub fn run() {
             commands::scan_station_trades,
             commands::reprocess_item,
             commands::plan_build,
+            commands::parse_fit,
             commands::get_contracts,
             commands::get_mining,
             commands::get_mail_headers,

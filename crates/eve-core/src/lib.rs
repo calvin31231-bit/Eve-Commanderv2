@@ -29,6 +29,7 @@ pub mod contracts;
 pub mod db;
 pub mod error;
 pub mod esi;
+pub mod fitting;
 pub mod industry;
 pub mod industry_plan;
 pub mod insurance;
