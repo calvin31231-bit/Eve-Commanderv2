@@ -33,6 +33,7 @@ import type {
   BuildPlanView,
   ResolvedFit,
   SkillPlanView,
+  CanFlyView,
 } from "./types";
 
 export interface Hub {
@@ -1335,14 +1336,16 @@ function ToolsHub(): ReactNode {
   );
 }
 
-function FitImporter(): ReactNode {
+function FitImporter({ character }: { character: Character | null }): ReactNode {
   const [eft, setEft] = useState("");
   const [fit, setFit] = useState<ResolvedFit | null>(null);
+  const [canFly, setCanFly] = useState<CanFlyView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function parse() {
     setError(null);
     setFit(null);
+    setCanFly(null);
     if (!isTauri()) {
       setError("Design preview — connect the desktop shell to parse fits.");
       return;
@@ -1351,6 +1354,12 @@ function FitImporter(): ReactNode {
       .parseFit(eft)
       .then((f) => (f ? setFit(f) : setError("Not a valid EFT fit (check the [Ship, Name] header).")))
       .catch((e) => setError(String(e)));
+  }
+
+  function checkCanFly() {
+    if (!character || !isTauri()) return;
+    setCanFly(null);
+    api.canFlyFit(character.id, eft).then(setCanFly).catch(() => setCanFly(null));
   }
 
   return (
@@ -1366,8 +1375,51 @@ function FitImporter(): ReactNode {
         rows={8}
         style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }}
       />
-      <button onClick={parse} style={{ marginTop: 8 }}>Parse fit</button>
+      <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+        <button onClick={parse}>Parse fit</button>
+        {character && (
+          <button onClick={checkCanFly} disabled={!eft.trim()}>
+            Can {character.name} fly this?
+          </button>
+        )}
+      </div>
       {error && <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{error}</p>}
+      {canFly && canFly.parsed && (
+        <div style={{ marginTop: 10 }}>
+          {canFly.can_fly ? (
+            <p>
+              <span className="badge safe">Can fly</span> {canFly.ship} — all required skills trained.
+            </p>
+          ) : (
+            <>
+              <p>
+                <span className="badge caution">Missing skills</span> {canFly.ship} ·{" "}
+                {formatDuration(canFly.total_seconds)} to train
+              </p>
+              <table className="holdings">
+                <tbody>
+                  {canFly.missing.map((m) => (
+                    <tr key={m.skill_type_id}>
+                      <td>{m.name}</td>
+                      <td className="mono num">
+                        {m.current_level}→{m.required_level}
+                      </td>
+                      <td className="mono num">
+                        {m.seconds > 0 ? formatDuration(m.seconds) : "no SDE"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          {canFly.unresolved.length > 0 && (
+            <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+              {canFly.unresolved.length} item(s) unresolved — skill needs unchecked (needs full SDE).
+            </p>
+          )}
+        </div>
+      )}
       {fit && (
         <div style={{ marginTop: 10 }}>
           <div className="market-name">
@@ -1404,12 +1456,12 @@ function FitImporter(): ReactNode {
   );
 }
 
-function CombatHub(): ReactNode {
+function CombatHub({ character }: { character: Character | null }): ReactNode {
   return (
     <>
       <h1>Combat &amp; Intel</h1>
       <div className="sub">Fitting now; killboard, intel map, D-scan, and threat scanner land in Phase 4.</div>
-      <FitImporter />
+      <FitImporter character={character} />
     </>
   );
 }
@@ -1423,7 +1475,7 @@ export function renderHub(hubId: string, home: HomeProps, activeCharacter: Chara
     case "economy":
       return <EconomyHub character={activeCharacter} />;
     case "combat":
-      return <CombatHub />;
+      return <CombatHub character={activeCharacter} />;
     case "navigation":
       return <Placeholder title="Navigation & Logistics" blurb="Routes, capital/JF, courier, bookmarks." />;
     case "corp":

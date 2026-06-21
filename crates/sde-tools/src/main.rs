@@ -21,6 +21,7 @@ struct Args {
     type_materials: Option<PathBuf>,
     blueprints: Option<PathBuf>,
     skills: Option<PathBuf>,
+    required_skills: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args> {
@@ -30,6 +31,7 @@ fn parse_args() -> Result<Args> {
     let mut type_materials = None;
     let mut blueprints = None;
     let mut skills = None;
+    let mut required_skills = None;
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -42,6 +44,9 @@ fn parse_args() -> Result<Args> {
             }
             "--blueprints" => blueprints = Some(PathBuf::from(next_value(&mut it, &arg)?)),
             "--skills" => skills = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--required-skills" => {
+                required_skills = Some(PathBuf::from(next_value(&mut it, &arg)?))
+            }
             "-h" | "--help" => {
                 print_usage();
                 std::process::exit(0);
@@ -56,10 +61,11 @@ fn parse_args() -> Result<Args> {
         && type_materials.is_none()
         && blueprints.is_none()
         && skills.is_none()
+        && required_skills.is_none()
     {
-        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints/--skills)");
+        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints/--skills/--required-skills)");
     }
-    Ok(Args { out, types, systems, type_materials, blueprints, skills })
+    Ok(Args { out, types, systems, type_materials, blueprints, skills, required_skills })
 }
 
 fn next_value(it: &mut impl Iterator<Item = String>, flag: &str) -> Result<String> {
@@ -71,7 +77,7 @@ fn print_usage() {
         "sde-convert — CCP SDE YAML → sde.sqlite\n\n\
          USAGE:\n  \
          sde-convert --out <sde.sqlite> [--types <typeIDs.yaml>] [--systems <systems.yaml>]\n  \
-         [--type-materials <typeMaterials.yaml>] [--blueprints <blueprints.yaml>] [--skills <skills.yaml>]\n\n\
+         [--type-materials <typeMaterials.yaml>] [--blueprints <blueprints.yaml>] [--skills <skills.yaml>] [--required-skills <reqSkills.yaml>]\n\n\
          At least one input is required."
     );
 }
@@ -110,6 +116,12 @@ fn run() -> Result<()> {
             .with_context(|| format!("reading {}", p.display()))?;
         let n = conv.ingest_skills(&yaml)?;
         eprintln!("skills: {n} rows from {}", p.display());
+    }
+    if let Some(p) = &args.required_skills {
+        let yaml = std::fs::read_to_string(p)
+            .with_context(|| format!("reading {}", p.display()))?;
+        let n = conv.ingest_required_skills(&yaml)?;
+        eprintln!("required_skills: {n} rows from {}", p.display());
     }
 
     eprintln!("wrote {}", args.out.display());

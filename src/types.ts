@@ -347,6 +347,23 @@ export interface SkillPlanView {
   total_seconds: number;
 }
 
+export interface MissingSkillView {
+  skill_type_id: number;
+  name: string;
+  required_level: number;
+  current_level: number;
+  seconds: number;
+}
+
+export interface CanFlyView {
+  ship: string;
+  can_fly: boolean;
+  missing: MissingSkillView[];
+  total_seconds: number;
+  parsed: boolean;
+  unresolved: string[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

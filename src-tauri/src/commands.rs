@@ -1328,6 +1328,125 @@ pub async fn parse_fit(
     state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())
 }
 
+/// A single skill requirement the character hasn't met for a fit.
+#[derive(Debug, Serialize)]
+pub struct MissingSkillView {
+    pub skill_type_id: i64,
+    pub name: String,
+    pub required_level: i64,
+    pub current_level: i64,
+    /// Training time from current to required level (0 if rank unknown).
+    pub seconds: i64,
+}
+
+/// "Can I fly this fit?" verdict for the active character.
+#[derive(Debug, Serialize)]
+pub struct CanFlyView {
+    pub ship: String,
+    pub can_fly: bool,
+    pub missing: Vec<MissingSkillView>,
+    pub total_seconds: i64,
+    /// Whether the fit parsed at all (false ⇒ malformed EFT).
+    pub parsed: bool,
+    /// Fit item names with no SDE type id — their skill needs can't be checked.
+    pub unresolved: Vec<String>,
+}
+
+/// Check whether a character can fly a pasted EFT fit: collects the required
+/// skills of the ship + every module/charge/drone from the SDE, compares to the
+/// character's trained levels, and costs the training time for any gaps.
+#[tauri::command]
+pub async fn can_fly_fit(
+    state: State<'_, AppState>,
+    character_id: i64,
+    eft: String,
+) -> CmdResult<CanFlyView> {
+    use eve_core::skillplan::{sp_for_level, training_seconds};
+
+    let Some(fit) = state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())? else {
+        return Ok(CanFlyView {
+            ship: String::new(),
+            can_fly: false,
+            missing: Vec::new(),
+            total_seconds: 0,
+            parsed: false,
+            unresolved: Vec::new(),
+        });
+    };
+
+    // Every resolved type id referenced by the fit (ship + items).
+    let mut type_ids: Vec<i64> = Vec::new();
+    if let Some(id) = fit.ship_type_id {
+        type_ids.push(id);
+    }
+    for it in &fit.items {
+        if let Some(id) = it.type_id {
+            type_ids.push(id);
+        }
+    }
+
+    // Union of required skills, keeping the highest level demanded for each.
+    let sde = state.names.sde();
+    let mut required: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    for &tid in &type_ids {
+        for req in sde.required_skills(tid).await.map_err(|e| e.to_string())? {
+            let e = required.entry(req.type_id).or_insert(0);
+            *e = (*e).max(req.quantity);
+        }
+    }
+
+    let sheet = state.character.skills(character_id).await.map_err(|e| e.to_string())?;
+    let attrs = state.character.attributes(character_id).await.map_err(|e| e.to_string())?;
+    let current: std::collections::HashMap<i64, i64> = sheet
+        .skills
+        .iter()
+        .map(|s| (s.skill_id, s.trained_skill_level))
+        .collect();
+
+    let skill_ids: Vec<i64> = required.keys().copied().collect();
+    let names = names_for(&state, &skill_ids).await;
+
+    let mut missing = Vec::new();
+    let mut total_seconds = 0;
+    for (skill_id, required_level) in required {
+        let current_level = current.get(&skill_id).copied().unwrap_or(0);
+        if current_level >= required_level {
+            continue;
+        }
+        let seconds = match sde.skill_meta(skill_id).await.map_err(|e| e.to_string())? {
+            Some(m) => {
+                let sp = (sp_for_level(m.rank, required_level) - sp_for_level(m.rank, current_level))
+                    .max(0);
+                training_seconds(
+                    sp,
+                    attr_value(&attrs, m.primary_attr),
+                    attr_value(&attrs, m.secondary_attr),
+                )
+            }
+            None => 0,
+        };
+        total_seconds += seconds;
+        missing.push(MissingSkillView {
+            skill_type_id: skill_id,
+            name: named(&names, skill_id),
+            required_level,
+            current_level,
+            seconds,
+        });
+    }
+    // Longest trains first — a sensible default training order.
+    missing.sort_by(|a, b| b.seconds.cmp(&a.seconds));
+
+    Ok(CanFlyView {
+        ship: fit.ship,
+        can_fly: missing.is_empty(),
+        missing,
+        total_seconds,
+        parsed: true,
+        unresolved: fit.unresolved,
+    })
+}
+
 /// All collected notifications, most recent first (drives the Alerts rail).
 #[tauri::command]
 pub fn list_notifications(state: State<'_, AppState>) -> CmdResult<Vec<Notification>> {

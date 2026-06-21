@@ -137,6 +137,15 @@ CREATE TABLE IF NOT EXISTS skills (
     primary_attr   INTEGER NOT NULL DEFAULT 0,
     secondary_attr INTEGER NOT NULL DEFAULT 0
 );
+
+-- Skills a type requires to use (dogma requiredSkill1..6 + level), driving the
+-- "can I fly this fit?" check.
+CREATE TABLE IF NOT EXISTS type_required_skills (
+    type_id       INTEGER NOT NULL,
+    skill_type_id INTEGER NOT NULL,
+    level         INTEGER NOT NULL,
+    PRIMARY KEY (type_id, skill_type_id)
+);
 "#;
 
 impl Sde {
@@ -286,6 +295,23 @@ impl Sde {
         }))
     }
 
+    /// The skills (id + level) a type requires to be used.
+    pub async fn required_skills(&self, type_id: i64) -> Result<Vec<Material>> {
+        let rows = sqlx::query(
+            "SELECT skill_type_id, level FROM type_required_skills WHERE type_id = ?1",
+        )
+        .bind(type_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| Material {
+                type_id: r.get::<i64, _>("skill_type_id"),
+                quantity: r.get::<i64, _>("level"),
+            })
+            .collect())
+    }
+
     /// Resolve a list of type ids to [`NamedType`]s, falling back to `Type {id}`
     /// for ids the version-pinned SDE doesn't know.
     pub async fn name_types(&self, ids: &[i64]) -> Result<Vec<NamedType>> {
@@ -418,6 +444,25 @@ impl Sde {
         .bind(rank)
         .bind(primary_attr)
         .bind(secondary_attr)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Test/seed helper: insert a required-skill row for a type.
+    pub async fn insert_required_skill(
+        &self,
+        type_id: i64,
+        skill_type_id: i64,
+        level: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO type_required_skills (type_id, skill_type_id, level)
+             VALUES (?1, ?2, ?3)",
+        )
+        .bind(type_id)
+        .bind(skill_type_id)
+        .bind(level)
         .execute(&self.pool)
         .await?;
         Ok(())

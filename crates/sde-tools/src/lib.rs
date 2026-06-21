@@ -112,6 +112,21 @@ struct RawSystem {
     security: f64,
 }
 
+/// One normalized required-skills entry for a type: `{type_id: {skills:
+/// [{skillTypeID, level}]}}`.
+#[derive(Debug, Deserialize)]
+struct RawRequiredSkills {
+    #[serde(default)]
+    skills: Vec<RawRequiredSkill>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawRequiredSkill {
+    #[serde(rename = "skillTypeID")]
+    skill_type_id: i64,
+    level: i64,
+}
+
 /// One normalized skill entry: rank + the two training attribute type ids.
 #[derive(Debug, Deserialize)]
 struct RawSkill {
@@ -304,6 +319,30 @@ impl Converter {
                     s.secondary_attribute
                 ])?;
                 written += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest a normalized required-skills map (derived from dogma
+    /// requiredSkill1..6 + their level attributes). Returns rows written.
+    pub fn ingest_required_skills(&mut self, yaml: &str) -> Result<usize> {
+        let raw: BTreeMap<i64, RawRequiredSkills> =
+            serde_yaml::from_str(yaml).context("parsing required-skills YAML")?;
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO type_required_skills (type_id, skill_type_id, level)
+                 VALUES (?1, ?2, ?3)",
+            )?;
+            for (type_id, rs) in raw {
+                for s in rs.skills {
+                    stmt.execute(params![type_id, s.skill_type_id, s.level])?;
+                    written += 1;
+                }
             }
         }
         tx.commit()?;
@@ -554,6 +593,33 @@ mod tests {
         assert_eq!(rank, 3);
         assert_eq!(p, 165);
         assert_eq!(s, 166);
+    }
+
+    #[test]
+    fn ingests_required_skills() {
+        let mut c = Converter::in_memory().unwrap();
+        let n = c
+            .ingest_required_skills(
+                r#"
+587:
+  skills:
+    - skillTypeID: 3331
+      level: 1
+    - skillTypeID: 3330
+      level: 3
+"#,
+            )
+            .unwrap();
+        assert_eq!(n, 2);
+        let lvl: i64 = c
+            .connection()
+            .query_row(
+                "SELECT level FROM type_required_skills WHERE type_id = 587 AND skill_type_id = 3330",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(lvl, 3);
     }
 
     #[test]
