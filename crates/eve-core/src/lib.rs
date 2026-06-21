@@ -49,6 +49,7 @@ pub mod prices;
 pub mod reprocess;
 pub mod sde;
 pub mod skillplan;
+pub mod universe;
 pub mod wallet;
 
 pub use error::{Error, Result};

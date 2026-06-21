@@ -3,7 +3,7 @@ import { api, isTauri } from "./ipc";
 import { HUBS, renderHub, portraitUrl } from "./hubs";
 import { Starfield } from "./Starfield";
 import { AgentAvatar, type Mood } from "./AgentAvatar";
-import type { Character, CharacterStatusView, LocalIntel, Notification, ServerStatus, Severity } from "./types";
+import type { Character, CharacterStatusView, LocalIntel, Notification, ServerStatus, Severity, SystemSafetyView } from "./types";
 import "./app.css";
 
 function fmtDuration(seconds: number): string {
@@ -37,6 +37,7 @@ export default function App() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [alerts, setAlerts] = useState<Notification[]>([]);
   const [localIntel, setLocalIntel] = useState<LocalIntel | null>(null);
+  const [safety, setSafety] = useState<SystemSafetyView | null>(null);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -57,6 +58,16 @@ export default function App() {
     };
     refresh();
     const timer = window.setInterval(refresh, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // System safety makes several zKill calls per refresh, so poll it slowly.
+  useEffect(() => {
+    if (!isTauri()) return;
+    const refreshSafety = () =>
+      api.getSystemSafety().then(setSafety).catch(() => undefined);
+    refreshSafety();
+    const timer = window.setInterval(refreshSafety, 30000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -200,6 +211,31 @@ export default function App() {
             <div className="agent-name">Aura <span className="agent-tag">AI</span></div>
             <div className="agent-status">{auraStatus}</div>
           </div>
+        </div>
+        <div className="sa-section">
+          <h3>System Safety</h3>
+          {!safety || !safety.found || !safety.current ? (
+            <div className="sa-empty">
+              Recent kills in your system &amp; neighbours appear here once a character is active and
+              in space.
+            </div>
+          ) : (
+            <div className="safety-block">
+              <div className={`safety-headline sev-${safety.level.toLowerCase()}`}>{safety.message}</div>
+              <ul className="safety-list">
+                <li className="safety-current">
+                  <span>{safety.current.name} <span className="safety-sec">{safety.current.security.toFixed(1)}</span></span>
+                  <span className="mono">{safety.current.kills_last_hour} kills</span>
+                </li>
+                {safety.neighbors.slice(0, 8).map((n) => (
+                  <li key={n.system_id}>
+                    <span>{n.name} <span className="safety-sec">{n.security.toFixed(1)}</span></span>
+                    <span className={`mono${n.kills_last_hour > 0 ? " neg" : ""}`}>{n.kills_last_hour}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div className="sa-section">
           <h3>Local{localIntel?.system ? ` · ${localIntel.system}` : ""}</h3>

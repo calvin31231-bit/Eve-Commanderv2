@@ -41,6 +41,7 @@ import type {
   DscanResult,
   ThreatScanView,
   GateCampView,
+  SystemSafetyView,
   CombatLogView,
   LocalIntel,
 } from "./types";
@@ -114,6 +115,7 @@ export const api = {
   parseDscan: (text: string) => call<DscanResult>("parse_dscan", { text }),
   scanPilots: (names: string[]) => call<ThreatScanView>("scan_pilots", { names }),
   gateCampCheck: (system: string) => call<GateCampView>("gate_camp_check", { system }),
+  getSystemSafety: () => call<SystemSafetyView>("get_system_safety"),
   getCombatSummary: () => call<CombatLogView>("get_combat_summary"),
   getLocalIntel: () => call<LocalIntel | null>("get_local_intel"),
   costSkillPlan: (

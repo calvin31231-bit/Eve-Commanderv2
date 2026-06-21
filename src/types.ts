@@ -427,6 +427,23 @@ export interface GateCampView {
   message: string;
 }
 
+export interface SafetySystemView {
+  system_id: number;
+  name: string;
+  security: number;
+  kills_last_hour: number;
+  jumps: number;
+}
+
+export interface SystemSafetyView {
+  found: boolean;
+  current: SafetySystemView | null;
+  neighbors: SafetySystemView[];
+  total_kills: number;
+  level: "Safe" | "Neutral" | "Caution" | "Danger";
+  message: string;
+}
+
 export interface EntityDamage {
   entity: string;
   damage: number;

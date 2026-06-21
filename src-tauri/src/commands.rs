@@ -1474,6 +1474,96 @@ pub fn get_local_intel() -> Option<eve_core::logs::chatlog::LocalIntel> {
     Some(eve_core::logs::chatlog::summarize_local(&text))
 }
 
+/// One system in the safety readout.
+#[derive(Debug, Serialize)]
+pub struct SafetySystemView {
+    pub system_id: i64,
+    pub name: String,
+    pub security: f64,
+    pub kills_last_hour: i64,
+    /// Jumps from the active character (0 = current system).
+    pub jumps: i64,
+}
+
+/// The active character's neighbourhood safety: kills in the current system and
+/// each adjacent system over the last hour, with an overall flag.
+#[derive(Debug, Serialize)]
+pub struct SystemSafetyView {
+    /// False when there's no active character or its location is unavailable.
+    pub found: bool,
+    pub current: Option<SafetySystemView>,
+    pub neighbors: Vec<SafetySystemView>,
+    pub total_kills: i64,
+    pub level: String,
+    pub message: String,
+}
+
+/// System-safety readout for the active character: its current system + the
+/// systems one jump away, each with recent kill volume (zKillboard). Topology is
+/// cached, so the cost is mostly the per-system kill counts.
+#[tauri::command]
+pub async fn get_system_safety(state: State<'_, AppState>) -> CmdResult<SystemSafetyView> {
+    let empty = |found: bool| SystemSafetyView {
+        found,
+        current: None,
+        neighbors: Vec::new(),
+        total_kills: 0,
+        level: "Safe".into(),
+        message: if found { "Quiet.".into() } else { "No active character.".into() },
+    };
+
+    let characters = state.db.list_characters().await.map_err(|e| e.to_string())?;
+    let Some(active) = characters.iter().find(|c| c.active) else {
+        return Ok(empty(false));
+    };
+    let Ok(loc) = state.character.location(active.id).await else {
+        return Ok(empty(false));
+    };
+    let current_id = loc.solar_system_id;
+    let info = state.universe.system_info(current_id).await.map_err(|e| e.to_string())?;
+    let neighbor_ids: Vec<i64> = state
+        .universe
+        .neighbors(current_id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .take(12)
+        .collect();
+
+    let current_kills = state.zkill.system_kill_count(current_id, 3600).await.unwrap_or(0);
+    let mut total = current_kills;
+    let mut neighbors = Vec::new();
+    for nid in neighbor_ids {
+        let ninfo = state.universe.system_info(nid).await.ok();
+        let kills = state.zkill.system_kill_count(nid, 3600).await.unwrap_or(0);
+        total += kills;
+        neighbors.push(SafetySystemView {
+            system_id: nid,
+            name: ninfo.as_ref().map(|i| i.name.clone()).unwrap_or_else(|| format!("System {nid}")),
+            security: ninfo.as_ref().map(|i| i.security_status).unwrap_or(0.0),
+            kills_last_hour: kills,
+            jumps: 1,
+        });
+    }
+    neighbors.sort_by(|a, b| b.kills_last_hour.cmp(&a.kills_last_hour));
+
+    let a = eve_core::intel::assess_safety(total);
+    Ok(SystemSafetyView {
+        found: true,
+        current: Some(SafetySystemView {
+            system_id: current_id,
+            name: info.name,
+            security: info.security_status,
+            kills_last_hour: current_kills,
+            jumps: 0,
+        }),
+        neighbors,
+        total_kills: total,
+        level: a.level.as_str().to_string(),
+        message: a.message,
+    })
+}
+
 /// Gate-camp assessment for a named system.
 #[derive(Debug, Serialize)]
 pub struct GateCampView {

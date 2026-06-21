@@ -155,6 +155,34 @@ pub fn assess_gatecamp(kills_last_hour: i64) -> GateCampAssessment {
     GateCampAssessment { kills_last_hour, level, message }
 }
 
+/// A neighbourhood-safety read: total recent kills across a system and its
+/// neighbours mapped to a threat flag.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SafetyAssessment {
+    pub total_kills: i64,
+    pub level: ThreatLevel,
+    pub message: String,
+}
+
+/// Assess how hot a neighbourhood is from the combined kills in a system + its
+/// neighbours over the last hour. Pure.
+pub fn assess_safety(total_kills: i64) -> SafetyAssessment {
+    let (level, message) = if total_kills == 0 {
+        (ThreatLevel::Safe, "Quiet — no recent kills nearby.".to_string())
+    } else if total_kills <= 5 {
+        (
+            ThreatLevel::Caution,
+            format!("{total_kills} kill(s) in/around your system this hour."),
+        )
+    } else {
+        (
+            ThreatLevel::Danger,
+            format!("{total_kills} kills in/around your system this hour — hot."),
+        )
+    };
+    SafetyAssessment { total_kills, level, message }
+}
+
 // ---- zKillboard client (live; exercised on the user's machine) -------------
 
 /// The subset of zKill's `stats` we score on. zKill nests sec status under
@@ -306,6 +334,13 @@ mod tests {
     fn summary_calls_out_hunters() {
         let levels = [ThreatLevel::Danger, ThreatLevel::Caution, ThreatLevel::Safe];
         assert!(summarize(&levels).contains("hunter"));
+    }
+
+    #[test]
+    fn safety_levels_by_kill_volume() {
+        assert_eq!(assess_safety(0).level, ThreatLevel::Safe);
+        assert_eq!(assess_safety(3).level, ThreatLevel::Caution);
+        assert_eq!(assess_safety(20).level, ThreatLevel::Danger);
     }
 
     #[test]

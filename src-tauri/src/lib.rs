@@ -28,6 +28,7 @@ use eve_core::industry::IndustryClient;
 use eve_core::industry_plan::IndustryPlanClient;
 use eve_core::insurance::InsuranceClient;
 use eve_core::intel::ZkillClient;
+use eve_core::universe::UniverseClient;
 use eve_core::mail::MailClient;
 use eve_core::market::MarketClient;
 use eve_core::marketdata::MarketDataClient;
@@ -84,6 +85,8 @@ pub struct AppState {
     pub fitting: FittingClient,
     /// zKillboard reads for the Local threat scanner (Combat & Intel hub).
     pub zkill: ZkillClient,
+    /// Universe topology (system neighbours) for the System Safety surface.
+    pub universe: UniverseClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -196,6 +199,7 @@ fn build_state() -> AppState {
     let industry_plan = IndustryPlanClient::new(sde.clone());
     let fitting = FittingClient::new(sde.clone());
     let zkill = ZkillClient::new(config.user_agent.clone());
+    let universe = UniverseClient::new(esi.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -244,6 +248,7 @@ fn build_state() -> AppState {
         industry_plan,
         fitting,
         zkill,
+        universe,
         names,
         notifications,
         intensity,
@@ -308,6 +313,7 @@ pub fn run() {
             commands::parse_dscan,
             commands::scan_pilots,
             commands::gate_camp_check,
+            commands::get_system_safety,
             commands::get_combat_summary,
             commands::get_local_intel,
             commands::cost_skill_plan,
