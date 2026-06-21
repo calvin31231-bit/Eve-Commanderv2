@@ -93,7 +93,7 @@ The full Static Data Export is too large to ship in the repo, so generate it
 once locally. On Windows:
 
 ```powershell
-pwsh -File scripts/build-sde.ps1
+powershell -ExecutionPolicy Bypass -File scripts\build-sde.ps1
 ```
 
 This downloads CCP's SDE, runs the `sde-convert` tool over the FSD YAML

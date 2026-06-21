@@ -30,7 +30,11 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-Write-Host "EVE Commander — SDE builder" -ForegroundColor Cyan
+# Windows PowerShell 5.1 defaults to TLS 1.0 and will fail the HTTPS download
+# from S3 — force TLS 1.2. (No-op on PowerShell 7+.)
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+
+Write-Host "EVE Commander - SDE builder" -ForegroundColor Cyan
 Write-Host "Output dir: $OutDir"
 
 # 1. Download + extract the SDE into a temp working area.
@@ -41,7 +45,12 @@ New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 if (-not (Test-Path $zip)) {
     Write-Host "Downloading SDE (~100 MB) ..."
-    Invoke-WebRequest -Uri $SdeUrl -OutFile $zip
+    # ProgressPreference=SilentlyContinue makes Invoke-WebRequest download an
+    # order of magnitude faster on Windows PowerShell 5.1.
+    $oldProgress = $ProgressPreference
+    $ProgressPreference = "SilentlyContinue"
+    try { Invoke-WebRequest -Uri $SdeUrl -OutFile $zip -UseBasicParsing }
+    finally { $ProgressPreference = $oldProgress }
 } else {
     Write-Host "Reusing cached download: $zip"
 }
