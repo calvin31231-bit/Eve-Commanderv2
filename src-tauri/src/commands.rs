@@ -822,6 +822,57 @@ pub async fn mark_mail_read(
         .map_err(|e| e.to_string())
 }
 
+/// List character groups with their members.
+#[tauri::command]
+pub async fn list_groups(
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<eve_core::model::CharacterGroup>> {
+    state.db.list_groups().await.map_err(|e| e.to_string())
+}
+
+/// Create a new (empty) group.
+#[tauri::command]
+pub async fn create_group(
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<eve_core::model::CharacterGroup> {
+    state.db.create_group(&name).await.map_err(|e| e.to_string())
+}
+
+/// Delete a group.
+#[tauri::command]
+pub async fn delete_group(state: State<'_, AppState>, group_id: i64) -> CmdResult<()> {
+    state.db.delete_group(group_id).await.map_err(|e| e.to_string())
+}
+
+/// Add a character to a group.
+#[tauri::command]
+pub async fn add_group_member(
+    state: State<'_, AppState>,
+    group_id: i64,
+    character_id: i64,
+) -> CmdResult<()> {
+    state
+        .db
+        .add_group_member(group_id, character_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Remove a character from a group.
+#[tauri::command]
+pub async fn remove_group_member(
+    state: State<'_, AppState>,
+    group_id: i64,
+    character_id: i64,
+) -> CmdResult<()> {
+    state
+        .db
+        .remove_group_member(group_id, character_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// User-editable application settings.
 #[derive(Debug, Serialize)]
 pub struct AppSettings {

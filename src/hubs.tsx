@@ -11,6 +11,7 @@ import type {
   CashflowSummary,
   Character,
   CharacterAttributes,
+  CharacterGroup,
   CharacterProfile,
   QueuedSkillView,
   TransactionView,
@@ -657,6 +658,93 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
   );
 }
 
+// Character groups ("stables"/"hats") — create sets of characters for
+// cross-character views. The model/DB shipped in Phase 0; this is its UI.
+function CorpHub(): ReactNode {
+  const [groups, setGroups] = useState<CharacterGroup[]>([]);
+  const [roster, setRoster] = useState<Character[]>([]);
+  const [newName, setNewName] = useState("");
+
+  function reload() {
+    api.listGroups().then(setGroups).catch(() => undefined);
+  }
+  useEffect(() => {
+    if (!isTauri()) return;
+    reload();
+    api.listCharacters().then(setRoster).catch(() => undefined);
+  }, []);
+
+  function create() {
+    const name = newName.trim();
+    if (!name) return;
+    api.createGroup(name).then(() => {
+      setNewName("");
+      reload();
+    }).catch(() => undefined);
+  }
+  function toggleMember(group: CharacterGroup, characterId: number) {
+    const inGroup = group.members.includes(characterId);
+    const op = inGroup
+      ? api.removeGroupMember(group.id, characterId)
+      : api.addGroupMember(group.id, characterId);
+    op.then(reload).catch(() => undefined);
+  }
+
+  if (!isTauri()) {
+    return (
+      <>
+        <h1>Corp &amp; Fleet</h1>
+        <div className="sub">Design preview — groups load in the desktop shell.</div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <h1>Groups</h1>
+      <div className="sub">Organize your characters into sets ("stables") for combined views.</div>
+      <div className="card" style={{ maxWidth: 560 }}>
+        <div className="group-new">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && create()}
+            placeholder="New group name (e.g. Indy Alts)"
+          />
+          <button className="primary" onClick={create}>Create</button>
+        </div>
+      </div>
+      {groups.length === 0 ? (
+        <div className="sub" style={{ marginTop: 14 }}>No groups yet.</div>
+      ) : (
+        groups.map((g) => (
+          <div className="card" key={g.id} style={{ marginTop: 14, maxWidth: 560 }}>
+            <div className="group-head">
+              <h3 style={{ margin: 0 }}>{g.name} <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {g.members.length}</span></h3>
+              <button onClick={() => api.deleteGroup(g.id).then(reload)}>Delete</button>
+            </div>
+            <ul className="group-members">
+              {roster.map((c) => (
+                <li key={c.id}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={g.members.includes(c.id)}
+                      onChange={() => toggleMember(g, c.id)}
+                    />
+                    <img className="avatar" src={portraitUrl(c.id, 32)} alt="" width={20} height={20} />
+                    {c.name}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      )}
+    </>
+  );
+}
+
 function ToolsHub(): ReactNode {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState(false);
@@ -731,7 +819,7 @@ export function renderHub(hubId: string, home: HomeProps, activeCharacter: Chara
     case "navigation":
       return <Placeholder title="Navigation & Logistics" blurb="Routes, capital/JF, courier, bookmarks." />;
     case "corp":
-      return <Placeholder title="Corp & Fleet" blurb="Members, SRP, structures, fleet boss, recruitment." />;
+      return <CorpHub />;
     case "tools":
       return <ToolsHub />;
     default:

@@ -113,6 +113,27 @@ impl Database {
         Ok(())
     }
 
+    /// Remove a character from a group.
+    pub async fn remove_group_member(&self, group_id: i64, character_id: i64) -> Result<()> {
+        sqlx::query(
+            "DELETE FROM character_group_members WHERE group_id = ?1 AND character_id = ?2",
+        )
+        .bind(group_id)
+        .bind(character_id)
+        .execute(&self.app)
+        .await?;
+        Ok(())
+    }
+
+    /// Delete a group (members cascade away via the FK).
+    pub async fn delete_group(&self, group_id: i64) -> Result<()> {
+        sqlx::query("DELETE FROM character_groups WHERE id = ?1")
+            .bind(group_id)
+            .execute(&self.app)
+            .await?;
+        Ok(())
+    }
+
     /// List groups with their member character ids.
     pub async fn list_groups(&self) -> Result<Vec<CharacterGroup>> {
         let groups = sqlx::query("SELECT id, name FROM character_groups ORDER BY name")
@@ -213,5 +234,11 @@ mod tests {
         db.delete_character(1).await.unwrap();
         let groups = db.list_groups().await.unwrap();
         assert_eq!(groups[0].members, vec![2]);
+
+        // Remove a member, then delete the group.
+        db.remove_group_member(g.id, 2).await.unwrap();
+        assert!(db.list_groups().await.unwrap()[0].members.is_empty());
+        db.delete_group(g.id).await.unwrap();
+        assert!(db.list_groups().await.unwrap().is_empty());
     }
 }

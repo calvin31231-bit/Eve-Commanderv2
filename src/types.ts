@@ -203,6 +203,12 @@ export interface AppSettings {
   notify_min: string;
 }
 
+export interface CharacterGroup {
+  id: number;
+  name: string;
+  members: number[];
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

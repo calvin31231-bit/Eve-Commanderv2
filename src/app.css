@@ -496,3 +496,20 @@ ul.mail-list { list-style: none; margin: 0; padding: 0; }
   cursor: pointer;
 }
 .setting-saved { color: var(--safe); font-size: 12px; transition: opacity 0.3s ease; }
+
+/* Groups (Corp hub) */
+.group-new { display: flex; gap: 8px; }
+.group-new input {
+  flex: 1;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+}
+.group-head { display: flex; justify-content: space-between; align-items: center; }
+ul.group-members { list-style: none; margin: 10px 0 0; padding: 0; }
+ul.group-members li { padding: 3px 0; }
+ul.group-members label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+ul.group-members .avatar { border-radius: 4px; }

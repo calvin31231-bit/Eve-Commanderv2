@@ -10,6 +10,7 @@ import type {
   AppSettings,
   CashflowSummary,
   Character,
+  CharacterGroup,
   CharacterAttributes,
   CharacterProfile,
   CharacterSheet,
@@ -82,6 +83,13 @@ export const api = {
     call<MailView>("get_mail", { characterId, mailId }),
   markMailRead: (characterId: number, mailId: number) =>
     call<void>("mark_mail_read", { characterId, mailId }),
+  listGroups: () => call<CharacterGroup[]>("list_groups"),
+  createGroup: (name: string) => call<CharacterGroup>("create_group", { name }),
+  deleteGroup: (groupId: number) => call<void>("delete_group", { groupId }),
+  addGroupMember: (groupId: number, characterId: number) =>
+    call<void>("add_group_member", { groupId, characterId }),
+  removeGroupMember: (groupId: number, characterId: number) =>
+    call<void>("remove_group_member", { groupId, characterId }),
   getSettings: () => call<AppSettings>("get_settings"),
   setSettings: (intensity: string, notifyMin: string) =>
     call<void>("set_settings", { intensity, notifyMin }),
