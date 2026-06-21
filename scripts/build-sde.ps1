@@ -31,7 +31,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 # Windows PowerShell 5.1 defaults to TLS 1.0 and will fail the HTTPS download
-# from S3 — force TLS 1.2. (No-op on PowerShell 7+.)
+# from S3 - force TLS 1.2. (No-op on PowerShell 7+.)
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
 Write-Host "EVE Commander - SDE builder" -ForegroundColor Cyan
@@ -92,17 +92,17 @@ try {
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
     $out = Join-Path $OutDir "sde.sqlite"
 
-    $args = @("--out", $out, "--types", $types)
-    if ($typeMaterials) { $args += @("--type-materials", $typeMaterials) }
-    if ($blueprints)    { $args += @("--blueprints", $blueprints) }
-    if ($typeDogma)     { $args += @("--type-dogma", $typeDogma) }
+    $convArgs = @("--out", $out, "--types", $types)
+    if ($typeMaterials) { $convArgs += @("--type-materials", $typeMaterials) }
+    if ($blueprints)    { $convArgs += @("--blueprints", $blueprints) }
+    if ($typeDogma)     { $convArgs += @("--type-dogma", $typeDogma) }
 
     Write-Host "Converting -> $out" -ForegroundColor Cyan
-    & $exe @args
+    & $exe @convArgs
 } finally {
     Pop-Location
 }
 
 Write-Host ""
-Write-Host "Done. Restart EVE Commander — it will load the prebuilt SDE and the" -ForegroundColor Green
+Write-Host "Done. Restart EVE Commander - it will load the prebuilt SDE and the" -ForegroundColor Green
 Write-Host "reprocessing / build-planner / skill-plan / can-I-fly features go live." -ForegroundColor Green
