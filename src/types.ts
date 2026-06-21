@@ -124,6 +124,18 @@ export interface MiningView {
   ores: NamedOre[];
 }
 
+export interface ColonyView {
+  planet_id: number;
+  system_name: string;
+  planet_type: string;
+  upgrade_level: number;
+  num_pins: number;
+  extractor_count: number;
+  products: string[];
+  soonest_expiry: string | null;
+  seconds_remaining: number;
+}
+
 export interface MailHeader {
   mail_id: number;
   subject: string;

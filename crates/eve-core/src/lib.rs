@@ -40,6 +40,7 @@ pub mod mining;
 pub mod model;
 pub mod names;
 pub mod notify;
+pub mod planets;
 pub mod prices;
 pub mod reprocess;
 pub mod sde;

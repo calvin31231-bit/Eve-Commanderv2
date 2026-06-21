@@ -11,6 +11,7 @@ import type {
   CashflowSummary,
   Character,
   CharacterGroup,
+  ColonyView,
   Contract,
   CharacterAttributes,
   CharacterProfile,
@@ -111,6 +112,8 @@ export const api = {
   ) => call<SkillPlanView>("cost_skill_plan", { characterId, targets }),
   getMining: (characterId: number) =>
     call<MiningView>("get_mining", { characterId }),
+  getPlanets: (characterId: number) =>
+    call<ColonyView[]>("get_planets", { characterId }),
   getMailHeaders: (characterId: number) =>
     call<MailHeader[]>("get_mail_headers", { characterId }),
   getMail: (characterId: number, mailId: number) =>

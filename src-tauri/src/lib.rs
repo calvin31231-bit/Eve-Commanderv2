@@ -33,6 +33,7 @@ use eve_core::marketdata::MarketDataClient;
 use eve_core::mining::MiningClient;
 use eve_core::names::NameResolver;
 use eve_core::notify::NotificationCenter;
+use eve_core::planets::PlanetsClient;
 use eve_core::prices::PricesClient;
 use eve_core::reprocess::ReprocessClient;
 use eve_core::sde::Sde;
@@ -68,6 +69,8 @@ pub struct AppState {
     pub contracts: ContractsClient,
     /// Mining-ledger reads (aggregated by ore) for the Character hub.
     pub mining: MiningClient,
+    /// Planetary-industry colony reads (extractor countdowns) for the Economy hub.
+    pub planets: PlanetsClient,
     /// EVEmail reads (headers + body) for the Character hub.
     pub mail: MailClient,
     /// Public market-price reference for asset/ore valuation.
@@ -158,6 +161,7 @@ fn build_state() -> AppState {
     let insurance = InsuranceClient::new(esi.clone());
     let contracts = ContractsClient::new(esi.clone(), token_manager.clone());
     let mining = MiningClient::new(esi.clone(), token_manager.clone());
+    let planets = PlanetsClient::new(esi.clone(), token_manager.clone());
     let mail = MailClient::new(esi.clone(), token_manager.clone());
     let prices = PricesClient::new(esi.clone());
     let notifications = Arc::new(Mutex::new(NotificationCenter::default()));
@@ -215,6 +219,7 @@ fn build_state() -> AppState {
         insurance,
         contracts,
         mining,
+        planets,
         mail,
         prices,
         reprocess,
@@ -283,6 +288,7 @@ pub fn run() {
             commands::cost_skill_plan,
             commands::get_contracts,
             commands::get_mining,
+            commands::get_planets,
             commands::get_mail_headers,
             commands::get_mail,
             commands::mark_mail_read,

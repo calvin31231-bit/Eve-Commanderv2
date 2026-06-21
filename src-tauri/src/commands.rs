@@ -29,6 +29,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-wallet.read_character_wallet.v1",
     "esi-assets.read_assets.v1",
     "esi-industry.read_character_mining.v1",
+    "esi-planets.manage_planets.v1",
     "esi-mail.read_mail.v1",
     "esi-mail.organize_mail.v1",
     "esi-clones.read_clones.v1",
@@ -685,6 +686,67 @@ pub async fn get_mining(state: State<'_, AppState>, character_id: i64) -> CmdRes
         total_value,
         ores,
     })
+}
+
+/// A PI colony rolled up for the UI, with the system + extracted products named.
+#[derive(Debug, Serialize)]
+pub struct ColonyView {
+    pub planet_id: i64,
+    pub system_name: String,
+    pub planet_type: String,
+    pub upgrade_level: i64,
+    pub num_pins: i64,
+    pub extractor_count: i64,
+    pub products: Vec<String>,
+    pub soonest_expiry: Option<String>,
+    pub seconds_remaining: i64,
+}
+
+/// The character's planetary-industry colonies with extractor-cycle countdowns,
+/// soonest expiry first. Empty when the character runs no PI (or lacks the
+/// planets scope).
+#[tauri::command]
+pub async fn get_planets(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<ColonyView>> {
+    let colonies = state
+        .planets
+        .summary(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Resolve systems + extracted product types in one batch.
+    let mut ids: Vec<i64> = Vec::new();
+    for c in &colonies {
+        ids.push(c.solar_system_id);
+        ids.extend(&c.products);
+    }
+    let names = names_for(&state, &ids).await;
+
+    Ok(colonies
+        .into_iter()
+        .map(|c| ColonyView {
+            planet_id: c.planet_id,
+            system_name: named(&names, c.solar_system_id),
+            planet_type: title_case(&c.planet_type),
+            upgrade_level: c.upgrade_level,
+            num_pins: c.num_pins,
+            extractor_count: c.extractor_count as i64,
+            products: c.products.iter().map(|&p| named(&names, p)).collect(),
+            soonest_expiry: c.soonest_expiry,
+            seconds_remaining: c.seconds_remaining,
+        })
+        .collect())
+}
+
+/// Capitalize the first letter (ESI planet types come lowercase: "barren").
+fn title_case(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
 }
 
 /// Batch-resolve ids to names via the layered resolver (cache → SDE → ESI).

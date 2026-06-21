@@ -12,6 +12,7 @@ import type {
   Character,
   CharacterAttributes,
   CharacterGroup,
+  ColonyView,
   Contract,
   CharacterProfile,
   QueuedSkillView,
@@ -1054,6 +1055,68 @@ function BuildPlanner(): ReactNode {
   );
 }
 
+function PlanetsCard({ character }: { character: Character | null }): ReactNode {
+  const [colonies, setColonies] = useState<ColonyView[] | null>(null);
+  const [loadedAt, setLoadedAt] = useState(0);
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    setColonies(null);
+    if (!character || !isTauri()) return;
+    setLoadedAt(Date.now());
+    api.getPlanets(character.id).then(setColonies).catch(() => setColonies([]));
+  }, [character]);
+
+  // Tick the extractor countdowns once a second (derived locally, no network).
+  useEffect(() => {
+    const t = window.setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  if (!character || !colonies || colonies.length === 0) return null;
+  const elapsed = loadedAt ? Math.floor((Date.now() - loadedAt) / 1000) : 0;
+
+  return (
+    <div className="card planets-card" style={{ marginTop: 16 }}>
+      <h3>
+        Planetary Industry{" "}
+        <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {colonies.length} colonies</span>
+      </h3>
+      <table className="holdings">
+        <tbody>
+          {colonies.map((c) => {
+            const remaining = Math.max(0, c.seconds_remaining - elapsed);
+            const expiring = c.soonest_expiry != null;
+            return (
+              <tr key={c.planet_id}>
+                <td>
+                  {c.planet_type} · {c.system_name}
+                  <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                    {" "}
+                    · L{c.upgrade_level} · {c.num_pins} pins
+                  </span>
+                  {c.products.length > 0 && (
+                    <div style={{ color: "var(--text-dim)", fontSize: 11 }}>{c.products.join(", ")}</div>
+                  )}
+                </td>
+                <td className="mono num">
+                  {!expiring ? (
+                    <span style={{ color: "var(--text-dim)" }}>idle</span>
+                  ) : remaining === 0 ? (
+                    <span className="badge caution">expired</span>
+                  ) : (
+                    formatDuration(remaining)
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function EconomyHub({ character }: { character: Character | null }): ReactNode {
   const [jobs, setJobs] = useState<IndustryJobView[]>([]);
   const [market, setMarket] = useState<MarketView | null>(null);
@@ -1118,6 +1181,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
       <StationScanner />
       <ReprocessCalc />
       <BuildPlanner />
+      <PlanetsCard character={character} />
       {error && <div className="card" style={{ marginTop: 16 }}><p style={{ color: "var(--text-dim)" }}>{error}</p></div>}
       <div className="card" style={{ marginTop: 16 }}>
         <h3>Industry jobs {jobs.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {jobs.length} active</span>}</h3>
