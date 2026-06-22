@@ -21,6 +21,7 @@ use eve_core::character::CharacterClient;
 use eve_core::clones::ClonesClient;
 use eve_core::config::Config;
 use eve_core::contracts::ContractsClient;
+use eve_core::corp::CorpClient;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
 use eve_core::fitting::FittingClient;
@@ -90,6 +91,8 @@ pub struct AppState {
     pub universe: UniverseClient,
     /// Route solving + in-game UI bridge (waypoint/open-window) for Navigation.
     pub navigation: NavigationClient,
+    /// Corporation structure reads (fuel timers) for the Corp & Fleet hub.
+    pub corp: CorpClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -204,6 +207,7 @@ fn build_state() -> AppState {
     let zkill = ZkillClient::new(config.user_agent.clone());
     let universe = UniverseClient::new(esi.clone());
     let navigation = NavigationClient::new(esi.clone(), token_manager.clone());
+    let corp = CorpClient::new(esi.clone(), token_manager.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -254,6 +258,7 @@ fn build_state() -> AppState {
         zkill,
         universe,
         navigation,
+        corp,
         names,
         notifications,
         intensity,
@@ -327,6 +332,7 @@ pub fn run() {
             commands::courier_estimate,
             commands::set_route_waypoint,
             commands::open_market_window,
+            commands::get_corp_structures,
             commands::get_combat_summary,
             commands::get_local_intel,
             commands::cost_skill_plan,

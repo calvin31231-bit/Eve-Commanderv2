@@ -45,6 +45,7 @@ import type {
   RouteView,
   CourierView,
   RegionMapView,
+  CorpStructureView,
 } from "./types";
 
 export interface Hub {
@@ -1352,10 +1353,11 @@ function PlanetsEmpty({ character }: { character: Character }): ReactNode {
 
 // Character groups ("stables"/"hats") — create sets of characters for
 // cross-character views. The model/DB shipped in Phase 0; this is its UI.
-function CorpHub(): ReactNode {
+function CorpHub({ character }: { character: Character | null }): ReactNode {
   const [groups, setGroups] = useState<CharacterGroup[]>([]);
   const [roster, setRoster] = useState<Character[]>([]);
   const [newName, setNewName] = useState("");
+  const [sub, setSub] = useState("groups");
 
   function reload() {
     api.listGroups().then(setGroups).catch(() => undefined);
@@ -1393,47 +1395,117 @@ function CorpHub(): ReactNode {
 
   return (
     <>
-      <h1>Groups</h1>
-      <div className="sub">Organize your characters into sets ("stables") for combined views.</div>
-      <div className="card" style={{ maxWidth: 560 }}>
-        <div className="group-new">
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && create()}
-            placeholder="New group name (e.g. Indy Alts)"
-          />
-          <button className="primary" onClick={create}>Create</button>
-        </div>
-      </div>
-      {groups.length === 0 ? (
-        <div className="sub" style={{ marginTop: 14 }}>No groups yet.</div>
-      ) : (
-        groups.map((g) => (
-          <div className="card" key={g.id} style={{ marginTop: 14, maxWidth: 560 }}>
-            <div className="group-head">
-              <h3 style={{ margin: 0 }}>{g.name} <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {g.members.length}</span></h3>
-              <button onClick={() => api.deleteGroup(g.id).then(reload)}>Delete</button>
+      <h1>Corp &amp; Fleet</h1>
+      <div className="sub">Character groups, and corp structure fuel timers.</div>
+      <SubTabs
+        tabs={[
+          { id: "groups", label: "Groups" },
+          { id: "structures", label: "Structures" },
+        ]}
+        active={sub}
+        onSelect={setSub}
+      />
+      {sub === "groups" && (
+        <>
+          <div className="card" style={{ maxWidth: 560 }}>
+            <div className="group-new">
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && create()}
+                placeholder="New group name (e.g. Indy Alts)"
+              />
+              <button className="primary" onClick={create}>Create</button>
             </div>
-            <ul className="group-members">
-              {roster.map((c) => (
-                <li key={c.id}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={g.members.includes(c.id)}
-                      onChange={() => toggleMember(g, c.id)}
-                    />
-                    <img className="avatar" src={portraitUrl(c.id, 32)} alt="" width={20} height={20} />
-                    {c.name}
-                  </label>
-                </li>
-              ))}
-            </ul>
           </div>
-        ))
+          {groups.length === 0 ? (
+            <div className="sub" style={{ marginTop: 14 }}>No groups yet.</div>
+          ) : (
+            groups.map((g) => (
+              <div className="card" key={g.id} style={{ marginTop: 14, maxWidth: 560 }}>
+                <div className="group-head">
+                  <h3 style={{ margin: 0 }}>{g.name} <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {g.members.length}</span></h3>
+                  <button onClick={() => api.deleteGroup(g.id).then(reload)}>Delete</button>
+                </div>
+                <ul className="group-members">
+                  {roster.map((c) => (
+                    <li key={c.id}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={g.members.includes(c.id)}
+                          onChange={() => toggleMember(g, c.id)}
+                        />
+                        <img className="avatar" src={portraitUrl(c.id, 32)} alt="" width={20} height={20} />
+                        {c.name}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+        </>
       )}
+      {sub === "structures" && <CorpStructures character={character} />}
     </>
+  );
+}
+
+function CorpStructures({ character }: { character: Character | null }): ReactNode {
+  const [rows, setRows] = useState<CorpStructureView[] | null>(null);
+  const [, forceTick] = useState(0);
+  const [loadedAt, setLoadedAt] = useState(0);
+
+  useEffect(() => {
+    setRows(null);
+    if (!character || !isTauri()) return;
+    setLoadedAt(Date.now());
+    api.getCorpStructures(character.id).then(setRows).catch(() => setRows([]));
+  }, [character]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  if (!character) return <div className="sub">Select a character with a corp role.</div>;
+  if (!rows) return <div className="sub">Loading…</div>;
+  if (rows.length === 0) {
+    return (
+      <div className="card" style={{ maxWidth: 640 }}>
+        <p style={{ color: "var(--text-dim)" }}>
+          No structures — needs a Director / Station Manager role and the structures scope.
+        </p>
+      </div>
+    );
+  }
+  const elapsed = loadedAt ? Math.floor((Date.now() - loadedAt) / 1000) : 0;
+  return (
+    <div className="card" style={{ maxWidth: 640 }}>
+      <h3>Structures <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {rows.length}</span></h3>
+      <table className="holdings">
+        <tbody>
+          {rows.map((s) => {
+            const remaining = Math.max(0, s.fuel_seconds_remaining - elapsed);
+            const low = s.has_fuel_timer && remaining < 86400 * 2;
+            return (
+              <tr key={s.structure_id}>
+                <td>
+                  {s.name}
+                  <div style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                    {s.type_name} · {s.system_name} · {s.state}
+                  </div>
+                </td>
+                <td className={`mono num ${low ? "neg" : ""}`}>
+                  {!s.has_fuel_timer ? "—" : remaining === 0 ? "OUT OF FUEL" : formatDuration(remaining)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -2415,7 +2487,7 @@ export function renderHub(hubId: string, home: HomeProps, activeCharacter: Chara
     case "navigation":
       return <NavigationHub character={activeCharacter} />;
     case "corp":
-      return <CorpHub />;
+      return <CorpHub character={activeCharacter} />;
     case "tools":
       return <ToolsHub />;
     default:

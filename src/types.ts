@@ -509,6 +509,16 @@ export interface RouteHop {
   security: number;
 }
 
+export interface CorpStructureView {
+  structure_id: number;
+  name: string;
+  type_name: string;
+  system_name: string;
+  state: string;
+  fuel_seconds_remaining: number;
+  has_fuel_timer: boolean;
+}
+
 export interface CourierView {
   found: boolean;
   jumps: number;

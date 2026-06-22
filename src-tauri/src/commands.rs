@@ -37,6 +37,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-universe.read_structures.v1",
     "esi-ui.write_waypoint.v1",
     "esi-ui.open_window.v1",
+    "esi-corporations.read_structures.v1",
     "esi-location.read_location.v1",
     "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
@@ -1424,6 +1425,63 @@ pub async fn cost_skill_plan(
         });
     }
     Ok(SkillPlanView { steps, total_sp, total_seconds })
+}
+
+/// A corp structure rolled up for the UI (names resolved + fuel countdown).
+#[derive(Debug, Serialize)]
+pub struct CorpStructureView {
+    pub structure_id: i64,
+    pub name: String,
+    pub type_name: String,
+    pub system_name: String,
+    pub state: String,
+    pub fuel_seconds_remaining: i64,
+    pub has_fuel_timer: bool,
+}
+
+/// The active (or given) character's corp structures with fuel-expiry
+/// countdowns, soonest first. Empty when the character lacks the role/scope
+/// (the endpoint 403s) — surfaced as an empty list, not an error.
+#[tauri::command]
+pub async fn get_corp_structures(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<CorpStructureView>> {
+    let Ok(public) = state.character.public_info(character_id).await else {
+        return Ok(Vec::new());
+    };
+    let summary = match state.corp.structure_status(character_id, public.corporation_id).await {
+        Ok(s) => s,
+        // No director/station-manager role, or scope not granted → no access.
+        Err(_) => return Ok(Vec::new()),
+    };
+
+    // Resolve type + system names in one batch; structure names need the
+    // authenticated structures endpoint.
+    let mut ids: Vec<i64> = Vec::new();
+    for s in &summary {
+        ids.push(s.type_id);
+        ids.push(s.system_id);
+    }
+    let names = names_for(&state, &ids).await;
+    let struct_ids: Vec<i64> = summary.iter().map(|s| s.structure_id).collect();
+    let struct_names = names_with_structures(&state, character_id, &struct_ids).await;
+
+    Ok(summary
+        .into_iter()
+        .map(|s| CorpStructureView {
+            name: struct_names
+                .get(&s.structure_id)
+                .cloned()
+                .unwrap_or_else(|| format!("Structure {}", s.structure_id)),
+            type_name: named(&names, s.type_id),
+            system_name: named(&names, s.system_id),
+            state: s.state.replace('_', " "),
+            fuel_seconds_remaining: s.fuel_seconds_remaining,
+            has_fuel_timer: s.fuel_expires.is_some(),
+            structure_id: s.structure_id,
+        })
+        .collect())
 }
 
 /// Parse a pasted EFT fit and resolve its ship + modules to type ids via the

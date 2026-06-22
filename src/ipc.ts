@@ -12,6 +12,7 @@ import type {
   Character,
   CharacterGroup,
   ColonyView,
+  CorpStructureView,
   Contract,
   CharacterAttributes,
   CharacterProfile,
@@ -165,6 +166,8 @@ export const api = {
     call<MailView>("get_mail", { characterId, mailId }),
   markMailRead: (characterId: number, mailId: number) =>
     call<void>("mark_mail_read", { characterId, mailId }),
+  getCorpStructures: (characterId: number) =>
+    call<CorpStructureView[]>("get_corp_structures", { characterId }),
   listGroups: () => call<CharacterGroup[]>("list_groups"),
   createGroup: (name: string) => call<CharacterGroup>("create_group", { name }),
   deleteGroup: (groupId: number) => call<void>("delete_group", { groupId }),
