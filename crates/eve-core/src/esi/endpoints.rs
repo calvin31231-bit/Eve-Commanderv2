@@ -148,6 +148,12 @@ pub const CATALOG: &[Endpoint] = &[
         scope: Some("esi-planets.manage_planets.v1"),
     },
     Endpoint {
+        key: "fatigue",
+        path: "/latest/characters/{cid}/fatigue/",
+        class: PollClass::Slow,
+        scope: Some("esi-characters.read_fatigue.v1"),
+    },
+    Endpoint {
         key: "mail",
         path: "/latest/characters/{cid}/mail/",
         class: PollClass::Fast,

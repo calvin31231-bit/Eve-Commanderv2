@@ -509,6 +509,12 @@ export interface RouteHop {
   security: number;
 }
 
+export interface JumpFatigue {
+  jump_fatigue_expire_date: string | null;
+  last_jump_date: string | null;
+  last_update_date: string | null;
+}
+
 export interface LpOfferView {
   offer_id: number;
   name: string;

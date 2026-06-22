@@ -45,6 +45,7 @@ import type {
   RouteView,
   CourierView,
   RegionMapView,
+  JumpFatigue,
   CorpStructureView,
   CorpMemberView,
   LpStoreView,
@@ -2501,7 +2502,52 @@ function NavigationHub({ character }: { character: Character | null }): ReactNod
         )}
       </div>
       <CourierCalc />
+      {character && <JumpFatigueCard character={character} />}
     </>
+  );
+}
+
+function JumpFatigueCard({ character }: { character: Character }): ReactNode {
+  const [fatigue, setFatigue] = useState<JumpFatigue | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    setFatigue(null);
+    setLoaded(false);
+    if (!isTauri()) return;
+    api
+      .getJumpFatigue(character.id)
+      .then(setFatigue)
+      .catch(() => undefined)
+      .finally(() => setLoaded(true));
+  }, [character.id]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  if (!loaded) return null;
+  const expire = fatigue?.jump_fatigue_expire_date
+    ? new Date(fatigue.jump_fatigue_expire_date).getTime()
+    : 0;
+  const remaining = expire ? Math.max(0, Math.floor((expire - Date.now()) / 1000)) : 0;
+
+  return (
+    <div className="card jump-fatigue" style={{ marginTop: 16, maxWidth: 420 }}>
+      <h3>Jump Fatigue</h3>
+      {remaining > 0 ? (
+        <>
+          <p className="mono" style={{ fontSize: 22, margin: "4px 0" }}>{formatDuration(remaining)}</p>
+          <p style={{ color: "var(--text-dim)", fontSize: 12 }}>until fatigue clears (blue timer)</p>
+        </>
+      ) : (
+        <p style={{ color: "var(--text-dim)" }}>
+          No active fatigue{fatigue?.last_jump_date ? ` · last jump ${shortDate(fatigue.last_jump_date)}` : ""}.
+        </p>
+      )}
+    </div>
   );
 }
 

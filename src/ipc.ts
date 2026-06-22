@@ -51,6 +51,7 @@ import type {
   RouteView,
   CourierView,
   RegionMapView,
+  JumpFatigue,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -148,6 +149,8 @@ export const api = {
       reward,
       flag,
     }),
+  getJumpFatigue: (characterId: number) =>
+    call<JumpFatigue | null>("get_jump_fatigue", { characterId }),
   setRouteWaypoint: (characterId: number, system: string) =>
     call<void>("set_route_waypoint", { characterId, system }),
   openMarketWindow: (characterId: number, typeId: number) =>

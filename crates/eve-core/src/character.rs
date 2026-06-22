@@ -205,6 +205,18 @@ pub struct CharacterPublic {
     pub birthday: Option<String>,
 }
 
+/// Jump fatigue (ESI `GET /characters/{id}/fatigue/`). All fields optional —
+/// a character who has never jumped a capital returns an empty object.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct JumpFatigue {
+    #[serde(default)]
+    pub jump_fatigue_expire_date: Option<String>,
+    #[serde(default)]
+    pub last_jump_date: Option<String>,
+    #[serde(default)]
+    pub last_update_date: Option<String>,
+}
+
 /// Current location (ESI `GET /characters/{id}/location/`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CharacterLocation {
@@ -306,6 +318,11 @@ impl CharacterClient {
     /// The character's online status.
     pub async fn online(&self, character_id: i64) -> Result<CharacterOnline> {
         self.auth_get(character_id, "online").await
+    }
+
+    /// The character's jump fatigue (capital pilots).
+    pub async fn fatigue(&self, character_id: i64) -> Result<JumpFatigue> {
+        self.auth_get(character_id, "fatigue").await
     }
 
     /// The character's attributes (+ remap info).

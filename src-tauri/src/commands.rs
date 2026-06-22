@@ -30,6 +30,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-assets.read_assets.v1",
     "esi-industry.read_character_mining.v1",
     "esi-planets.manage_planets.v1",
+    "esi-characters.read_fatigue.v1",
     "esi-mail.read_mail.v1",
     "esi-mail.organize_mail.v1",
     "esi-clones.read_clones.v1",
@@ -1870,6 +1871,16 @@ pub async fn get_region_map(
 pub async fn list_map_regions(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
     let regions = state.names.sde().list_regions().await.map_err(|e| e.to_string())?;
     Ok(regions.into_iter().map(|(_, name)| name).collect())
+}
+
+/// The active character's jump fatigue (the frontend renders the countdown from
+/// the expiry date). `null` when the scope isn't granted.
+#[tauri::command]
+pub async fn get_jump_fatigue(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Option<eve_core::character::JumpFatigue>> {
+    Ok(state.character.fatigue(character_id).await.ok())
 }
 
 /// One hop in a planned route.
