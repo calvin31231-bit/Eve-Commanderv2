@@ -1741,6 +1741,109 @@ pub async fn plan_route(
     Ok(RouteView { found: true, jumps, hops, message: format!("{jumps} jumps") })
 }
 
+/// A hauling estimate: economics + route risk.
+#[derive(Debug, Serialize)]
+pub struct CourierView {
+    pub found: bool,
+    pub jumps: i64,
+    pub reward_per_jump: f64,
+    pub reward_per_m3: f64,
+    pub collateral_ratio: f64,
+    pub lowsec_hops: i64,
+    pub kills_on_route: i64,
+    pub verdict: String,
+    pub hops: Vec<RouteHop>,
+    pub message: String,
+}
+
+/// Estimate a courier/hauling job: solve the route, overlay the kill heatmap,
+/// and compute reward/collateral economics + a risk verdict.
+#[tauri::command]
+pub async fn courier_estimate(
+    state: State<'_, AppState>,
+    origin: String,
+    destination: String,
+    volume: f64,
+    collateral: f64,
+    reward: f64,
+    flag: Option<String>,
+) -> CmdResult<CourierView> {
+    let flag = eve_core::navigation::RouteFlag::parse(&flag.unwrap_or_default());
+    let not_found = |message: &str| CourierView {
+        found: false,
+        jumps: 0,
+        reward_per_jump: 0.0,
+        reward_per_m3: 0.0,
+        collateral_ratio: 0.0,
+        lowsec_hops: 0,
+        kills_on_route: 0,
+        verdict: String::new(),
+        hops: Vec::new(),
+        message: message.to_string(),
+    };
+
+    let (origin_id, dest_id) = tokio::join!(
+        state.names.system_id(origin.trim()),
+        state.names.system_id(destination.trim()),
+    );
+    let Some(origin_id) = origin_id.map_err(|e| e.to_string())? else {
+        return Ok(not_found("Origin system not found."));
+    };
+    let Some(dest_id) = dest_id.map_err(|e| e.to_string())? else {
+        return Ok(not_found("Destination system not found."));
+    };
+
+    let ids = state
+        .navigation
+        .route(origin_id, dest_id, flag)
+        .await
+        .map_err(|e| e.to_string())?;
+    if ids.is_empty() {
+        return Ok(not_found("No route found."));
+    }
+
+    // Kill heatmap (one ESI call), then resolve each hop.
+    let kills: std::collections::HashMap<i64, i64> = state
+        .universe
+        .system_kills()
+        .await
+        .map(|v| v.into_iter().map(|k| (k.system_id, k.ship_kills + k.pod_kills)).collect())
+        .unwrap_or_default();
+
+    let mut hops = Vec::with_capacity(ids.len());
+    let mut lowsec_hops = 0;
+    let mut kills_on_route = 0;
+    for id in &ids {
+        let info = state.universe.system_info(*id).await.ok();
+        let security = info.as_ref().map(|i| i.security_status).unwrap_or(0.0);
+        if security < 0.45 {
+            lowsec_hops += 1;
+        }
+        kills_on_route += kills.get(id).copied().unwrap_or(0);
+        hops.push(RouteHop {
+            system_id: *id,
+            name: info.as_ref().map(|i| i.name.clone()).unwrap_or_else(|| format!("System {id}")),
+            security,
+        });
+    }
+
+    let jumps = (hops.len() as i64 - 1).max(0);
+    let est = eve_core::courier::estimate(volume, collateral, reward, jumps);
+    let verdict = eve_core::courier::verdict(&est, lowsec_hops, kills_on_route);
+    Ok(CourierView {
+        found: true,
+        jumps,
+        reward_per_jump: est.reward_per_jump,
+        reward_per_m3: est.reward_per_m3,
+        collateral_ratio: est.collateral_ratio,
+        lowsec_hops,
+        kills_on_route,
+        verdict,
+        hops,
+        message: String::new(),
+    })
+}
+
 /// Set the active character's in-game autopilot waypoint to a system by name
 /// (clears existing waypoints). EULA-sanctioned ESI write.
 #[tauri::command]

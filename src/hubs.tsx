@@ -43,6 +43,7 @@ import type {
   SystemSafetyView,
   CombatLogView,
   RouteView,
+  CourierView,
   RegionMapView,
 } from "./types";
 
@@ -2315,7 +2316,89 @@ function NavigationHub({ character }: { character: Character | null }): ReactNod
           </p>
         )}
       </div>
+      <CourierCalc />
     </>
+  );
+}
+
+function CourierCalc(): ReactNode {
+  const [origin, setOrigin] = useState("");
+  const [dest, setDest] = useState("");
+  const [volume, setVolume] = useState(320000);
+  const [collateral, setCollateral] = useState(0);
+  const [reward, setReward] = useState(0);
+  const [flag, setFlag] = useState("shortest");
+  const [result, setResult] = useState<CourierView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function run() {
+    if (!isTauri() || !origin.trim() || !dest.trim()) return;
+    setLoading(true);
+    setResult(null);
+    api
+      .courierEstimate(origin.trim(), dest.trim(), volume, collateral, reward, flag)
+      .then(setResult)
+      .catch(() => setResult(null))
+      .finally(() => setLoading(false));
+  }
+
+  const numField = (label: string, value: number, set: (n: number) => void) => (
+    <label style={{ fontSize: 12 }}>
+      {label}{" "}
+      <input
+        type="number"
+        value={value}
+        style={{ width: 130 }}
+        onChange={(e) => set(Number(e.target.value) || 0)}
+      />
+    </label>
+  );
+
+  return (
+    <div className="card courier-calc" style={{ marginTop: 16 }}>
+      <h3>Courier / Hauling Estimate</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Reward vs collateral vs route risk (kills on route, low/null hops).
+      </p>
+      <div className="cashflow-totals" style={{ gap: 8, flexWrap: "wrap" }}>
+        <input value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="Origin system" />
+        <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Destination system" />
+        <select value={flag} onChange={(e) => setFlag(e.target.value)}>
+          <option value="shortest">Shortest</option>
+          <option value="secure">Prefer high-sec</option>
+          <option value="insecure">Prefer low/null</option>
+        </select>
+      </div>
+      <div className="cashflow-totals" style={{ gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+        {numField("Volume m³", volume, setVolume)}
+        {numField("Collateral", collateral, setCollateral)}
+        {numField("Reward", reward, setReward)}
+      </div>
+      <button onClick={run} disabled={loading || !origin.trim() || !dest.trim()} style={{ marginTop: 8 }}>
+        {loading ? "Estimating…" : "Estimate"}
+      </button>
+      {result && !result.found && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{result.message}</p>
+      )}
+      {result && result.found && (
+        <div style={{ marginTop: 10 }}>
+          <div className="cashflow-totals">
+            <span>{result.jumps} jumps</span>
+            <span className="pos">{ISK.format(result.reward_per_jump)}/jump</span>
+            <span>{ISK.format(result.reward_per_m3)}/m³</span>
+            <span className={result.collateral_ratio > 20 ? "neg" : ""}>
+              {result.collateral_ratio.toFixed(1)}× collateral
+            </span>
+          </div>
+          <p style={{ marginTop: 6 }}>
+            <span className={result.lowsec_hops > 0 || result.kills_on_route > 0 ? "badge caution" : "badge safe"}>
+              {result.lowsec_hops > 0 || result.kills_on_route > 0 ? "Risk" : "Clean"}
+            </span>{" "}
+            {result.verdict}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

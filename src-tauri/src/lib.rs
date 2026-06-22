@@ -324,6 +324,7 @@ pub fn run() {
             commands::get_region_map,
             commands::list_map_regions,
             commands::plan_route,
+            commands::courier_estimate,
             commands::set_route_waypoint,
             commands::open_market_window,
             commands::get_combat_summary,

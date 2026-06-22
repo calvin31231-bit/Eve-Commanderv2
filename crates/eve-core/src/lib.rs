@@ -26,6 +26,7 @@ pub mod character;
 pub mod clones;
 pub mod config;
 pub mod contracts;
+pub mod courier;
 pub mod db;
 pub mod discord;
 pub mod dscan;

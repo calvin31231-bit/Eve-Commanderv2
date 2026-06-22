@@ -509,6 +509,19 @@ export interface RouteHop {
   security: number;
 }
 
+export interface CourierView {
+  found: boolean;
+  jumps: number;
+  reward_per_jump: number;
+  reward_per_m3: number;
+  collateral_ratio: number;
+  lowsec_hops: number;
+  kills_on_route: number;
+  verdict: string;
+  hops: RouteHop[];
+  message: string;
+}
+
 export interface RouteView {
   found: boolean;
   jumps: number;

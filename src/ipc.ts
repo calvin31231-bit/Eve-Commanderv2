@@ -46,6 +46,7 @@ import type {
   CombatLogView,
   LocalIntel,
   RouteView,
+  CourierView,
   RegionMapView,
 } from "./types";
 
@@ -128,6 +129,22 @@ export const api = {
   listMapRegions: () => call<string[]>("list_map_regions"),
   planRoute: (origin: string, destination: string, flag: string) =>
     call<RouteView>("plan_route", { origin, destination, flag }),
+  courierEstimate: (
+    origin: string,
+    destination: string,
+    volume: number,
+    collateral: number,
+    reward: number,
+    flag: string,
+  ) =>
+    call<CourierView>("courier_estimate", {
+      origin,
+      destination,
+      volume,
+      collateral,
+      reward,
+      flag,
+    }),
   setRouteWaypoint: (characterId: number, system: string) =>
     call<void>("set_route_waypoint", { characterId, system }),
   openMarketWindow: (characterId: number, typeId: number) =>
