@@ -485,6 +485,24 @@ export interface LocalIntel {
   line_count: number;
 }
 
+export interface MapNode {
+  system_id: number;
+  name: string;
+  security: number;
+  x: number;
+  z: number;
+  kills: number;
+}
+
+export interface RegionMapView {
+  found: boolean;
+  region_id: number;
+  region_name: string;
+  nodes: MapNode[];
+  edges: [number, number][];
+  message: string;
+}
+
 export interface RouteHop {
   system_id: number;
   name: string;

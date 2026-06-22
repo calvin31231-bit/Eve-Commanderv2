@@ -41,6 +41,16 @@ pub struct SolarSystem {
     pub security: f64,
 }
 
+/// A system positioned for the region map (UI-facing).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SystemNode {
+    pub system_id: i64,
+    pub name: String,
+    pub security: f64,
+    pub x: f64,
+    pub z: f64,
+}
+
 /// A type id + quantity — a reprocessing yield row or a blueprint input.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Material {
@@ -92,9 +102,28 @@ CREATE TABLE IF NOT EXISTS solar_systems (
     system_id INTEGER PRIMARY KEY,
     name      TEXT NOT NULL,
     region_id INTEGER,
-    security  REAL NOT NULL DEFAULT 0
+    security  REAL NOT NULL DEFAULT 0,
+    -- Map coordinates (EVE's x/z plane) for Dotlan-style region layout.
+    x         REAL NOT NULL DEFAULT 0,
+    z         REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_systems_name ON solar_systems(name);
+CREATE INDEX IF NOT EXISTS idx_systems_region ON solar_systems(region_id);
+
+-- Stargate adjacency (undirected; stored both ways by the converter) for the
+-- region map and any local routing.
+CREATE TABLE IF NOT EXISTS system_jumps (
+    from_system_id INTEGER NOT NULL,
+    to_system_id   INTEGER NOT NULL,
+    PRIMARY KEY (from_system_id, to_system_id)
+);
+CREATE INDEX IF NOT EXISTS idx_jumps_from ON system_jumps(from_system_id);
+
+CREATE TABLE IF NOT EXISTS regions (
+    region_id INTEGER PRIMARY KEY,
+    name      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_regions_name ON regions(name);
 
 -- Reprocessing / refining yields (CCP invTypeMaterials): the materials a single
 -- portion of `type_id` reprocesses into. Quantities are pre-efficiency (100%).
@@ -204,6 +233,74 @@ impl Sde {
             name: r.get::<String, _>("name"),
             security: r.get::<f64, _>("security"),
         }))
+    }
+
+    /// The region id a system belongs to.
+    pub async fn system_region(&self, system_id: i64) -> Result<Option<i64>> {
+        let row = sqlx::query("SELECT region_id FROM solar_systems WHERE system_id = ?1")
+            .bind(system_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.and_then(|r| r.get::<Option<i64>, _>("region_id")))
+    }
+
+    /// Resolve a region name to its id (case-insensitive).
+    pub async fn region_id_by_name(&self, name: &str) -> Result<Option<i64>> {
+        let row = sqlx::query("SELECT region_id FROM regions WHERE name = ?1 COLLATE NOCASE")
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.get::<i64, _>("region_id")))
+    }
+
+    /// All regions (id + name), alphabetical — for the map's region picker.
+    pub async fn list_regions(&self) -> Result<Vec<(i64, String)>> {
+        let rows = sqlx::query("SELECT region_id, name FROM regions ORDER BY name")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| (r.get::<i64, _>("region_id"), r.get::<String, _>("name")))
+            .collect())
+    }
+
+    /// All systems in a region, positioned for the map.
+    pub async fn systems_in_region(&self, region_id: i64) -> Result<Vec<SystemNode>> {
+        let rows = sqlx::query(
+            "SELECT system_id, name, security, x, z FROM solar_systems WHERE region_id = ?1",
+        )
+        .bind(region_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| SystemNode {
+                system_id: r.get::<i64, _>("system_id"),
+                name: r.get::<String, _>("name"),
+                security: r.get::<f64, _>("security"),
+                x: r.get::<f64, _>("x"),
+                z: r.get::<f64, _>("z"),
+            })
+            .collect())
+    }
+
+    /// Stargate jumps with both endpoints inside `region_id` (region-internal
+    /// edges for the map; from < to to de-duplicate the undirected pair).
+    pub async fn jumps_in_region(&self, region_id: i64) -> Result<Vec<(i64, i64)>> {
+        let rows = sqlx::query(
+            "SELECT j.from_system_id AS a, j.to_system_id AS b
+             FROM system_jumps j
+             JOIN solar_systems sf ON sf.system_id = j.from_system_id
+             JOIN solar_systems st ON st.system_id = j.to_system_id
+             WHERE sf.region_id = ?1 AND st.region_id = ?1 AND j.from_system_id < j.to_system_id",
+        )
+        .bind(region_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| (r.get::<i64, _>("a"), r.get::<i64, _>("b")))
+            .collect())
     }
 
     /// Reprocessing batch size for a type (`portionSize`; ore is 100, most items
@@ -378,6 +475,55 @@ impl Sde {
         Ok(())
     }
 
+    /// Test/seed helper: insert a fully-specified system (region + coords).
+    pub async fn insert_system_full(
+        &self,
+        system_id: i64,
+        name: &str,
+        region_id: i64,
+        security: f64,
+        x: f64,
+        z: f64,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO solar_systems (system_id, name, region_id, security, x, z)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .bind(system_id)
+        .bind(name)
+        .bind(region_id)
+        .bind(security)
+        .bind(x)
+        .bind(z)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Test/seed helper: insert a stargate jump (both directions).
+    pub async fn insert_jump(&self, from_system_id: i64, to_system_id: i64) -> Result<()> {
+        for (a, b) in [(from_system_id, to_system_id), (to_system_id, from_system_id)] {
+            sqlx::query(
+                "INSERT OR REPLACE INTO system_jumps (from_system_id, to_system_id) VALUES (?1, ?2)",
+            )
+            .bind(a)
+            .bind(b)
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// Test/seed helper: insert a region.
+    pub async fn insert_region(&self, region_id: i64, name: &str) -> Result<()> {
+        sqlx::query("INSERT OR REPLACE INTO regions (region_id, name) VALUES (?1, ?2)")
+            .bind(region_id)
+            .bind(name)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     /// Test helper: set a type's reprocessing portion size.
     pub async fn set_portion_size(&self, type_id: i64, portion_size: i64) -> Result<()> {
         sqlx::query("UPDATE types SET portion_size = ?2 WHERE type_id = ?1")
@@ -538,5 +684,30 @@ mod tests {
         assert_eq!(sde.solar_system(30000142).await.unwrap().unwrap().name, "Jita");
         // Unseeded ids still fall back gracefully.
         assert_eq!(sde.type_name(123456).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn region_map_queries() {
+        let sde = Sde::open_in_memory().await.unwrap();
+        sde.insert_region(10000002, "The Forge").await.unwrap();
+        sde.insert_system_full(30000142, "Jita", 10000002, 0.95, 1.0, 2.0).await.unwrap();
+        sde.insert_system_full(30000144, "Perimeter", 10000002, 0.95, 1.5, 2.5).await.unwrap();
+        // A system in another region (must not appear in The Forge's map).
+        sde.insert_system_full(30002187, "Amarr", 10000043, 1.0, 9.0, 9.0).await.unwrap();
+        sde.insert_jump(30000142, 30000144).await.unwrap();
+        sde.insert_jump(30000142, 30002187).await.unwrap(); // cross-region
+
+        assert_eq!(sde.region_id_by_name("the forge").await.unwrap(), Some(10000002));
+        assert_eq!(sde.system_region(30000142).await.unwrap(), Some(10000002));
+
+        let systems = sde.systems_in_region(10000002).await.unwrap();
+        assert_eq!(systems.len(), 2);
+
+        // Only the intra-region edge (Jita↔Perimeter), de-duplicated.
+        let edges = sde.jumps_in_region(10000002).await.unwrap();
+        assert_eq!(edges, vec![(30000142, 30000144)]);
+
+        let regions = sde.list_regions().await.unwrap();
+        assert_eq!(regions.len(), 1);
     }
 }

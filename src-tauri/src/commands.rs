@@ -1566,6 +1566,112 @@ pub async fn get_system_safety(state: State<'_, AppState>) -> CmdResult<SystemSa
     })
 }
 
+/// A system positioned on the region map, with its recent ship-kill count.
+#[derive(Debug, Serialize)]
+pub struct MapNode {
+    pub system_id: i64,
+    pub name: String,
+    pub security: f64,
+    pub x: f64,
+    pub z: f64,
+    pub kills: i64,
+}
+
+/// A Dotlan-style region map: positioned systems + intra-region jumps + a kill
+/// heatmap (ESI hourly).
+#[derive(Debug, Serialize)]
+pub struct RegionMapView {
+    pub found: bool,
+    pub region_id: i64,
+    pub region_name: String,
+    pub nodes: Vec<MapNode>,
+    pub edges: Vec<(i64, i64)>,
+    pub message: String,
+}
+
+/// Region map for `region` (by name), or the active character's current region
+/// when omitted. Needs the universe data in the SDE (build it with
+/// `--systems-csv/--jumps-csv/--regions-csv`); otherwise `found` is false.
+#[tauri::command]
+pub async fn get_region_map(
+    state: State<'_, AppState>,
+    region: Option<String>,
+) -> CmdResult<RegionMapView> {
+    let sde = state.names.sde();
+    let empty = |msg: &str| RegionMapView {
+        found: false,
+        region_id: 0,
+        region_name: String::new(),
+        nodes: Vec::new(),
+        edges: Vec::new(),
+        message: msg.to_string(),
+    };
+
+    // Resolve the region: explicit name, else the active character's location.
+    let region_id = if let Some(name) = region.as_ref().filter(|s| !s.trim().is_empty()) {
+        match sde.region_id_by_name(name.trim()).await.map_err(|e| e.to_string())? {
+            Some(id) => id,
+            None => return Ok(empty("Region not found (rebuild the SDE with universe data?).")),
+        }
+    } else {
+        let characters = state.db.list_characters().await.map_err(|e| e.to_string())?;
+        let Some(active) = characters.iter().find(|c| c.active) else {
+            return Ok(empty("No active character; pick a region by name."));
+        };
+        let Ok(loc) = state.character.location(active.id).await else {
+            return Ok(empty("Character location unavailable; pick a region by name."));
+        };
+        match sde.system_region(loc.solar_system_id).await.map_err(|e| e.to_string())? {
+            Some(id) => id,
+            None => return Ok(empty("Universe data missing — rebuild the SDE (systems CSV).")),
+        }
+    };
+
+    let systems = sde.systems_in_region(region_id).await.map_err(|e| e.to_string())?;
+    if systems.is_empty() {
+        return Ok(empty("No systems for this region — rebuild the SDE with universe data."));
+    }
+    let edges = sde.jumps_in_region(region_id).await.map_err(|e| e.to_string())?;
+    let region_name = sde
+        .list_regions()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|(id, _)| *id == region_id)
+        .map(|(_, n)| n)
+        .unwrap_or_else(|| format!("Region {region_id}"));
+
+    // Kill heatmap (one ESI call for all of New Eden; best-effort).
+    let kills: std::collections::HashMap<i64, i64> = state
+        .universe
+        .system_kills()
+        .await
+        .map(|v| v.into_iter().map(|k| (k.system_id, k.ship_kills + k.pod_kills)).collect())
+        .unwrap_or_default();
+
+    let nodes = systems
+        .into_iter()
+        .map(|s| MapNode {
+            kills: kills.get(&s.system_id).copied().unwrap_or(0),
+            system_id: s.system_id,
+            name: s.name,
+            security: s.security,
+            x: s.x,
+            z: s.z,
+        })
+        .collect();
+
+    Ok(RegionMapView { found: true, region_id, region_name, nodes, edges, message: String::new() })
+}
+
+/// The list of regions (id + name) for the map picker. Empty until the SDE has
+/// universe data.
+#[tauri::command]
+pub async fn list_map_regions(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
+    let regions = state.names.sde().list_regions().await.map_err(|e| e.to_string())?;
+    Ok(regions.into_iter().map(|(_, name)| name).collect())
+}
+
 /// One hop in a planned route.
 #[derive(Debug, Serialize)]
 pub struct RouteHop {

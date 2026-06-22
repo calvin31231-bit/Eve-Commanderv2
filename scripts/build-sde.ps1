@@ -81,6 +81,24 @@ Write-Host "typeMaterials: $typeMaterials"
 Write-Host "blueprints:    $blueprints"
 Write-Host "typeDogma:     $typeDogma"
 
+# 2b. Universe map data (systems/jumps/regions) isn't in the CCP fsd export in a
+#     flat form, so pull Fuzzwork's CSV mirror for the region map + routing.
+function Get-Csv([string]$name) {
+    $dest = Join-Path $work $name
+    if (-not (Test-Path $dest)) {
+        $url = "https://www.fuzzwork.co.uk/dump/latest/$name"
+        Write-Host "Downloading $name ..."
+        $oldP = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+        try { Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing }
+        catch { Write-Host "  (skipped $name - $($_.Exception.Message))" -ForegroundColor Yellow; return $null }
+        finally { $ProgressPreference = $oldP }
+    }
+    return $dest
+}
+$systemsCsv = Get-Csv "mapSolarSystems.csv"
+$jumpsCsv   = Get-Csv "mapSolarSystemJumps.csv"
+$regionsCsv = Get-Csv "mapRegions.csv"
+
 # 3. Build the converter once (release for speed on the large YAML).
 Write-Host "Building sde-tools (release) ..."
 Push-Location $repoRoot
@@ -96,6 +114,9 @@ try {
     if ($typeMaterials) { $convArgs += @("--type-materials", $typeMaterials) }
     if ($blueprints)    { $convArgs += @("--blueprints", $blueprints) }
     if ($typeDogma)     { $convArgs += @("--type-dogma", $typeDogma) }
+    if ($systemsCsv)    { $convArgs += @("--systems-csv", $systemsCsv) }
+    if ($jumpsCsv)      { $convArgs += @("--jumps-csv", $jumpsCsv) }
+    if ($regionsCsv)    { $convArgs += @("--regions-csv", $regionsCsv) }
 
     Write-Host "Converting -> $out" -ForegroundColor Cyan
     & $exe @convArgs
@@ -105,4 +126,4 @@ try {
 
 Write-Host ""
 Write-Host "Done. Restart EVE Commander - it will load the prebuilt SDE and the" -ForegroundColor Green
-Write-Host "reprocessing / build-planner / skill-plan / can-I-fly features go live." -ForegroundColor Green
+Write-Host "reprocessing / build-planner / skill-plan / can-I-fly / region map go live." -ForegroundColor Green

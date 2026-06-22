@@ -111,8 +111,11 @@ cargo run -p sde-tools --release -- \
 ```
 
 `--type-dogma` derives both skill ranks/attributes and per-item required skills
-in one pass, so skill plans and the can-I-fly check go live too. Until the SDE
-is present those panels show a "needs full SDE" note and everything else works.
+in one pass, so skill plans and the can-I-fly check go live too. The PowerShell
+script additionally pulls Fuzzwork's `mapSolarSystems`/`mapSolarSystemJumps`/
+`mapRegions` CSVs (`--systems-csv/--jumps-csv/--regions-csv`) so the region map
+and routing have universe topology. Until the SDE is present those panels show a
+"needs full SDE" note and everything else works.
 
 ## Notes
 

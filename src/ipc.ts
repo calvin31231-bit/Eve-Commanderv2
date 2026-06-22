@@ -46,6 +46,7 @@ import type {
   CombatLogView,
   LocalIntel,
   RouteView,
+  RegionMapView,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -123,6 +124,8 @@ export const api = {
   readClipboard: () => call<string>("plugin:clipboard-manager|read_text"),
   gateCampCheck: (system: string) => call<GateCampView>("gate_camp_check", { system }),
   getSystemSafety: () => call<SystemSafetyView>("get_system_safety"),
+  getRegionMap: (region?: string) => call<RegionMapView>("get_region_map", { region }),
+  listMapRegions: () => call<string[]>("list_map_regions"),
   planRoute: (origin: string, destination: string, flag: string) =>
     call<RouteView>("plan_route", { origin, destination, flag }),
   setRouteWaypoint: (characterId: number, system: string) =>

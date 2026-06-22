@@ -419,10 +419,134 @@ impl Converter {
         Ok(written)
     }
 
+    /// Ingest Fuzzwork's `mapSolarSystems.csv` (systems with region, security,
+    /// and x/z map coordinates). Column order is read from the header, so it
+    /// tolerates layout changes. Returns rows written.
+    pub fn ingest_systems_csv(&mut self, csv: &str) -> Result<usize> {
+        let mut lines = csv.lines();
+        let header = lines.next().context("empty systems CSV")?;
+        let col = csv_columns(header);
+        let idx = |name: &str| col.get(name).copied();
+        let (c_id, c_name, c_region, c_sec, c_x, c_z) = (
+            idx("solarSystemID").context("missing solarSystemID")?,
+            idx("solarSystemName").context("missing solarSystemName")?,
+            idx("regionID").context("missing regionID")?,
+            idx("security").context("missing security")?,
+            idx("x").context("missing x")?,
+            idx("z").context("missing z")?,
+        );
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO solar_systems (system_id, name, region_id, security, x, z)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?;
+            for line in lines {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let f: Vec<&str> = line.split(',').collect();
+                let max = c_id.max(c_name).max(c_region).max(c_sec).max(c_x).max(c_z);
+                if f.len() <= max {
+                    continue;
+                }
+                let (Ok(id), Ok(region), Ok(sec), Ok(x), Ok(z)) = (
+                    f[c_id].parse::<i64>(),
+                    f[c_region].parse::<i64>(),
+                    f[c_sec].parse::<f64>(),
+                    f[c_x].parse::<f64>(),
+                    f[c_z].parse::<f64>(),
+                ) else {
+                    continue;
+                };
+                stmt.execute(params![id, f[c_name], region, sec, x, z])?;
+                written += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest Fuzzwork's `mapSolarSystemJumps.csv` (stargate adjacency). Stores
+    /// each pair both ways. Returns rows written.
+    pub fn ingest_jumps_csv(&mut self, csv: &str) -> Result<usize> {
+        let mut lines = csv.lines();
+        let header = lines.next().context("empty jumps CSV")?;
+        let col = csv_columns(header);
+        let c_from = *col.get("fromSolarSystemID").context("missing fromSolarSystemID")?;
+        let c_to = *col.get("toSolarSystemID").context("missing toSolarSystemID")?;
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO system_jumps (from_system_id, to_system_id) VALUES (?1, ?2)",
+            )?;
+            for line in lines {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let f: Vec<&str> = line.split(',').collect();
+                if f.len() <= c_from.max(c_to) {
+                    continue;
+                }
+                let (Ok(from), Ok(to)) = (f[c_from].parse::<i64>(), f[c_to].parse::<i64>()) else {
+                    continue;
+                };
+                stmt.execute(params![from, to])?;
+                stmt.execute(params![to, from])?;
+                written += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest Fuzzwork's `mapRegions.csv` (region id + name). Returns rows.
+    pub fn ingest_regions_csv(&mut self, csv: &str) -> Result<usize> {
+        let mut lines = csv.lines();
+        let header = lines.next().context("empty regions CSV")?;
+        let col = csv_columns(header);
+        let c_id = *col.get("regionID").context("missing regionID")?;
+        let c_name = *col.get("regionName").context("missing regionName")?;
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut stmt =
+                tx.prepare("INSERT OR REPLACE INTO regions (region_id, name) VALUES (?1, ?2)")?;
+            for line in lines {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let f: Vec<&str> = line.split(',').collect();
+                if f.len() <= c_id.max(c_name) {
+                    continue;
+                }
+                let Ok(id) = f[c_id].parse::<i64>() else { continue };
+                stmt.execute(params![id, f[c_name]])?;
+                written += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
     /// Borrow the underlying connection (tests/inspection).
     pub fn connection(&self) -> &Connection {
         &self.conn
     }
+}
+
+/// Map a CSV header row to `column name → index`.
+fn csv_columns(header: &str) -> BTreeMap<String, usize> {
+    header
+        .split(',')
+        .enumerate()
+        .map(|(i, name)| (name.trim().to_string(), i))
+        .collect()
 }
 
 #[cfg(test)]
@@ -743,6 +867,42 @@ mod tests {
             )
             .unwrap();
         assert_eq!(lvl, 3);
+    }
+
+    #[test]
+    fn ingests_map_csvs() {
+        let mut c = Converter::in_memory().unwrap();
+
+        let systems = "regionID,solarSystemID,solarSystemName,x,y,z,security\n\
+                       10000002,30000142,Jita,1.0,0,2.0,0.945913\n\
+                       10000002,30000144,Perimeter,1.5,0,2.5,0.946";
+        assert_eq!(c.ingest_systems_csv(systems).unwrap(), 2);
+
+        let jumps = "fromRegionID,fromSolarSystemID,toSolarSystemID,toRegionID\n\
+                     10000002,30000142,30000144,10000002";
+        assert_eq!(c.ingest_jumps_csv(jumps).unwrap(), 1);
+
+        let regions = "regionID,regionName\n10000002,The Forge";
+        assert_eq!(c.ingest_regions_csv(regions).unwrap(), 1);
+
+        // Coordinates + security landed, and the jump is stored both ways.
+        let (name, sec, x): (String, f64, f64) = c
+            .connection()
+            .query_row(
+                "SELECT name, security, x FROM solar_systems WHERE system_id = 30000142",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "Jita");
+        assert!((sec - 0.945913).abs() < 1e-6);
+        assert!((x - 1.0).abs() < 1e-9);
+
+        let jump_count: i64 = c
+            .connection()
+            .query_row("SELECT COUNT(*) FROM system_jumps", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(jump_count, 2); // both directions
     }
 
     #[test]

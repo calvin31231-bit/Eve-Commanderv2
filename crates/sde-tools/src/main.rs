@@ -23,6 +23,9 @@ struct Args {
     skills: Option<PathBuf>,
     required_skills: Option<PathBuf>,
     type_dogma: Option<PathBuf>,
+    systems_csv: Option<PathBuf>,
+    jumps_csv: Option<PathBuf>,
+    regions_csv: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args> {
@@ -34,6 +37,9 @@ fn parse_args() -> Result<Args> {
     let mut skills = None;
     let mut required_skills = None;
     let mut type_dogma = None;
+    let mut systems_csv = None;
+    let mut jumps_csv = None;
+    let mut regions_csv = None;
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -50,6 +56,9 @@ fn parse_args() -> Result<Args> {
                 required_skills = Some(PathBuf::from(next_value(&mut it, &arg)?))
             }
             "--type-dogma" => type_dogma = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--systems-csv" => systems_csv = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--jumps-csv" => jumps_csv = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--regions-csv" => regions_csv = Some(PathBuf::from(next_value(&mut it, &arg)?)),
             "-h" | "--help" => {
                 print_usage();
                 std::process::exit(0);
@@ -66,10 +75,25 @@ fn parse_args() -> Result<Args> {
         && skills.is_none()
         && required_skills.is_none()
         && type_dogma.is_none()
+        && systems_csv.is_none()
+        && jumps_csv.is_none()
+        && regions_csv.is_none()
     {
-        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints/--skills/--required-skills/--type-dogma)");
+        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints/--skills/--required-skills/--type-dogma/--systems-csv/--jumps-csv/--regions-csv)");
     }
-    Ok(Args { out, types, systems, type_materials, blueprints, skills, required_skills, type_dogma })
+    Ok(Args {
+        out,
+        types,
+        systems,
+        type_materials,
+        blueprints,
+        skills,
+        required_skills,
+        type_dogma,
+        systems_csv,
+        jumps_csv,
+        regions_csv,
+    })
 }
 
 fn next_value(it: &mut impl Iterator<Item = String>, flag: &str) -> Result<String> {
@@ -81,7 +105,8 @@ fn print_usage() {
         "sde-convert — CCP SDE YAML → sde.sqlite\n\n\
          USAGE:\n  \
          sde-convert --out <sde.sqlite> [--types <typeIDs.yaml>] [--systems <systems.yaml>]\n  \
-         [--type-materials <typeMaterials.yaml>] [--blueprints <blueprints.yaml>] [--skills <skills.yaml>] [--required-skills <reqSkills.yaml>] [--type-dogma <typeDogma.yaml>]\n\n\
+         [--type-materials <typeMaterials.yaml>] [--blueprints <blueprints.yaml>] [--skills <skills.yaml>] [--required-skills <reqSkills.yaml>] [--type-dogma <typeDogma.yaml>]\n  \
+         [--systems-csv <mapSolarSystems.csv>] [--jumps-csv <mapSolarSystemJumps.csv>] [--regions-csv <mapRegions.csv>]\n\n\
          At least one input is required."
     );
 }
@@ -132,6 +157,24 @@ fn run() -> Result<()> {
             .with_context(|| format!("reading {}", p.display()))?;
         let n = conv.ingest_type_dogma(&yaml)?;
         eprintln!("type_dogma: {n} skill/requirement rows from {}", p.display());
+    }
+    if let Some(p) = &args.systems_csv {
+        let csv = std::fs::read_to_string(p)
+            .with_context(|| format!("reading {}", p.display()))?;
+        let n = conv.ingest_systems_csv(&csv)?;
+        eprintln!("systems_csv: {n} rows from {}", p.display());
+    }
+    if let Some(p) = &args.jumps_csv {
+        let csv = std::fs::read_to_string(p)
+            .with_context(|| format!("reading {}", p.display()))?;
+        let n = conv.ingest_jumps_csv(&csv)?;
+        eprintln!("jumps_csv: {n} rows from {}", p.display());
+    }
+    if let Some(p) = &args.regions_csv {
+        let csv = std::fs::read_to_string(p)
+            .with_context(|| format!("reading {}", p.display()))?;
+        let n = conv.ingest_regions_csv(&csv)?;
+        eprintln!("regions_csv: {n} rows from {}", p.display());
     }
 
     eprintln!("wrote {}", args.out.display());

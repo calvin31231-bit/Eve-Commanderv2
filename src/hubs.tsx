@@ -43,6 +43,7 @@ import type {
   SystemSafetyView,
   CombatLogView,
   RouteView,
+  RegionMapView,
 } from "./types";
 
 export interface Hub {
@@ -1688,7 +1689,12 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
       />
       {sub === "fitting" && <FitImporter character={character} />}
       {sub === "dscan" && <DscanPanel />}
-      {sub === "map" && <IntelMap />}
+      {sub === "map" && (
+        <>
+          <IntelMap />
+          <RegionMap />
+        </>
+      )}
       {sub === "threat" && (
         <>
           <ThreatScanner />
@@ -1897,6 +1903,104 @@ function IntelMap(): ReactNode {
           </text>
         </svg>
       )}
+    </div>
+  );
+}
+
+function RegionMap(): ReactNode {
+  const [regions, setRegions] = useState<string[]>([]);
+  const [region, setRegion] = useState("");
+  const [map, setMap] = useState<RegionMapView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    api.listMapRegions().then(setRegions).catch(() => undefined);
+    // Default: the active character's current region.
+    load("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function load(r: string) {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .getRegionMap(r || undefined)
+      .then(setMap)
+      .catch(() => setMap(null))
+      .finally(() => setLoading(false));
+  }
+
+  // Project EVE x/z coordinates into the SVG viewport.
+  const W = 640;
+  const H = 440;
+  const PAD = 24;
+  const nodes = map?.nodes ?? [];
+  const xs = nodes.map((n) => n.x);
+  const zs = nodes.map((n) => n.z);
+  const minX = Math.min(...xs, 0);
+  const maxX = Math.max(...xs, 1);
+  const minZ = Math.min(...zs, 0);
+  const maxZ = Math.max(...zs, 1);
+  const spanX = maxX - minX || 1;
+  const spanZ = maxZ - minZ || 1;
+  const px = (x: number) => PAD + ((x - minX) / spanX) * (W - 2 * PAD);
+  // EVE z grows "south"; flip so north is up.
+  const pz = (z: number) => PAD + (1 - (z - minZ) / spanZ) * (H - 2 * PAD);
+  const pos = new Map(nodes.map((n) => [n.system_id, { x: px(n.x), y: pz(n.z) }]));
+
+  return (
+    <div className="card region-map" style={{ marginTop: 16 }}>
+      <h3>
+        Region Map{map?.found ? ` · ${map.region_name}` : ""}
+      </h3>
+      <div className="market-search" style={{ marginBottom: 6 }}>
+        <select
+          value={region}
+          onChange={(e) => {
+            setRegion(e.target.value);
+            load(e.target.value);
+          }}
+        >
+          <option value="">Current region</option>
+          {regions.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+      </div>
+      {loading && <p style={{ color: "var(--text-dim)", fontSize: 12 }}>Loading…</p>}
+      {map && !map.found && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{map.message}</p>
+      )}
+      {map && map.found && (
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ background: "rgba(10,14,22,0.5)", borderRadius: 6 }}>
+          {map.edges.map(([a, b], i) => {
+            const pa = pos.get(a);
+            const pb = pos.get(b);
+            if (!pa || !pb) return null;
+            return <line key={i} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="var(--border)" strokeWidth="1" />;
+          })}
+          {nodes.map((n) => {
+            const p = pos.get(n.system_id)!;
+            const hot = n.kills > 0;
+            return (
+              <g key={n.system_id}>
+                <title>{`${n.name} · sec ${n.security.toFixed(1)}${hot ? ` · ${n.kills} kills/hr` : ""}`}</title>
+                {hot && <circle cx={p.x} cy={p.y} r={6 + Math.min(n.kills, 12)} fill="#f87171" fillOpacity={0.25} />}
+                <circle cx={p.x} cy={p.y} r={4} fill={secColor(n.security)} stroke={hot ? "#f87171" : "none"} strokeWidth="1.5" />
+                {hot && (
+                  <text x={p.x} y={p.y - 8} textAnchor="middle" fontSize="9" fill="#f87171" fontWeight="700">
+                    {n.kills}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      )}
+      <p style={{ color: "var(--text-dim)", fontSize: 11, marginBottom: 0 }}>
+        Node colour = security; red halo = ship kills in the last hour (hover for details).
+      </p>
     </div>
   );
 }

@@ -33,6 +33,19 @@ struct StargateDest {
     system_id: i64,
 }
 
+/// Per-system kill activity (ESI `GET /universe/system_kills/`), the canonical
+/// hourly kill heatmap — one public call covers all of New Eden.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SystemKills {
+    pub system_id: i64,
+    #[serde(default)]
+    pub ship_kills: i64,
+    #[serde(default)]
+    pub npc_kills: i64,
+    #[serde(default)]
+    pub pod_kills: i64,
+}
+
 /// Reads universe topology over the cache-first ESI client.
 #[derive(Clone)]
 pub struct UniverseClient {
@@ -48,6 +61,13 @@ impl UniverseClient {
     pub async fn system_info(&self, system_id: i64) -> Result<SystemInfo> {
         let path = format!("/latest/universe/systems/{system_id}/");
         self.esi.get_public_json::<SystemInfo>(&path).await
+    }
+
+    /// System kill counts across New Eden (ESI hourly cache) — the map heatmap.
+    pub async fn system_kills(&self) -> Result<Vec<SystemKills>> {
+        self.esi
+            .get_public_json::<Vec<SystemKills>>("/latest/universe/system_kills/")
+            .await
     }
 
     /// The systems one jump from `system_id` (via its stargates). Best-effort:
