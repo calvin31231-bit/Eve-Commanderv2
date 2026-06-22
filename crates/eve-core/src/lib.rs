@@ -52,6 +52,7 @@ pub mod planets;
 pub mod prices;
 pub mod pve;
 pub mod reprocess;
+pub mod research;
 pub mod sde;
 pub mod skillplan;
 pub mod universe;

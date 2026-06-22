@@ -31,6 +31,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-industry.read_character_mining.v1",
     "esi-planets.manage_planets.v1",
     "esi-characters.read_fatigue.v1",
+    "esi-characters.read_agents_research.v1",
     "esi-mail.read_mail.v1",
     "esi-mail.organize_mail.v1",
     "esi-clones.read_clones.v1",
@@ -1461,6 +1462,45 @@ pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<Incursi
             influence_pct: i.influence * 100.0,
             has_boss: i.has_boss,
             system_count: i.infested_solar_systems.len() as i64,
+        })
+        .collect())
+}
+
+/// One R&D agent with its datacore type named (frontend computes accrued RP).
+#[derive(Debug, Serialize)]
+pub struct ResearchAgentView {
+    pub agent_name: String,
+    pub datacore_name: String,
+    pub points_per_day: f64,
+    pub remainder_points: f64,
+    pub started_at: String,
+}
+
+/// The character's running R&D agents (passive datacore income). Empty when the
+/// scope isn't granted. The frontend renders accrued RP from `started_at`.
+#[tauri::command]
+pub async fn get_research_agents(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<ResearchAgentView>> {
+    let agents = match state.research.agents(character_id).await {
+        Ok(a) => a,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let mut ids: Vec<i64> = Vec::new();
+    for a in &agents {
+        ids.push(a.agent_id);
+        ids.push(a.skill_type_id);
+    }
+    let names = names_for(&state, &ids).await;
+    Ok(agents
+        .into_iter()
+        .map(|a| ResearchAgentView {
+            agent_name: named(&names, a.agent_id),
+            datacore_name: named(&names, a.skill_type_id),
+            points_per_day: a.points_per_day,
+            remainder_points: a.remainder_points,
+            started_at: a.started_at,
         })
         .collect())
 }

@@ -154,6 +154,12 @@ pub const CATALOG: &[Endpoint] = &[
         scope: Some("esi-characters.read_fatigue.v1"),
     },
     Endpoint {
+        key: "agents_research",
+        path: "/latest/characters/{cid}/agents_research/",
+        class: PollClass::Slow,
+        scope: Some("esi-characters.read_agents_research.v1"),
+    },
+    Endpoint {
         key: "mail",
         path: "/latest/characters/{cid}/mail/",
         class: PollClass::Fast,

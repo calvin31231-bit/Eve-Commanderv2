@@ -28,6 +28,7 @@ import type {
   MailView,
   MarketView,
   MiningView,
+  ResearchAgentView,
   ServerStatus,
   TradeOpportunity,
   ReprocessView,
@@ -1115,6 +1116,41 @@ function BuildPlanner(): ReactNode {
   );
 }
 
+function ResearchAgentsCard({ character }: { character: Character }): ReactNode {
+  const [rows, setRows] = useState<ResearchAgentView[] | null>(null);
+
+  useEffect(() => {
+    setRows(null);
+    if (!isTauri()) return;
+    api.getResearchAgents(character.id).then(setRows).catch(() => setRows([]));
+  }, [character.id]);
+
+  if (!rows || rows.length === 0) return null;
+  const accrued = (r: ResearchAgentView) => {
+    const days = (Date.now() - new Date(r.started_at).getTime()) / 86_400_000;
+    return r.remainder_points + r.points_per_day * Math.max(0, days);
+  };
+  return (
+    <div className="card research-agents" style={{ marginTop: 16 }}>
+      <h3>R&amp;D Agents <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {rows.length}</span></h3>
+      <table className="holdings">
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td>
+                {r.datacore_name}
+                <div style={{ color: "var(--text-dim)", fontSize: 11 }}>{r.agent_name}</div>
+              </td>
+              <td className="mono num">{r.points_per_day.toFixed(0)} RP/day</td>
+              <td className="mono num pos">{ISK.format(accrued(r))} RP</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PlanetsCard({ character }: { character: Character | null }): ReactNode {
   const [colonies, setColonies] = useState<ColonyView[] | null>(null);
   const [loadedAt, setLoadedAt] = useState(0);
@@ -1259,6 +1295,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
         <>
           <ReprocessCalc />
           <BuildPlanner />
+          {character && <ResearchAgentsCard character={character} />}
         </>
       )}
       {sub === "planets" && <PlanetsCard character={character} />}

@@ -32,6 +32,7 @@ import type {
   MailView,
   MarketView,
   MiningView,
+  ResearchAgentView,
   Notification,
   ServerStatus,
   TradeOpportunity,
@@ -106,6 +107,8 @@ export const api = {
     call<Contract[]>("get_contracts", { characterId, limit }),
   searchItems: (query: string, limit: number) =>
     call<ItemHit[]>("search_items", { query, limit }),
+  getResearchAgents: (characterId: number) =>
+    call<ResearchAgentView[]>("get_research_agents", { characterId }),
   getMarketBrowse: (typeId: number) =>
     call<MarketBrowse>("get_market_browse", { typeId }),
   scanStationTrades: (

@@ -41,6 +41,7 @@ use eve_core::notify::NotificationCenter;
 use eve_core::planets::PlanetsClient;
 use eve_core::prices::PricesClient;
 use eve_core::pve::PveClient;
+use eve_core::research::ResearchClient;
 use eve_core::reprocess::ReprocessClient;
 use eve_core::sde::Sde;
 use eve_core::wallet::WalletClient;
@@ -99,6 +100,8 @@ pub struct AppState {
     pub lp: LpClient,
     /// Public PvE content (incursions, faction warfare) for the Combat hub.
     pub pve: PveClient,
+    /// R&D agent / datacore reads (passive income) for the Economy hub.
+    pub research: ResearchClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -216,6 +219,7 @@ fn build_state() -> AppState {
     let corp = CorpClient::new(esi.clone(), token_manager.clone());
     let lp = LpClient::new(esi.clone());
     let pve = PveClient::new(esi.clone());
+    let research = ResearchClient::new(esi.clone(), token_manager.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -269,6 +273,7 @@ fn build_state() -> AppState {
         corp,
         lp,
         pve,
+        research,
         names,
         notifications,
         intensity,
@@ -348,6 +353,7 @@ pub fn run() {
             commands::lp_store,
             commands::get_incursions,
             commands::get_fw_systems,
+            commands::get_research_agents,
             commands::get_combat_summary,
             commands::get_local_intel,
             commands::cost_skill_plan,

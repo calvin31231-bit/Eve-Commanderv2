@@ -485,6 +485,14 @@ export interface LocalIntel {
   line_count: number;
 }
 
+export interface ResearchAgentView {
+  agent_name: string;
+  datacore_name: string;
+  points_per_day: number;
+  remainder_points: number;
+  started_at: string;
+}
+
 export interface IncursionView {
   staging_system: string;
   faction: string;
