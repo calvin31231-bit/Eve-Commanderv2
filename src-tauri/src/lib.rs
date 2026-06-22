@@ -338,6 +338,7 @@ pub fn run() {
             commands::set_route_waypoint,
             commands::open_market_window,
             commands::get_corp_structures,
+            commands::get_corp_members,
             commands::lp_store,
             commands::get_combat_summary,
             commands::get_local_intel,

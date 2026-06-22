@@ -72,6 +72,22 @@ pub fn summarize_structures(structures: &[CorpStructure], now: OffsetDateTime) -
     out
 }
 
+/// One member-tracking row (ESI `GET /corporations/{id}/membertracking/`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MemberTrack {
+    pub character_id: i64,
+    #[serde(default)]
+    pub logon_date: Option<String>,
+    #[serde(default)]
+    pub logoff_date: Option<String>,
+    #[serde(default)]
+    pub location_id: Option<i64>,
+    #[serde(default)]
+    pub ship_type_id: Option<i64>,
+    #[serde(default)]
+    pub start_date: Option<String>,
+}
+
 /// Authenticated corporation reads over the cache-first ESI client.
 #[derive(Clone)]
 pub struct CorpClient {
@@ -105,6 +121,26 @@ impl CorpClient {
     ) -> Result<Vec<StructureStatus>> {
         let structures = self.structures(character_id, corp_id).await?;
         Ok(summarize_structures(&structures, OffsetDateTime::now_utc()))
+    }
+
+    /// Corp member tracking (last logon/logoff, location, ship). Requires a
+    /// director role + `esi-corporations.track_members.v1`; 403s otherwise. The
+    /// rows come back most-recently-active first.
+    pub async fn member_tracking(
+        &self,
+        character_id: i64,
+        corp_id: i64,
+    ) -> Result<Vec<MemberTrack>> {
+        let token = self.tokens.access_token(character_id).await?;
+        let path = format!("/latest/corporations/{corp_id}/membertracking/");
+        let mut members = self
+            .esi
+            .get_auth_json::<Vec<MemberTrack>>(&path, &token)
+            .await
+            .map_err(|e| Error::other(format!("member tracking: {e}")))?;
+        // Most recently logged on first; never-seen members sink to the bottom.
+        members.sort_by(|a, b| b.logon_date.cmp(&a.logon_date));
+        Ok(members)
     }
 }
 

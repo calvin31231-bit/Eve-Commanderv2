@@ -527,6 +527,15 @@ export interface LpStoreView {
   message: string;
 }
 
+export interface CorpMemberView {
+  character_id: number;
+  name: string;
+  ship_name: string;
+  location_name: string;
+  logon_date: string | null;
+  logoff_date: string | null;
+}
+
 export interface CorpStructureView {
   structure_id: number;
   name: string;

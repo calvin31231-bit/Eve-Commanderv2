@@ -46,6 +46,7 @@ import type {
   CourierView,
   RegionMapView,
   CorpStructureView,
+  CorpMemberView,
   LpStoreView,
 } from "./types";
 
@@ -1402,6 +1403,7 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
         tabs={[
           { id: "groups", label: "Groups" },
           { id: "structures", label: "Structures" },
+          { id: "members", label: "Members" },
         ]}
         active={sub}
         onSelect={setSub}
@@ -1449,7 +1451,46 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
         </>
       )}
       {sub === "structures" && <CorpStructures character={character} />}
+      {sub === "members" && <CorpMembers character={character} />}
     </>
+  );
+}
+
+function CorpMembers({ character }: { character: Character | null }): ReactNode {
+  const [rows, setRows] = useState<CorpMemberView[] | null>(null);
+
+  useEffect(() => {
+    setRows(null);
+    if (!character || !isTauri()) return;
+    api.getCorpMembers(character.id).then(setRows).catch(() => setRows([]));
+  }, [character]);
+
+  if (!character) return <div className="sub">Select a character with a corp role.</div>;
+  if (!rows) return <div className="sub">Loading…</div>;
+  if (rows.length === 0) {
+    return (
+      <div className="card" style={{ maxWidth: 720 }}>
+        <p style={{ color: "var(--text-dim)" }}>
+          No member data — needs a Director role and the member-tracking scope.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="card" style={{ maxWidth: 720 }}>
+      <h3>Members <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {rows.length}</span></h3>
+      <table className="holdings">
+        <tbody>
+          {rows.slice(0, 100).map((m) => (
+            <tr key={m.character_id}>
+              <td>{m.name}</td>
+              <td className="loc">{m.ship_name}{m.location_name ? ` · ${m.location_name}` : ""}</td>
+              <td className="mono num">{m.logon_date ? shortDate(m.logon_date) : "never"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

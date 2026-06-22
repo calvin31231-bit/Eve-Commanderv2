@@ -38,6 +38,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-ui.write_waypoint.v1",
     "esi-ui.open_window.v1",
     "esi-corporations.read_structures.v1",
+    "esi-corporations.track_members.v1",
     "esi-location.read_location.v1",
     "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
@@ -1558,6 +1559,69 @@ pub async fn get_corp_structures(
             fuel_seconds_remaining: s.fuel_seconds_remaining,
             has_fuel_timer: s.fuel_expires.is_some(),
             structure_id: s.structure_id,
+        })
+        .collect())
+}
+
+/// One corp member row (names resolved) for the vetting view.
+#[derive(Debug, Serialize)]
+pub struct CorpMemberView {
+    pub character_id: i64,
+    pub name: String,
+    pub ship_name: String,
+    pub location_name: String,
+    pub logon_date: Option<String>,
+    pub logoff_date: Option<String>,
+}
+
+/// Corp member tracking (last logon/logoff, current location + ship) for the
+/// active character's corp, most-recently-active first. Empty when the
+/// character lacks the director role/scope.
+#[tauri::command]
+pub async fn get_corp_members(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<CorpMemberView>> {
+    let Ok(public) = state.character.public_info(character_id).await else {
+        return Ok(Vec::new());
+    };
+    let members = match state.corp.member_tracking(character_id, public.corporation_id).await {
+        Ok(m) => m,
+        Err(_) => return Ok(Vec::new()),
+    };
+
+    // Resolve character + ship names in one batch; locations may be structures.
+    let mut ids: Vec<i64> = Vec::new();
+    let mut loc_ids: Vec<i64> = Vec::new();
+    for m in &members {
+        ids.push(m.character_id);
+        if let Some(s) = m.ship_type_id {
+            ids.push(s);
+        }
+        if let Some(l) = m.location_id {
+            ids.push(l);
+            loc_ids.push(l);
+        }
+    }
+    let names = names_for(&state, &ids).await;
+    let struct_names = names_with_structures(&state, character_id, &loc_ids).await;
+    let loc_name = |id: Option<i64>| match id {
+        Some(id) => struct_names
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| named(&names, id)),
+        None => String::new(),
+    };
+
+    Ok(members
+        .into_iter()
+        .map(|m| CorpMemberView {
+            name: named(&names, m.character_id),
+            ship_name: m.ship_type_id.map(|s| named(&names, s)).unwrap_or_default(),
+            location_name: loc_name(m.location_id),
+            logon_date: m.logon_date,
+            logoff_date: m.logoff_date,
+            character_id: m.character_id,
         })
         .collect())
 }
