@@ -202,6 +202,19 @@
   padding: 10px;
 }
 
+/* Route planner hop list */
+.route-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  max-height: 360px;
+  overflow: auto;
+}
+.route-list li { padding: 1px 0; }
+
 /* System safety (current system + neighbours, recent kill volume) */
 .safety-headline {
   font-size: 12px;

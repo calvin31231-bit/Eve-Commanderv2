@@ -485,6 +485,19 @@ export interface LocalIntel {
   line_count: number;
 }
 
+export interface RouteHop {
+  system_id: number;
+  name: string;
+  security: number;
+}
+
+export interface RouteView {
+  found: boolean;
+  jumps: number;
+  hops: RouteHop[];
+  message: string;
+}
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export interface Notification {

@@ -43,6 +43,7 @@ pub mod marketdata;
 pub mod mining;
 pub mod model;
 pub mod names;
+pub mod navigation;
 pub mod notify;
 pub mod planets;
 pub mod prices;

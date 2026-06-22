@@ -28,6 +28,7 @@ use eve_core::industry::IndustryClient;
 use eve_core::industry_plan::IndustryPlanClient;
 use eve_core::insurance::InsuranceClient;
 use eve_core::intel::ZkillClient;
+use eve_core::navigation::NavigationClient;
 use eve_core::universe::UniverseClient;
 use eve_core::mail::MailClient;
 use eve_core::market::MarketClient;
@@ -87,6 +88,8 @@ pub struct AppState {
     pub zkill: ZkillClient,
     /// Universe topology (system neighbours) for the System Safety surface.
     pub universe: UniverseClient,
+    /// Route solving + in-game UI bridge (waypoint/open-window) for Navigation.
+    pub navigation: NavigationClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -200,6 +203,7 @@ fn build_state() -> AppState {
     let fitting = FittingClient::new(sde.clone());
     let zkill = ZkillClient::new(config.user_agent.clone());
     let universe = UniverseClient::new(esi.clone());
+    let navigation = NavigationClient::new(esi.clone(), token_manager.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -249,6 +253,7 @@ fn build_state() -> AppState {
         fitting,
         zkill,
         universe,
+        navigation,
         names,
         notifications,
         intensity,
@@ -316,6 +321,9 @@ pub fn run() {
             commands::pilot_background,
             commands::gate_camp_check,
             commands::get_system_safety,
+            commands::plan_route,
+            commands::set_route_waypoint,
+            commands::open_market_window,
             commands::get_combat_summary,
             commands::get_local_intel,
             commands::cost_skill_plan,

@@ -35,6 +35,8 @@ const BASE_SCOPES: &[&str] = &[
     "esi-clones.read_clones.v1",
     "esi-clones.read_implants.v1",
     "esi-universe.read_structures.v1",
+    "esi-ui.write_waypoint.v1",
+    "esi-ui.open_window.v1",
     "esi-location.read_location.v1",
     "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
@@ -1562,6 +1564,108 @@ pub async fn get_system_safety(state: State<'_, AppState>) -> CmdResult<SystemSa
         level: a.level.as_str().to_string(),
         message: a.message,
     })
+}
+
+/// One hop in a planned route.
+#[derive(Debug, Serialize)]
+pub struct RouteHop {
+    pub system_id: i64,
+    pub name: String,
+    pub security: f64,
+}
+
+/// A planned route between two systems.
+#[derive(Debug, Serialize)]
+pub struct RouteView {
+    pub found: bool,
+    /// Jumps = hops - 1 (0 when origin == destination or not found).
+    pub jumps: i64,
+    pub hops: Vec<RouteHop>,
+    pub message: String,
+}
+
+/// Plan a route between two systems by name, using ESI's solver. `flag` is
+/// "shortest" | "secure" | "insecure". Each hop is resolved to a name +
+/// security (cached topology), so lowsec/null hops are visible.
+#[tauri::command]
+pub async fn plan_route(
+    state: State<'_, AppState>,
+    origin: String,
+    destination: String,
+    flag: Option<String>,
+) -> CmdResult<RouteView> {
+    let flag = eve_core::navigation::RouteFlag::parse(&flag.unwrap_or_default());
+    let not_found = |message: &str| RouteView {
+        found: false,
+        jumps: 0,
+        hops: Vec::new(),
+        message: message.to_string(),
+    };
+
+    let (origin_id, dest_id) = tokio::join!(
+        state.names.system_id(origin.trim()),
+        state.names.system_id(destination.trim()),
+    );
+    let Some(origin_id) = origin_id.map_err(|e| e.to_string())? else {
+        return Ok(not_found("Origin system not found."));
+    };
+    let Some(dest_id) = dest_id.map_err(|e| e.to_string())? else {
+        return Ok(not_found("Destination system not found."));
+    };
+
+    let ids = state
+        .navigation
+        .route(origin_id, dest_id, flag)
+        .await
+        .map_err(|e| e.to_string())?;
+    if ids.is_empty() {
+        return Ok(not_found("No route found."));
+    }
+
+    let mut hops = Vec::with_capacity(ids.len());
+    for id in &ids {
+        let info = state.universe.system_info(*id).await.ok();
+        hops.push(RouteHop {
+            system_id: *id,
+            name: info.as_ref().map(|i| i.name.clone()).unwrap_or_else(|| format!("System {id}")),
+            security: info.as_ref().map(|i| i.security_status).unwrap_or(0.0),
+        });
+    }
+    let jumps = (hops.len() as i64 - 1).max(0);
+    Ok(RouteView { found: true, jumps, hops, message: format!("{jumps} jumps") })
+}
+
+/// Set the active character's in-game autopilot waypoint to a system by name
+/// (clears existing waypoints). EULA-sanctioned ESI write.
+#[tauri::command]
+pub async fn set_route_waypoint(
+    state: State<'_, AppState>,
+    character_id: i64,
+    system: String,
+) -> CmdResult<()> {
+    let Some(system_id) = state.names.system_id(system.trim()).await.map_err(|e| e.to_string())?
+    else {
+        return Err("System not found.".to_string());
+    };
+    state
+        .navigation
+        .set_waypoint(character_id, system_id, false, true)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Open the in-game market window for a type (in-game UI bridge).
+#[tauri::command]
+pub async fn open_market_window(
+    state: State<'_, AppState>,
+    character_id: i64,
+    type_id: i64,
+) -> CmdResult<()> {
+    state
+        .navigation
+        .open_market(character_id, type_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Gate-camp assessment for a named system.

@@ -45,6 +45,7 @@ import type {
   SystemSafetyView,
   CombatLogView,
   LocalIntel,
+  RouteView,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -122,6 +123,12 @@ export const api = {
   readClipboard: () => call<string>("plugin:clipboard-manager|read_text"),
   gateCampCheck: (system: string) => call<GateCampView>("gate_camp_check", { system }),
   getSystemSafety: () => call<SystemSafetyView>("get_system_safety"),
+  planRoute: (origin: string, destination: string, flag: string) =>
+    call<RouteView>("plan_route", { origin, destination, flag }),
+  setRouteWaypoint: (characterId: number, system: string) =>
+    call<void>("set_route_waypoint", { characterId, system }),
+  openMarketWindow: (characterId: number, typeId: number) =>
+    call<void>("open_market_window", { characterId, typeId }),
   getCombatSummary: () => call<CombatLogView>("get_combat_summary"),
   getLocalIntel: () => call<LocalIntel | null>("get_local_intel"),
   costSkillPlan: (

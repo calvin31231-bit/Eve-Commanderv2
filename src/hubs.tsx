@@ -42,6 +42,7 @@ import type {
   GateCampView,
   SystemSafetyView,
   CombatLogView,
+  RouteView,
 } from "./types";
 
 export interface Hub {
@@ -2134,6 +2135,86 @@ function DscanPanel(): ReactNode {
   );
 }
 
+function NavigationHub({ character }: { character: Character | null }): ReactNode {
+  const [origin, setOrigin] = useState("");
+  const [dest, setDest] = useState("");
+  const [flag, setFlag] = useState("shortest");
+  const [route, setRoute] = useState<RouteView | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [waypointMsg, setWaypointMsg] = useState<string | null>(null);
+
+  function plan() {
+    if (!isTauri() || !origin.trim() || !dest.trim()) return;
+    setLoading(true);
+    setRoute(null);
+    setWaypointMsg(null);
+    api
+      .planRoute(origin.trim(), dest.trim(), flag)
+      .then(setRoute)
+      .catch(() => setRoute(null))
+      .finally(() => setLoading(false));
+  }
+
+  function setWaypoint() {
+    if (!character || !dest.trim()) return;
+    setWaypointMsg("Setting…");
+    api
+      .setRouteWaypoint(character.id, dest.trim())
+      .then(() => setWaypointMsg("Waypoint set in-game ✓"))
+      .catch((e) => setWaypointMsg(`Failed: ${e}`));
+  }
+
+  return (
+    <>
+      <h1>Navigation &amp; Logistics</h1>
+      <div className="sub">Route planner with safety, and in-game waypoint set.</div>
+      <div className="card route-planner">
+        <h3>Route Planner</h3>
+        <div className="cashflow-totals" style={{ gap: 8, flexWrap: "wrap" }}>
+          <input value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="Origin system" />
+          <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Destination system" />
+          <select value={flag} onChange={(e) => setFlag(e.target.value)}>
+            <option value="shortest">Shortest</option>
+            <option value="secure">Prefer high-sec</option>
+            <option value="insecure">Prefer low/null</option>
+          </select>
+        </div>
+        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={plan} disabled={loading || !origin.trim() || !dest.trim()}>
+            {loading ? "Planning…" : "Plan route"}
+          </button>
+          {character && route?.found && (
+            <button onClick={setWaypoint}>Set destination in-game</button>
+          )}
+          {waypointMsg && <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{waypointMsg}</span>}
+        </div>
+        {route && !route.found && (
+          <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{route.message}</p>
+        )}
+        {route && route.found && (
+          <div style={{ marginTop: 10 }}>
+            <p style={{ marginTop: 0, color: "var(--text-dim)", fontSize: 12 }}>
+              {route.jumps} jump{route.jumps === 1 ? "" : "s"}
+            </p>
+            <ol className="route-list">
+              {route.hops.map((h) => (
+                <li key={h.system_id}>
+                  <span style={{ color: secColor(h.security) }}>{h.security.toFixed(1)}</span> {h.name}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {!character && (
+          <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+            Add a character to set the waypoint in your client.
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function renderHub(hubId: string, home: HomeProps, activeCharacter: Character | null): ReactNode {
   switch (hubId) {
     case "home":
@@ -2145,7 +2226,7 @@ export function renderHub(hubId: string, home: HomeProps, activeCharacter: Chara
     case "combat":
       return <CombatHub character={activeCharacter} />;
     case "navigation":
-      return <Placeholder title="Navigation & Logistics" blurb="Routes, capital/JF, courier, bookmarks." />;
+      return <NavigationHub character={activeCharacter} />;
     case "corp":
       return <CorpHub />;
     case "tools":
