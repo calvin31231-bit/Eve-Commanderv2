@@ -46,6 +46,7 @@ import type {
   CourierView,
   RegionMapView,
   CorpStructureView,
+  LpStoreView,
 } from "./types";
 
 export interface Hub {
@@ -1512,6 +1513,7 @@ function CorpStructures({ character }: { character: Character | null }): ReactNo
 function ToolsHub(): ReactNode {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState(false);
+  const [sub, setSub] = useState("settings");
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -1534,8 +1536,17 @@ function ToolsHub(): ReactNode {
   return (
     <>
       <h1>Tools &amp; Settings</h1>
-      <div className="sub">Data-freshness and notification preferences.</div>
-      {!isTauri() ? (
+      <div className="sub">Preferences and calculators.</div>
+      <SubTabs
+        tabs={[
+          { id: "settings", label: "Settings" },
+          { id: "lp", label: "LP Optimizer" },
+        ]}
+        active={sub}
+        onSelect={setSub}
+      />
+      {sub === "lp" && <LpOptimizer />}
+      {sub === "settings" && (!isTauri() ? (
         <div className="card"><p style={{ color: "var(--text-dim)" }}>Design preview — settings load in the desktop shell.</p></div>
       ) : !settings ? (
         <div className="card"><p style={{ color: "var(--text-dim)" }}>Loading…</p></div>
@@ -1578,8 +1589,68 @@ function ToolsHub(): ReactNode {
           </label>
           <div className="setting-saved" style={{ opacity: saved ? 1 : 0 }}>Saved ✓</div>
         </div>
-      )}
+      ))}
     </>
+  );
+}
+
+function LpOptimizer(): ReactNode {
+  const [corp, setCorp] = useState("");
+  const [store, setStore] = useState<LpStoreView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function run() {
+    if (!isTauri() || !corp.trim()) return;
+    setLoading(true);
+    setStore(null);
+    api
+      .lpStore(corp.trim())
+      .then(setStore)
+      .catch(() => setStore(null))
+      .finally(() => setLoading(false));
+  }
+
+  return (
+    <div className="card lp-optimizer">
+      <h3>LP Store Optimizer</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Rank a corp's loyalty-point offers by ISK per LP (output value minus ISK + item cost).
+      </p>
+      <div className="market-search">
+        <input
+          value={corp}
+          onChange={(e) => setCorp(e.target.value)}
+          placeholder="Corporation (e.g. Federation Navy)…"
+          onKeyDown={(e) => e.key === "Enter" && run()}
+        />
+      </div>
+      <button onClick={run} disabled={loading || !corp.trim()} style={{ marginTop: 8 }}>
+        {loading ? "Loading…" : "Rank offers"}
+      </button>
+      {store && !store.found && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{store.message}</p>
+      )}
+      {store && store.found && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Offer</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>LP</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>ISK/LP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {store.offers.slice(0, 40).map((o) => (
+              <tr key={o.offer_id}>
+                <td>{o.quantity > 1 ? `${o.quantity}× ` : ""}{o.name}</td>
+                <td className="mono num">{ISK.format(o.lp_cost)}</td>
+                <td className={`mono num ${o.isk_per_lp >= 0 ? "pos" : "neg"}`}>{ISK.format(o.isk_per_lp)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 

@@ -37,13 +37,15 @@ struct EsiStructure {
     name: String,
 }
 
-/// Response of `POST /universe/ids/` — characters + systems buckets.
+/// Response of `POST /universe/ids/` — characters + systems + corps buckets.
 #[derive(Debug, Clone, Deserialize, Default)]
 struct EsiIds {
     #[serde(default)]
     characters: Vec<EsiNameOnly>,
     #[serde(default)]
     systems: Vec<EsiNameOnly>,
+    #[serde(default)]
+    corporations: Vec<EsiNameOnly>,
 }
 
 /// A name→id pair from `/universe/ids/` (it returns `name` + `id`, no category).
@@ -234,6 +236,22 @@ impl NameResolver {
             .into_iter()
             .find(|s| s.name.to_lowercase() == want)
             .map(|s| s.id))
+    }
+
+    /// Resolve a corporation *name* to its id via ESI `POST /universe/ids/`
+    /// (for the LP-store optimizer's corp picker).
+    pub async fn corporation_id(&self, name: &str) -> Result<Option<i64>> {
+        let body = [name.to_string()];
+        let res: EsiIds = self
+            .esi
+            .post_public_json::<[String], EsiIds>("/latest/universe/ids/", &body)
+            .await?;
+        let want = name.to_lowercase();
+        Ok(res
+            .corporations
+            .into_iter()
+            .find(|c| c.name.to_lowercase() == want)
+            .map(|c| c.id))
     }
 }
 

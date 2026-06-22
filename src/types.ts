@@ -509,6 +509,24 @@ export interface RouteHop {
   security: number;
 }
 
+export interface LpOfferView {
+  offer_id: number;
+  name: string;
+  quantity: number;
+  lp_cost: number;
+  total_isk_cost: number;
+  output_value: number;
+  profit: number;
+  isk_per_lp: number;
+}
+
+export interface LpStoreView {
+  found: boolean;
+  corporation: string;
+  offers: LpOfferView[];
+  message: string;
+}
+
 export interface CorpStructureView {
   structure_id: number;
   name: string;

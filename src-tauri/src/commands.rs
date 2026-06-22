@@ -1427,6 +1427,84 @@ pub async fn cost_skill_plan(
     Ok(SkillPlanView { steps, total_sp, total_seconds })
 }
 
+/// A valued LP-store offer with names resolved.
+#[derive(Debug, Serialize)]
+pub struct LpOfferView {
+    pub offer_id: i64,
+    pub name: String,
+    pub quantity: i64,
+    pub lp_cost: i64,
+    pub total_isk_cost: f64,
+    pub output_value: f64,
+    pub profit: f64,
+    pub isk_per_lp: f64,
+}
+
+/// LP-store result for a corporation.
+#[derive(Debug, Serialize)]
+pub struct LpStoreView {
+    pub found: bool,
+    pub corporation: String,
+    pub offers: Vec<LpOfferView>,
+    pub message: String,
+}
+
+/// Rank a corporation's LP-store offers by ISK-per-LP (output market value minus
+/// ISK + required-item cost, over LP cost). `corporation` is resolved by name.
+#[tauri::command]
+pub async fn lp_store(state: State<'_, AppState>, corporation: String) -> CmdResult<LpStoreView> {
+    let corporation = corporation.trim().to_string();
+    let Some(corp_id) = state
+        .names
+        .corporation_id(&corporation)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(LpStoreView {
+            found: false,
+            corporation,
+            offers: Vec::new(),
+            message: "Corporation not found.".into(),
+        });
+    };
+
+    let offers = match state.lp.offers(corp_id).await {
+        Ok(o) => o,
+        Err(_) => {
+            return Ok(LpStoreView {
+                found: false,
+                corporation,
+                offers: Vec::new(),
+                message: "No LP store for that corporation.".into(),
+            })
+        }
+    };
+    let prices = state.prices.price_map().await.unwrap_or_default();
+    let ranked = eve_core::lp::rank_offers(&offers, &prices);
+
+    let ids: Vec<i64> = ranked.iter().map(|o| o.type_id).collect();
+    let names = names_for(&state, &ids).await;
+
+    Ok(LpStoreView {
+        found: true,
+        corporation,
+        offers: ranked
+            .into_iter()
+            .map(|o| LpOfferView {
+                offer_id: o.offer_id,
+                name: named(&names, o.type_id),
+                quantity: o.quantity,
+                lp_cost: o.lp_cost,
+                total_isk_cost: o.total_isk_cost,
+                output_value: o.output_value,
+                profit: o.profit,
+                isk_per_lp: o.isk_per_lp,
+            })
+            .collect(),
+        message: String::new(),
+    })
+}
+
 /// A corp structure rolled up for the UI (names resolved + fuel countdown).
 #[derive(Debug, Serialize)]
 pub struct CorpStructureView {
