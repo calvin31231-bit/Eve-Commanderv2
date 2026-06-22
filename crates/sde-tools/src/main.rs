@@ -42,6 +42,8 @@ struct Args {
     systems_csv: Option<PathBuf>,
     jumps_csv: Option<PathBuf>,
     regions_csv: Option<PathBuf>,
+    universe: Option<PathBuf>,
+    names: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args> {
@@ -56,6 +58,8 @@ fn parse_args() -> Result<Args> {
     let mut systems_csv = None;
     let mut jumps_csv = None;
     let mut regions_csv = None;
+    let mut universe = None;
+    let mut names = None;
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -75,6 +79,8 @@ fn parse_args() -> Result<Args> {
             "--systems-csv" => systems_csv = Some(PathBuf::from(next_value(&mut it, &arg)?)),
             "--jumps-csv" => jumps_csv = Some(PathBuf::from(next_value(&mut it, &arg)?)),
             "--regions-csv" => regions_csv = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--universe" => universe = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--names" => names = Some(PathBuf::from(next_value(&mut it, &arg)?)),
             "-h" | "--help" => {
                 print_usage();
                 std::process::exit(0);
@@ -94,8 +100,9 @@ fn parse_args() -> Result<Args> {
         && systems_csv.is_none()
         && jumps_csv.is_none()
         && regions_csv.is_none()
+        && universe.is_none()
     {
-        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints/--skills/--required-skills/--type-dogma/--systems-csv/--jumps-csv/--regions-csv)");
+        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints/--skills/--required-skills/--type-dogma/--systems-csv/--jumps-csv/--regions-csv/--universe)");
     }
     Ok(Args {
         out,
@@ -109,6 +116,8 @@ fn parse_args() -> Result<Args> {
         systems_csv,
         jumps_csv,
         regions_csv,
+        universe,
+        names,
     })
 }
 
@@ -185,6 +194,14 @@ fn run() -> Result<()> {
     if let Some(p) = &args.regions_csv {
         let n = conv.ingest_regions_csv(&read_text(p)?)?;
         eprintln!("regions_csv: {n} rows from {}", p.display());
+    }
+    if let Some(dir) = &args.universe {
+        let names_yaml = match &args.names {
+            Some(p) => Some(read_text(p)?),
+            None => None,
+        };
+        let n = conv.ingest_universe(dir, names_yaml.as_deref())?;
+        eprintln!("universe: {n} system/region rows from {}", dir.display());
     }
 
     eprintln!("wrote {}", args.out.display());

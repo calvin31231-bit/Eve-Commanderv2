@@ -20,7 +20,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use eve_core::sde::SDE_SCHEMA;
@@ -534,10 +534,162 @@ impl Converter {
         Ok(written)
     }
 
+    /// Ingest the CCP SDE `universe/` directory tree (systems with security +
+    /// map coordinates, regions, and stargate adjacency) — the authoritative,
+    /// already-on-disk source for the region map + routing. `names_yaml` is the
+    /// optional `bsd/invNames.yaml` for system/region names; without it, ids are
+    /// labelled `System {id}`. Returns rows written.
+    pub fn ingest_universe(&mut self, universe_dir: &Path, names_yaml: Option<&str>) -> Result<usize> {
+        let names: HashMap<i64, String> = match names_yaml {
+            Some(y) => serde_yaml::from_str::<Vec<RawInvName>>(y)
+                .context("parsing invNames YAML")?
+                .into_iter()
+                .map(|n| (n.item_id, n.item_name))
+                .collect(),
+            None => HashMap::new(),
+        };
+
+        let mut region_files: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let mut system_files: Vec<PathBuf> = Vec::new();
+        collect_staticdata(universe_dir, &mut region_files, &mut system_files)
+            .with_context(|| format!("walking {}", universe_dir.display()))?;
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            // Regions (dir → id, so systems can find their region by path prefix).
+            let mut region_dirs: Vec<(PathBuf, i64)> = Vec::new();
+            let mut region_stmt =
+                tx.prepare("INSERT OR REPLACE INTO regions (region_id, name) VALUES (?1, ?2)")?;
+            for (path, dir) in &region_files {
+                let yaml = std::fs::read_to_string(path)?;
+                if let Ok(r) = serde_yaml::from_str::<RawRegionStatic>(&yaml) {
+                    let name = names
+                        .get(&r.region_id)
+                        .cloned()
+                        .unwrap_or_else(|| format!("Region {}", r.region_id));
+                    region_stmt.execute(params![r.region_id, name])?;
+                    region_dirs.push((dir.clone(), r.region_id));
+                    written += 1;
+                }
+            }
+
+            // Systems + gate bookkeeping.
+            let mut sys_stmt = tx.prepare(
+                "INSERT OR REPLACE INTO solar_systems (system_id, name, region_id, security, x, z)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?;
+            let mut gate_to_system: HashMap<i64, i64> = HashMap::new();
+            let mut edges: Vec<(i64, i64)> = Vec::new(); // (system_id, dest_gate_id)
+            for path in &system_files {
+                let yaml = std::fs::read_to_string(path)?;
+                let Ok(s) = serde_yaml::from_str::<RawSolarSystem>(&yaml) else { continue };
+                let region_id = region_dirs
+                    .iter()
+                    .find(|(d, _)| path.starts_with(d))
+                    .map(|(_, id)| *id)
+                    .unwrap_or(0);
+                let name = names
+                    .get(&s.solar_system_id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("System {}", s.solar_system_id));
+                let x = s.center.first().copied().unwrap_or(0.0);
+                let z = s.center.get(2).copied().unwrap_or(0.0);
+                sys_stmt.execute(params![s.solar_system_id, name, region_id, s.security, x, z])?;
+                written += 1;
+                for (gate_id, gate) in &s.stargates {
+                    gate_to_system.insert(*gate_id, s.solar_system_id);
+                    edges.push((s.solar_system_id, gate.destination));
+                }
+            }
+
+            // Jumps: map each gate's destination gate back to its system.
+            let mut jump_stmt = tx.prepare(
+                "INSERT OR REPLACE INTO system_jumps (from_system_id, to_system_id) VALUES (?1, ?2)",
+            )?;
+            for (from, to) in build_jumps(&gate_to_system, &edges) {
+                jump_stmt.execute(params![from, to])?;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
     /// Borrow the underlying connection (tests/inspection).
     pub fn connection(&self) -> &Connection {
         &self.conn
     }
+}
+
+/// One `bsd/invNames.yaml` entry (id → display name).
+#[derive(Debug, Deserialize)]
+struct RawInvName {
+    #[serde(rename = "itemID")]
+    item_id: i64,
+    #[serde(rename = "itemName")]
+    item_name: String,
+}
+
+/// A `solarsystem.staticdata` file (the bits the map needs).
+#[derive(Debug, Deserialize)]
+struct RawSolarSystem {
+    #[serde(rename = "solarSystemID")]
+    solar_system_id: i64,
+    #[serde(default)]
+    security: f64,
+    #[serde(default)]
+    center: Vec<f64>,
+    #[serde(default)]
+    stargates: BTreeMap<i64, RawStargate>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawStargate {
+    #[serde(default)]
+    destination: i64,
+}
+
+/// A `region.staticdata` file (we only need the id; name comes from invNames).
+#[derive(Debug, Deserialize)]
+struct RawRegionStatic {
+    #[serde(rename = "regionID")]
+    region_id: i64,
+}
+
+/// Recursively collect `region.staticdata` (with its directory) and
+/// `solarsystem.staticdata` file paths under `dir`.
+fn collect_staticdata(
+    dir: &Path,
+    regions: &mut Vec<(PathBuf, PathBuf)>,
+    systems: &mut Vec<PathBuf>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_staticdata(&path, regions, systems)?;
+        } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            let lower = name.to_ascii_lowercase();
+            if lower.starts_with("region.") {
+                regions.push((path.clone(), dir.to_path_buf()));
+            } else if lower.starts_with("solarsystem.") {
+                systems.push(path);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Resolve stargate edges `(system_id, dest_gate_id)` into system jumps, both
+/// directions, by mapping the destination gate back to its system. Pure.
+fn build_jumps(gate_to_system: &HashMap<i64, i64>, edges: &[(i64, i64)]) -> Vec<(i64, i64)> {
+    let mut out = Vec::new();
+    for (from, dest_gate) in edges {
+        if let Some(&to) = gate_to_system.get(dest_gate) {
+            out.push((*from, to));
+            out.push((to, *from));
+        }
+    }
+    out
 }
 
 /// Map a CSV header row to `column name → index`.
@@ -867,6 +1019,23 @@ mod tests {
             )
             .unwrap();
         assert_eq!(lvl, 3);
+    }
+
+    #[test]
+    fn build_jumps_resolves_gates_both_ways() {
+        // Gate 100 is in system 1, gate 200 in system 2; they connect.
+        let mut gate_to_system = HashMap::new();
+        gate_to_system.insert(100, 1);
+        gate_to_system.insert(200, 2);
+        // System 1's gate 100 points to gate 200; system 2's gate 200 to 100.
+        let edges = vec![(1, 200), (2, 100)];
+        let mut jumps = build_jumps(&gate_to_system, &edges);
+        jumps.sort();
+        assert_eq!(jumps, vec![(1, 2), (1, 2), (2, 1), (2, 1)]);
+
+        // An edge to an unknown gate is dropped.
+        let edges = vec![(1, 999)];
+        assert!(build_jumps(&gate_to_system, &edges).is_empty());
     }
 
     #[test]

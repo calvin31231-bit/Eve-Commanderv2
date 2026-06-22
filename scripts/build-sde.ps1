@@ -81,24 +81,13 @@ Write-Host "typeMaterials: $typeMaterials"
 Write-Host "blueprints:    $blueprints"
 Write-Host "typeDogma:     $typeDogma"
 
-# 2b. Universe map data (systems/jumps/regions) isn't in the CCP fsd export in a
-#     flat form, so pull Fuzzwork's CSV mirror for the region map + routing.
-function Get-Csv([string]$name) {
-    $dest = Join-Path $work $name
-    if (-not (Test-Path $dest)) {
-        $url = "https://www.fuzzwork.co.uk/dump/latest/$name"
-        Write-Host "Downloading $name ..."
-        $oldP = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
-        try { Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing }
-        catch { Write-Host "  (skipped $name - $($_.Exception.Message))" -ForegroundColor Yellow; return $null }
-        finally { $ProgressPreference = $oldP }
-    }
-    return $dest
-}
-# Fuzzwork serves these bzip2-compressed; the converter bunzips them.
-$systemsCsv = Get-Csv "mapSolarSystems.csv.bz2"
-$jumpsCsv   = Get-Csv "mapSolarSystemJumps.csv.bz2"
-$regionsCsv = Get-Csv "mapRegions.csv.bz2"
+# 2b. Universe map data (systems/jumps/regions) lives in the SDE's own
+#     `universe/` tree; the converter walks it. Names come from bsd/invNames.yaml.
+$universeDir = Get-ChildItem -Path $extract -Recurse -Directory -Filter "universe" -ErrorAction SilentlyContinue |
+               Select-Object -First 1 -ExpandProperty FullName
+$invNames    = Find-Yaml @("invNames.yaml")
+Write-Host "universe:      $universeDir"
+Write-Host "invNames:      $invNames"
 
 # 3. Build the converter once (release for speed on the large YAML).
 Write-Host "Building sde-tools (release) ..."
@@ -115,9 +104,8 @@ try {
     if ($typeMaterials) { $convArgs += @("--type-materials", $typeMaterials) }
     if ($blueprints)    { $convArgs += @("--blueprints", $blueprints) }
     if ($typeDogma)     { $convArgs += @("--type-dogma", $typeDogma) }
-    if ($systemsCsv)    { $convArgs += @("--systems-csv", $systemsCsv) }
-    if ($jumpsCsv)      { $convArgs += @("--jumps-csv", $jumpsCsv) }
-    if ($regionsCsv)    { $convArgs += @("--regions-csv", $regionsCsv) }
+    if ($universeDir)   { $convArgs += @("--universe", $universeDir) }
+    if ($invNames)      { $convArgs += @("--names", $invNames) }
 
     Write-Host "Converting -> $out" -ForegroundColor Cyan
     & $exe @convArgs
