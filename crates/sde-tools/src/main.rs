@@ -8,11 +8,27 @@
 //! At least one of `--types` / `--systems` must be given. The output file is
 //! recreated from scratch each run so builds are deterministic.
 
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{bail, Context, Result};
 use sde_tools::Converter;
+
+/// Read a text file, transparently bunzip2-ing it when the path ends in `.bz2`
+/// (Fuzzwork's map CSVs are bzip2-compressed).
+fn read_text(path: &Path) -> Result<String> {
+    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    if path.extension().and_then(|e| e.to_str()) == Some("bz2") {
+        let mut out = String::new();
+        bzip2::read::BzDecoder::new(&bytes[..])
+            .read_to_string(&mut out)
+            .with_context(|| format!("decompressing {}", path.display()))?;
+        Ok(out)
+    } else {
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+}
 
 struct Args {
     out: PathBuf,
@@ -159,21 +175,15 @@ fn run() -> Result<()> {
         eprintln!("type_dogma: {n} skill/requirement rows from {}", p.display());
     }
     if let Some(p) = &args.systems_csv {
-        let csv = std::fs::read_to_string(p)
-            .with_context(|| format!("reading {}", p.display()))?;
-        let n = conv.ingest_systems_csv(&csv)?;
+        let n = conv.ingest_systems_csv(&read_text(p)?)?;
         eprintln!("systems_csv: {n} rows from {}", p.display());
     }
     if let Some(p) = &args.jumps_csv {
-        let csv = std::fs::read_to_string(p)
-            .with_context(|| format!("reading {}", p.display()))?;
-        let n = conv.ingest_jumps_csv(&csv)?;
+        let n = conv.ingest_jumps_csv(&read_text(p)?)?;
         eprintln!("jumps_csv: {n} rows from {}", p.display());
     }
     if let Some(p) = &args.regions_csv {
-        let csv = std::fs::read_to_string(p)
-            .with_context(|| format!("reading {}", p.display()))?;
-        let n = conv.ingest_regions_csv(&csv)?;
+        let n = conv.ingest_regions_csv(&read_text(p)?)?;
         eprintln!("regions_csv: {n} rows from {}", p.display());
     }
 

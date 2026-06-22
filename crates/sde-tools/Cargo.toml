@@ -19,3 +19,6 @@ rusqlite.workspace = true
 serde.workspace = true
 serde_yaml = "0.9"
 anyhow = "1"
+# Fuzzwork ships the map CSVs bzip2-compressed; bzip2-sys vendors libbz2 (built
+# with cc) so this needs no system library on Windows/macOS/Linux.
+bzip2 = "0.4"

@@ -95,9 +95,10 @@ function Get-Csv([string]$name) {
     }
     return $dest
 }
-$systemsCsv = Get-Csv "mapSolarSystems.csv"
-$jumpsCsv   = Get-Csv "mapSolarSystemJumps.csv"
-$regionsCsv = Get-Csv "mapRegions.csv"
+# Fuzzwork serves these bzip2-compressed; the converter bunzips them.
+$systemsCsv = Get-Csv "mapSolarSystems.csv.bz2"
+$jumpsCsv   = Get-Csv "mapSolarSystemJumps.csv.bz2"
+$regionsCsv = Get-Csv "mapRegions.csv.bz2"
 
 # 3. Build the converter once (release for speed on the large YAML).
 Write-Host "Building sde-tools (release) ..."
