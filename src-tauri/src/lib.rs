@@ -17,6 +17,7 @@ use tauri::Manager;
 use eve_core::assets::AssetsClient;
 use eve_core::auth::{LoginManager, SsoClient, TokenManager};
 use eve_core::auth::token_store::TokenStore;
+use eve_core::bookmarks::BookmarksClient;
 use eve_core::character::CharacterClient;
 use eve_core::clones::ClonesClient;
 use eve_core::config::Config;
@@ -102,6 +103,8 @@ pub struct AppState {
     pub pve: PveClient,
     /// R&D agent / datacore reads (passive income) for the Economy hub.
     pub research: ResearchClient,
+    /// Personal bookmark reads for the Navigation hub.
+    pub bookmarks: BookmarksClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -220,6 +223,7 @@ fn build_state() -> AppState {
     let lp = LpClient::new(esi.clone());
     let pve = PveClient::new(esi.clone());
     let research = ResearchClient::new(esi.clone(), token_manager.clone());
+    let bookmarks = BookmarksClient::new(esi.clone(), token_manager.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -274,6 +278,7 @@ fn build_state() -> AppState {
         lp,
         pve,
         research,
+        bookmarks,
         names,
         notifications,
         intensity,
@@ -354,6 +359,7 @@ pub fn run() {
             commands::get_incursions,
             commands::get_fw_systems,
             commands::get_research_agents,
+            commands::get_bookmarks,
             commands::get_combat_summary,
             commands::get_local_intel,
             commands::cost_skill_plan,

@@ -22,6 +22,7 @@
 pub mod account;
 pub mod assets;
 pub mod auth;
+pub mod bookmarks;
 pub mod character;
 pub mod clones;
 pub mod config;

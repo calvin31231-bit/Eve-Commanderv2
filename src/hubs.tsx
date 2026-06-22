@@ -49,6 +49,7 @@ import type {
   CourierView,
   RegionMapView,
   JumpFatigue,
+  BookmarkView,
   CorpStructureView,
   CorpMemberView,
   LpStoreView,
@@ -2657,7 +2658,38 @@ function NavigationHub({ character }: { character: Character | null }): ReactNod
       </div>
       <CourierCalc />
       {character && <JumpFatigueCard character={character} />}
+      {character && <BookmarksCard character={character} />}
     </>
+  );
+}
+
+function BookmarksCard({ character }: { character: Character }): ReactNode {
+  const [rows, setRows] = useState<BookmarkView[] | null>(null);
+
+  useEffect(() => {
+    setRows(null);
+    if (!isTauri()) return;
+    api.getBookmarks(character.id).then(setRows).catch(() => setRows([]));
+  }, [character.id]);
+
+  if (!rows || rows.length === 0) return null;
+  return (
+    <div className="card bookmarks-card" style={{ marginTop: 16 }}>
+      <h3>Bookmarks <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {rows.length}</span></h3>
+      <table className="holdings">
+        <tbody>
+          {rows.slice(0, 60).map((b) => (
+            <tr key={b.bookmark_id}>
+              <td>
+                {b.label || "(unlabeled)"}
+                {b.notes && <div style={{ color: "var(--text-dim)", fontSize: 11 }}>{b.notes}</div>}
+              </td>
+              <td className="loc">{b.location_name}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

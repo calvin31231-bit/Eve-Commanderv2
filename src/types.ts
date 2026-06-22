@@ -534,6 +534,14 @@ export interface RouteHop {
   security: number;
 }
 
+export interface BookmarkView {
+  bookmark_id: number;
+  label: string;
+  notes: string;
+  location_name: string;
+  created: string;
+}
+
 export interface JumpFatigue {
   jump_fatigue_expire_date: string | null;
   last_jump_date: string | null;

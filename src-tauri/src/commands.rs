@@ -32,6 +32,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-planets.manage_planets.v1",
     "esi-characters.read_fatigue.v1",
     "esi-characters.read_agents_research.v1",
+    "esi-bookmarks.read_character_bookmarks.v1",
     "esi-mail.read_mail.v1",
     "esi-mail.organize_mail.v1",
     "esi-clones.read_clones.v1",
@@ -1462,6 +1463,44 @@ pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<Incursi
             influence_pct: i.influence * 100.0,
             has_boss: i.has_boss,
             system_count: i.infested_solar_systems.len() as i64,
+        })
+        .collect())
+}
+
+/// A personal bookmark with its location named.
+#[derive(Debug, Serialize)]
+pub struct BookmarkView {
+    pub bookmark_id: i64,
+    pub label: String,
+    pub notes: String,
+    pub location_name: String,
+    pub created: String,
+}
+
+/// The character's personal bookmarks (newest first), location names resolved
+/// (citadels included). Empty when the scope isn't granted.
+#[tauri::command]
+pub async fn get_bookmarks(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<BookmarkView>> {
+    let bookmarks = match state.bookmarks.bookmarks(character_id).await {
+        Ok(b) => b,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let loc_ids: Vec<i64> = bookmarks.iter().map(|b| b.location_id).collect();
+    let names = names_with_structures(&state, character_id, &loc_ids).await;
+    Ok(bookmarks
+        .into_iter()
+        .map(|b| BookmarkView {
+            location_name: names
+                .get(&b.location_id)
+                .cloned()
+                .unwrap_or_else(|| format!("Location {}", b.location_id)),
+            bookmark_id: b.bookmark_id,
+            label: b.label,
+            notes: b.notes,
+            created: b.created,
         })
         .collect())
 }
