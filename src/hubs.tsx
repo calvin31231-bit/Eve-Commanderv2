@@ -39,6 +39,7 @@ import type {
   DscanResult,
   ThreatScanView,
   PilotBackgroundView,
+  IncursionView,
   GateCampView,
   SystemSafetyView,
   CombatLogView,
@@ -1869,12 +1870,14 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
           { id: "map", label: "Intel Map" },
           { id: "threat", label: "Threat Scanner" },
           { id: "aar", label: "Combat Log" },
+          { id: "pve", label: "PvE" },
         ]}
         active={sub}
         onSelect={setSub}
       />
       {sub === "fitting" && <FitImporter character={character} />}
       {sub === "dscan" && <DscanPanel />}
+      {sub === "pve" && <IncursionsPanel />}
       {sub === "map" && (
         <>
           <IntelMap />
@@ -2187,6 +2190,64 @@ function RegionMap(): ReactNode {
       <p style={{ color: "var(--text-dim)", fontSize: 11, marginBottom: 0 }}>
         Node colour = security; red halo = ship kills in the last hour (hover for details).
       </p>
+    </div>
+  );
+}
+
+function IncursionsPanel(): ReactNode {
+  const [rows, setRows] = useState<IncursionView[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function load() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .getIncursions()
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="card incursions-panel">
+      <h3>Incursions <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· live</span></h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Active incursions, freshest first. Lower influence = more farmed.
+      </p>
+      <button onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+      {rows && rows.length === 0 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No active incursions.</p>
+      )}
+      {rows && rows.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Staging</th>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>State</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Influence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td>
+                  {r.staging_system}
+                  <div style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                    {r.faction} · {r.system_count} systems{r.has_boss ? " · boss up" : ""}
+                  </div>
+                </td>
+                <td className="loc">{r.state}</td>
+                <td className="mono num">{r.influence_pct.toFixed(0)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

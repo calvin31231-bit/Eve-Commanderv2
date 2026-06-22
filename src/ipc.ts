@@ -47,6 +47,7 @@ import type {
   GateCampView,
   SystemSafetyView,
   CombatLogView,
+  IncursionView,
   LocalIntel,
   RouteView,
   CourierView,
@@ -157,6 +158,7 @@ export const api = {
     call<void>("open_market_window", { characterId, typeId }),
   getCombatSummary: () => call<CombatLogView>("get_combat_summary"),
   getLocalIntel: () => call<LocalIntel | null>("get_local_intel"),
+  getIncursions: () => call<IncursionView[]>("get_incursions"),
   costSkillPlan: (
     characterId: number,
     targets: { skill_type_id: number; target_level: number }[],

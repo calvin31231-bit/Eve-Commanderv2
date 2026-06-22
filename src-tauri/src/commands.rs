@@ -1429,6 +1429,42 @@ pub async fn cost_skill_plan(
     Ok(SkillPlanView { steps, total_sp, total_seconds })
 }
 
+/// One active incursion with its staging system + faction named.
+#[derive(Debug, Serialize)]
+pub struct IncursionView {
+    pub staging_system: String,
+    pub faction: String,
+    pub state: String,
+    /// 0–100; lower means more farmed.
+    pub influence_pct: f64,
+    pub has_boss: bool,
+    pub system_count: i64,
+}
+
+/// Active incursions (public), freshest first, with staging-system + faction
+/// names resolved.
+#[tauri::command]
+pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<IncursionView>> {
+    let incursions = state.pve.incursions().await.map_err(|e| e.to_string())?;
+    let mut ids: Vec<i64> = Vec::new();
+    for i in &incursions {
+        ids.push(i.staging_solar_system_id);
+        ids.push(i.faction_id);
+    }
+    let names = names_for(&state, &ids).await;
+    Ok(incursions
+        .into_iter()
+        .map(|i| IncursionView {
+            staging_system: named(&names, i.staging_solar_system_id),
+            faction: named(&names, i.faction_id),
+            state: i.state.replace('_', " "),
+            influence_pct: i.influence * 100.0,
+            has_boss: i.has_boss,
+            system_count: i.infested_solar_systems.len() as i64,
+        })
+        .collect())
+}
+
 /// A valued LP-store offer with names resolved.
 #[derive(Debug, Serialize)]
 pub struct LpOfferView {

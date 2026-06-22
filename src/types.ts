@@ -485,6 +485,15 @@ export interface LocalIntel {
   line_count: number;
 }
 
+export interface IncursionView {
+  staging_system: string;
+  faction: string;
+  state: string;
+  influence_pct: number;
+  has_boss: boolean;
+  system_count: number;
+}
+
 export interface MapNode {
   system_id: number;
   name: string;

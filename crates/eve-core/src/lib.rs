@@ -50,6 +50,7 @@ pub mod navigation;
 pub mod notify;
 pub mod planets;
 pub mod prices;
+pub mod pve;
 pub mod reprocess;
 pub mod sde;
 pub mod skillplan;
