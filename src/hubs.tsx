@@ -40,6 +40,7 @@ import type {
   ThreatScanView,
   PilotBackgroundView,
   IncursionView,
+  FwSystemView,
   GateCampView,
   SystemSafetyView,
   CombatLogView,
@@ -1877,7 +1878,12 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
       />
       {sub === "fitting" && <FitImporter character={character} />}
       {sub === "dscan" && <DscanPanel />}
-      {sub === "pve" && <IncursionsPanel />}
+      {sub === "pve" && (
+        <>
+          <IncursionsPanel />
+          <FactionWarfarePanel />
+        </>
+      )}
       {sub === "map" && (
         <>
           <IntelMap />
@@ -2243,6 +2249,56 @@ function IncursionsPanel(): ReactNode {
                 </td>
                 <td className="loc">{r.state}</td>
                 <td className="mono num">{r.influence_pct.toFixed(0)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function FactionWarfarePanel(): ReactNode {
+  const [rows, setRows] = useState<FwSystemView[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function load() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .getFwSystems()
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="card fw-panel" style={{ marginTop: 16 }}>
+      <h3>Faction Warfare <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· contested</span></h3>
+      <button onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+      {rows && rows.length === 0 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No contested systems.</p>
+      )}
+      {rows && rows.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>System</th>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Occupier</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Contested</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td>{r.system_name}</td>
+                <td className="loc">{r.occupier}</td>
+                <td className="mono num">{r.progress_pct.toFixed(0)}%</td>
               </tr>
             ))}
           </tbody>

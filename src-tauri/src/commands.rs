@@ -1465,6 +1465,42 @@ pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<Incursi
         .collect())
 }
 
+/// One contested faction-warfare system, named.
+#[derive(Debug, Serialize)]
+pub struct FwSystemView {
+    pub system_name: String,
+    pub owner: String,
+    pub occupier: String,
+    pub contested: String,
+    /// Contest progress toward a flip, 0–100.
+    pub progress_pct: f64,
+}
+
+/// Contested faction-warfare systems (public), most-contested first, with
+/// system + faction names resolved. Capped to the hottest 40.
+#[tauri::command]
+pub async fn get_fw_systems(state: State<'_, AppState>) -> CmdResult<Vec<FwSystemView>> {
+    let mut systems = state.pve.contested_fw_systems().await.map_err(|e| e.to_string())?;
+    systems.truncate(40);
+    let mut ids: Vec<i64> = Vec::new();
+    for s in &systems {
+        ids.push(s.solar_system_id);
+        ids.push(s.owner_faction_id);
+        ids.push(s.occupier_faction_id);
+    }
+    let names = names_for(&state, &ids).await;
+    Ok(systems
+        .into_iter()
+        .map(|s| FwSystemView {
+            system_name: named(&names, s.solar_system_id),
+            owner: named(&names, s.owner_faction_id),
+            occupier: named(&names, s.occupier_faction_id),
+            progress_pct: s.progress() * 100.0,
+            contested: s.contested.replace('_', " "),
+        })
+        .collect())
+}
+
 /// A valued LP-store offer with names resolved.
 #[derive(Debug, Serialize)]
 pub struct LpOfferView {

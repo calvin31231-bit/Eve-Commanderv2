@@ -347,6 +347,7 @@ pub fn run() {
             commands::get_corp_members,
             commands::lp_store,
             commands::get_incursions,
+            commands::get_fw_systems,
             commands::get_combat_summary,
             commands::get_local_intel,
             commands::cost_skill_plan,

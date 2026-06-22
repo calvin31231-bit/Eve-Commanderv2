@@ -494,6 +494,14 @@ export interface IncursionView {
   system_count: number;
 }
 
+export interface FwSystemView {
+  system_name: string;
+  owner: string;
+  occupier: string;
+  contested: string;
+  progress_pct: number;
+}
+
 export interface MapNode {
   system_id: number;
   name: string;

@@ -48,6 +48,7 @@ import type {
   SystemSafetyView,
   CombatLogView,
   IncursionView,
+  FwSystemView,
   LocalIntel,
   RouteView,
   CourierView,
@@ -159,6 +160,7 @@ export const api = {
   getCombatSummary: () => call<CombatLogView>("get_combat_summary"),
   getLocalIntel: () => call<LocalIntel | null>("get_local_intel"),
   getIncursions: () => call<IncursionView[]>("get_incursions"),
+  getFwSystems: () => call<FwSystemView[]>("get_fw_systems"),
   costSkillPlan: (
     characterId: number,
     targets: { skill_type_id: number; target_level: number }[],
