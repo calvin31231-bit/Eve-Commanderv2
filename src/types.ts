@@ -504,6 +504,15 @@ export interface SystemSafetyView {
   message: string;
 }
 
+export interface SystemRiskView {
+  found: boolean;
+  system_id: number;
+  system_name: string;
+  score: number;
+  level: "Safe" | "Neutral" | "Caution" | "Danger";
+  reasons: string[];
+}
+
 export interface EntityDamage {
   entity: string;
   damage: number;

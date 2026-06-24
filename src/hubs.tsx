@@ -48,6 +48,7 @@ import type {
   FwSystemView,
   GateCampView,
   SystemSafetyView,
+  SystemRiskView,
   CombatLogView,
   RouteView,
   CourierView,
@@ -2140,6 +2141,7 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
       )}
       {sub === "map" && (
         <>
+          <SystemRiskGauge />
           <IntelMap />
           <RegionMap />
         </>
@@ -2278,6 +2280,80 @@ function killColor(kills: number): string {
   if (kills === 0) return "#4ade80";
   if (kills <= 5) return "#fbbf24";
   return "#f87171";
+}
+
+function riskColor(level: string): string {
+  if (level === "Danger") return "#f87171";
+  if (level === "Caution") return "#fbbf24";
+  if (level === "Neutral") return "#60a5fa";
+  return "#4ade80";
+}
+
+function SystemRiskGauge(): ReactNode {
+  const [risk, setRisk] = useState<SystemRiskView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function load() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .getSystemRisk()
+      .then(setRisk)
+      .catch(() => setRisk(null))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const color = risk ? riskColor(risk.level) : "var(--text-dim)";
+
+  return (
+    <div className="card">
+      <h3>
+        Unified Risk{" "}
+        <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· current system</span>
+      </h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        One threat number fusing in-system + neighbour kills, security band and gate-camp signal.
+      </p>
+      <button onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+      {risk && !risk.found && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          Needs an active character in space (location scope).
+        </p>
+      )}
+      {risk && risk.found && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <span className="mono" style={{ fontSize: 34, fontWeight: 700, color }}>
+              {risk.score}
+            </span>
+            <span style={{ fontSize: 13, color }}>{risk.level}</span>
+            <span style={{ color: "var(--text-dim)", fontSize: 12 }}>· {risk.system_name}</span>
+          </div>
+          <div
+            style={{
+              height: 8,
+              borderRadius: 4,
+              background: "var(--border)",
+              marginTop: 6,
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ width: `${risk.score}%`, height: "100%", background: color }} />
+          </div>
+          <ul style={{ margin: "10px 0 0", paddingLeft: 16, fontSize: 12, color: "var(--text-dim)" }}>
+            {risk.reasons.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function IntelMap(): ReactNode {

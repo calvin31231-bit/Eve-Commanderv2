@@ -373,6 +373,7 @@ pub fn run() {
             commands::pilot_background,
             commands::gate_camp_check,
             commands::get_system_safety,
+            commands::get_system_risk,
             commands::get_region_map,
             commands::list_map_regions,
             commands::plan_route,

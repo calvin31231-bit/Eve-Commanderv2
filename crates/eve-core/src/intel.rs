@@ -183,6 +183,89 @@ pub fn assess_safety(total_kills: i64) -> SafetyAssessment {
     SafetyAssessment { total_kills, level, message }
 }
 
+/// Signals that feed the unified system-risk score. All optional/zero-defaulted
+/// so a caller can supply only what it has (e.g. kills without a Local roster).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct RiskInputs {
+    /// Kills in the system itself in the last hour.
+    pub system_kills: i64,
+    /// Kills in adjacent systems in the last hour.
+    pub neighbour_kills: i64,
+    /// Pilots in Local scored at Danger (from the threat scanner / logs).
+    pub danger_pilots: i64,
+    /// Pilots in Local scored at Caution.
+    pub caution_pilots: i64,
+    /// System security status (1.0 highsec … ≤0.0 nullsec). Lower is riskier.
+    pub security: f64,
+    /// A known gate camp was flagged on a route gate.
+    pub gate_camp: bool,
+}
+
+/// One unified threat read for a system, fusing recent kills, hostile pilots in
+/// Local, security band and gate-camp flag into a single 0–100 score.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SystemRisk {
+    /// 0 (clear) … 100 (extreme). Clamped.
+    pub score: i64,
+    pub level: ThreatLevel,
+    pub reasons: Vec<String>,
+}
+
+/// Fuse intel signals into one system risk score. Deterministic and pure; each
+/// contribution is explained in `reasons` so the number is never a black box.
+pub fn score_system_risk(i: &RiskInputs) -> SystemRisk {
+    let mut score = 0i64;
+    let mut reasons = Vec::new();
+
+    if i.system_kills > 0 {
+        let pts = (i.system_kills * 12).min(45);
+        score += pts;
+        reasons.push(format!("{} kill(s) in-system this hour", i.system_kills));
+    }
+    if i.neighbour_kills > 0 {
+        let pts = (i.neighbour_kills * 4).min(20);
+        score += pts;
+        reasons.push(format!("{} kill(s) in neighbouring systems", i.neighbour_kills));
+    }
+    if i.danger_pilots > 0 {
+        let pts = (i.danger_pilots * 15).min(40);
+        score += pts;
+        reasons.push(format!("{} known hostile(s) in Local", i.danger_pilots));
+    }
+    if i.caution_pilots > 0 {
+        let pts = (i.caution_pilots * 5).min(15);
+        score += pts;
+        reasons.push(format!("{} pilot(s) of note in Local", i.caution_pilots));
+    }
+    if i.gate_camp {
+        score += 25;
+        reasons.push("Gate camp flagged on route".to_string());
+    }
+    // Lowsec/nullsec raise the floor: no CONCORD response below 0.5.
+    if i.security < 0.45 && i.security >= 0.0 {
+        score += 10;
+        reasons.push("Lowsec — no CONCORD protection".to_string());
+    } else if i.security < 0.0 {
+        score += 15;
+        reasons.push("Nullsec — full PvP, no protection".to_string());
+    }
+
+    let score = score.clamp(0, 100);
+    let level = if score >= 60 {
+        ThreatLevel::Danger
+    } else if score >= 30 {
+        ThreatLevel::Caution
+    } else if score > 0 {
+        ThreatLevel::Neutral
+    } else {
+        ThreatLevel::Safe
+    };
+    if reasons.is_empty() {
+        reasons.push("No notable activity — clear for now.".to_string());
+    }
+    SystemRisk { score, level, reasons }
+}
+
 // ---- zKillboard client (live; exercised on the user's machine) -------------
 
 /// The subset of zKill's `stats` we score on. zKill nests sec status under
@@ -286,6 +369,40 @@ mod tests {
     fn no_kills_is_safe() {
         let t = score_pilot(&PilotStats::default());
         assert_eq!(t.level, ThreatLevel::Safe);
+    }
+
+    #[test]
+    fn quiet_highsec_is_safe() {
+        let r = score_system_risk(&RiskInputs { security: 0.9, ..Default::default() });
+        assert_eq!(r.score, 0);
+        assert_eq!(r.level, ThreatLevel::Safe);
+    }
+
+    #[test]
+    fn hostiles_and_kills_escalate_to_danger() {
+        let r = score_system_risk(&RiskInputs {
+            system_kills: 4,
+            danger_pilots: 3,
+            gate_camp: true,
+            security: 0.3,
+            ..Default::default()
+        });
+        assert!(r.score >= 60, "score was {}", r.score);
+        assert_eq!(r.level, ThreatLevel::Danger);
+        assert!(r.score <= 100);
+    }
+
+    #[test]
+    fn score_is_clamped_to_100() {
+        let r = score_system_risk(&RiskInputs {
+            system_kills: 50,
+            neighbour_kills: 50,
+            danger_pilots: 50,
+            caution_pilots: 50,
+            gate_camp: true,
+            security: -0.5,
+        });
+        assert_eq!(r.score, 100);
     }
 
     #[test]

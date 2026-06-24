@@ -52,6 +52,7 @@ import type {
   PilotBackgroundView,
   GateCampView,
   SystemSafetyView,
+  SystemRiskView,
   CombatLogView,
   IncursionView,
   FwSystemView,
@@ -149,6 +150,7 @@ export const api = {
   readClipboard: () => call<string>("plugin:clipboard-manager|read_text"),
   gateCampCheck: (system: string) => call<GateCampView>("gate_camp_check", { system }),
   getSystemSafety: () => call<SystemSafetyView>("get_system_safety"),
+  getSystemRisk: () => call<SystemRiskView>("get_system_risk"),
   getRegionMap: (region?: string) => call<RegionMapView>("get_region_map", { region }),
   listMapRegions: () => call<string[]>("list_map_regions"),
   planRoute: (origin: string, destination: string, flag: string) =>

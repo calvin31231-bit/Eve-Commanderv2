@@ -2107,6 +2107,77 @@ pub async fn get_system_safety(state: State<'_, AppState>) -> CmdResult<SystemSa
     })
 }
 
+/// One unified risk read for the active character's current system.
+#[derive(Debug, Serialize)]
+pub struct SystemRiskView {
+    pub found: bool,
+    pub system_id: i64,
+    pub system_name: String,
+    /// 0 (clear) … 100 (extreme).
+    pub score: i64,
+    pub level: String,
+    pub reasons: Vec<String>,
+}
+
+/// One unified threat number for the active character's current system, fusing
+/// in-system + neighbour kills (zKill), security band, and a gate-camp flag from
+/// recent kill volume into a single 0–100 score. The deterministic scoring lives
+/// in `eve_core::intel::score_system_risk`.
+#[tauri::command]
+pub async fn get_system_risk(state: State<'_, AppState>) -> CmdResult<SystemRiskView> {
+    let empty = |found: bool| SystemRiskView {
+        found,
+        system_id: 0,
+        system_name: String::new(),
+        score: 0,
+        level: "Safe".into(),
+        reasons: vec![if found { "Quiet.".into() } else { "No active character.".into() }],
+    };
+
+    let characters = state.db.list_characters().await.map_err(|e| e.to_string())?;
+    let Some(active) = characters.iter().find(|c| c.active) else {
+        return Ok(empty(false));
+    };
+    let Ok(loc) = state.character.location(active.id).await else {
+        return Ok(empty(false));
+    };
+    let current_id = loc.solar_system_id;
+    let info = state.universe.system_info(current_id).await.map_err(|e| e.to_string())?;
+    let neighbor_ids: Vec<i64> = state
+        .universe
+        .neighbors(current_id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .take(12)
+        .collect();
+
+    let system_kills = state.zkill.system_kill_count(current_id, 3600).await.unwrap_or(0);
+    let mut neighbour_kills = 0;
+    for nid in neighbor_ids {
+        neighbour_kills += state.zkill.system_kill_count(nid, 3600).await.unwrap_or(0);
+    }
+
+    let inputs = eve_core::intel::RiskInputs {
+        system_kills,
+        neighbour_kills,
+        danger_pilots: 0,
+        caution_pilots: 0,
+        security: info.security_status,
+        // Heavy recent in-system kill volume is the gate-camp signal.
+        gate_camp: system_kills > 3,
+    };
+    let risk = eve_core::intel::score_system_risk(&inputs);
+    Ok(SystemRiskView {
+        found: true,
+        system_id: current_id,
+        system_name: info.name,
+        score: risk.score,
+        level: risk.level.as_str().to_string(),
+        reasons: risk.reasons,
+    })
+}
+
 /// A system positioned on the region map, with its recent ship-kill count and
 /// sovereignty owner (alliance) when claimed.
 #[derive(Debug, Serialize)]
