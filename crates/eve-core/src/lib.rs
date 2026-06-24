@@ -62,6 +62,7 @@ pub mod reprocess;
 pub mod research;
 pub mod sde;
 pub mod skillplan;
+pub mod skillplan_import;
 pub mod universe;
 pub mod wallet;
 

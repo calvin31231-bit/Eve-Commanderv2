@@ -789,3 +789,14 @@ export interface MemoryNoteView {
   pinned: boolean;
   created_at: number;
 }
+
+export interface ImportedSkillView {
+  skill_type_id: number;
+  name: string;
+  target_level: number;
+}
+
+export interface SkillImportView {
+  targets: ImportedSkillView[];
+  unresolved: string[];
+}

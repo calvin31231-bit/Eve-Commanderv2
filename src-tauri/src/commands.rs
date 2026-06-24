@@ -3502,3 +3502,42 @@ pub async fn wipe_data(state: State<'_, AppState>) -> CmdResult<()> {
     let _ = state.tokens.delete_refresh_token(AI_KEY_ID);
     state.db.wipe_all().await.map_err(|e| e.to_string())
 }
+
+// ---- Skill-plan import (EVEMon / text) --------------------------------------
+
+/// One resolved import target for the skill planner.
+#[derive(Debug, Serialize)]
+pub struct ImportedSkillView {
+    pub skill_type_id: i64,
+    pub name: String,
+    pub target_level: i64,
+}
+
+/// The result of importing a plan: the targets that resolved against the SDE,
+/// plus any skill names that didn't (so the UI can flag them).
+#[derive(Debug, Serialize)]
+pub struct SkillImportView {
+    pub targets: Vec<ImportedSkillView>,
+    pub unresolved: Vec<String>,
+}
+
+/// Parse an EVEMon plan export or a plain-text skill list and resolve each skill
+/// name to its type_id via the SDE, ready to load into the skill planner.
+#[tauri::command]
+pub async fn import_skill_plan(state: State<'_, AppState>, text: String) -> CmdResult<SkillImportView> {
+    let parsed = eve_core::skillplan_import::parse_plan(&text);
+    let sde = state.names.sde();
+    let mut targets = Vec::new();
+    let mut unresolved = Vec::new();
+    for skill in parsed {
+        match sde.type_id_by_name(&skill.name).await.map_err(|e| e.to_string())? {
+            Some(type_id) => targets.push(ImportedSkillView {
+                skill_type_id: type_id,
+                name: skill.name,
+                target_level: skill.level,
+            }),
+            None => unresolved.push(skill.name),
+        }
+    }
+    Ok(SkillImportView { targets, unresolved })
+}

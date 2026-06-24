@@ -694,6 +694,9 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
     { skill_type_id: number; name: string; target_level: number }[]
   >([]);
   const [plan, setPlan] = useState<SkillPlanView | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importMsg, setImportMsg] = useState("");
 
   function recost(next: typeof targets) {
     setTargets(next);
@@ -710,12 +713,52 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
       .catch(() => setPlan(null));
   }
 
+  function runImport() {
+    if (!isTauri() || !importText.trim()) return;
+    api
+      .importSkillPlan(importText)
+      .then((res) => {
+        const merged = [...targets];
+        for (const t of res.targets) {
+          const existing = merged.find((m) => m.skill_type_id === t.skill_type_id);
+          if (existing) existing.target_level = Math.max(existing.target_level, t.target_level);
+          else merged.push({ skill_type_id: t.skill_type_id, name: t.name, target_level: t.target_level });
+        }
+        recost(merged);
+        setImportMsg(
+          `Imported ${res.targets.length} skill(s)` +
+            (res.unresolved.length ? `, ${res.unresolved.length} unresolved: ${res.unresolved.slice(0, 5).join(", ")}` : ""),
+        );
+        setImportText("");
+      })
+      .catch((e) => setImportMsg(String(e)));
+  }
+
   return (
     <div className="card skill-planner">
-      <h3>Skill Plan</h3>
+      <h3>
+        Skill Plan
+        <button style={{ float: "right", fontSize: 11 }} onClick={() => setShowImport((v) => !v)}>
+          Import
+        </button>
+      </h3>
       <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
         Add skills and target levels to estimate SP and training time at your attributes.
       </p>
+      {showImport && (
+        <div style={{ marginBottom: 10 }}>
+          <textarea
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            placeholder={"Paste an EVEMon plan export or a list like:\nCaldari Cruiser V\nShield Management IV"}
+            style={{ width: "100%", minHeight: 80, fontFamily: "monospace", fontSize: 12 }}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
+            <button onClick={runImport}>Import plan</button>
+            {importMsg && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{importMsg}</span>}
+          </div>
+        </div>
+      )}
       <ItemPicker
         placeholder="Search a skill…"
         onPick={(h) => {

@@ -44,6 +44,7 @@ import type {
   BuildPlanView,
   ResolvedFit,
   SkillPlanView,
+  SkillImportView,
   RoiPlan,
   RoiResult,
   IncomeActivity,
@@ -200,6 +201,8 @@ export const api = {
     characterId: number,
     targets: { skill_type_id: number; target_level: number }[],
   ) => call<SkillPlanView>("cost_skill_plan", { characterId, targets }),
+  importSkillPlan: (text: string) =>
+    call<SkillImportView>("import_skill_plan", { text }),
   rankSkillRoi: (plans: RoiPlan[]) => call<RoiResult[]>("rank_skill_roi", { plans }),
   rankIncome: (activities: IncomeActivity[], hours: number) =>
     call<IncomeRanking[]>("rank_income", { activities, hours }),
