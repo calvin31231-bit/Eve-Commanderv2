@@ -184,14 +184,16 @@ Coverage check: every authenticated `esi-*` scope now maps to at least one modul
 
 ## The "10x" differentiators (Phase 6 — the reason this beats everything)
 
-Only possible because one app holds all characters' live data + logs + SDE + 3P together:
-1. **Cross-content income optimizer** — ranks every income activity by realistic ISK/hr *for your specific* skills/assets/location/standings/time.
-2. **Unified risk/intel score** — one live threat number per system fusing Local reds (logs) + their zKill history + standings + recent kills + your route/hull.
-3. **Hauling profit optimizer** — multi-hub arbitrage solved with your real cargo/collateral and route gate-camp risk (#2).
-4. **Portfolio analytics over time** — true net-worth time-series and P&L attribution, built from persisted local snapshots (ESI has no history).
-5. **Real-time fleet AAR / multi-box console** — combined live DPS + logi view from multiple Gamelogs, auto after-action report when a fight ends.
-6. **"Can-I / Should-I" fit gatekeeper** — for any EFT fit: who can fly it now, train time, do I own it, acquisition cost, risk-adjusted value.
-7. **Skill-plan ROI** — rank skill plans by ISK-impact, not just training time.
+Only possible because one app holds all characters' live data + logs + SDE + 3P together (**all shipped** — pure logic in `eve-core`, commands in `src-tauri`, UI cards in `src/hubs.tsx`):
+1. ✅ **Cross-content income optimizer** — ranks every income activity by realistic ISK/hr *for your specific* skills/assets/location/standings/time. (`income::rank_income`, Tools→Income Optimizer)
+2. ✅ **Unified risk/intel score** — one live threat number per system fusing Local reds (logs) + their zKill history + standings + recent kills + your route/hull. (`intel::score_system_risk`, Intel→Map gauge)
+3. ✅ **Hauling profit optimizer** — multi-hub arbitrage solved with your real cargo/collateral and route gate-camp risk (#2). (`marketdata::best_arbitrage`, Economy→Market)
+4. ✅ **Portfolio analytics over time** — true net-worth time-series and P&L attribution, built from persisted local snapshots (ESI has no history). (`db::snapshots` + `get_portfolio_history`)
+5. ✅ **Real-time fleet AAR / multi-box console** — combined live DPS + logi view from multiple Gamelogs, auto after-action report when a fight ends. (`gamelog::merge_fleet_aar`, Combat→AAR)
+6. ✅ **"Can-I / Should-I" fit gatekeeper** — for any EFT fit: who can fly it now, train time, do I own it, acquisition cost, risk-adjusted value. (`fit_gatekeeper` command)
+7. ✅ **Skill-plan ROI** — rank skill plans by ISK-impact, not just training time. (`skillplan::rank_roi`, Skills→Plan ROI)
+
+**Phase 6 complete.** Next: Phase 6.5 (AI Jarvis layer) or Phase 7 (polish/plugins/localization).
 
 ---
 
