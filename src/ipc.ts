@@ -57,6 +57,7 @@ import type {
   RegionMapView,
   JumpFatigue,
   BookmarkView,
+  TheraConnection,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -162,6 +163,7 @@ export const api = {
     call<JumpFatigue | null>("get_jump_fatigue", { characterId }),
   getBookmarks: (characterId: number) =>
     call<BookmarkView[]>("get_bookmarks", { characterId }),
+  getTheraConnections: () => call<TheraConnection[]>("get_thera_connections"),
   setRouteWaypoint: (characterId: number, system: string) =>
     call<void>("set_route_waypoint", { characterId, system }),
   openMarketWindow: (characterId: number, typeId: number) =>

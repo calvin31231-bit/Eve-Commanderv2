@@ -552,6 +552,15 @@ export interface BookmarkView {
   created: string;
 }
 
+export interface TheraConnection {
+  hub: string;
+  destination: string;
+  region: string;
+  wh_type: string;
+  max_ship_size: string;
+  remaining_hours: number;
+}
+
 export interface JumpFatigue {
   jump_fatigue_expire_date: string | null;
   last_jump_date: string | null;

@@ -35,6 +35,7 @@ pub mod discord;
 pub mod dscan;
 pub mod error;
 pub mod esi;
+pub mod eve_scout;
 pub mod fitting;
 pub mod industry;
 pub mod industry_plan;

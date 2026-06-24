@@ -26,6 +26,7 @@ use eve_core::contracts::ContractsClient;
 use eve_core::corp::CorpClient;
 use eve_core::db::Database;
 use eve_core::esi::EsiClient;
+use eve_core::eve_scout::EveScoutClient;
 use eve_core::fitting::FittingClient;
 use eve_core::industry::IndustryClient;
 use eve_core::industry_plan::IndustryPlanClient;
@@ -108,6 +109,8 @@ pub struct AppState {
     pub bookmarks: BookmarksClient,
     /// Upcoming calendar-event reads for the Character hub.
     pub calendar: CalendarClient,
+    /// EVE-Scout Thera/Turnur connections for the Navigation hub.
+    pub eve_scout: EveScoutClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -228,6 +231,7 @@ fn build_state() -> AppState {
     let research = ResearchClient::new(esi.clone(), token_manager.clone());
     let bookmarks = BookmarksClient::new(esi.clone(), token_manager.clone());
     let calendar = CalendarClient::new(esi.clone(), token_manager.clone());
+    let eve_scout = EveScoutClient::new(config.user_agent.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -284,6 +288,7 @@ fn build_state() -> AppState {
         research,
         bookmarks,
         calendar,
+        eve_scout,
         names,
         notifications,
         intensity,
@@ -366,6 +371,7 @@ pub fn run() {
             commands::get_research_agents,
             commands::get_bookmarks,
             commands::get_calendar,
+            commands::get_thera_connections,
             commands::get_combat_summary,
             commands::get_local_intel,
             commands::cost_skill_plan,

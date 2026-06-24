@@ -51,6 +51,7 @@ import type {
   RegionMapView,
   JumpFatigue,
   BookmarkView,
+  TheraConnection,
   CorpStructureView,
   CorpMemberView,
   LpStoreView,
@@ -2683,9 +2684,63 @@ function NavigationHub({ character }: { character: Character | null }): ReactNod
         )}
       </div>
       <CourierCalc />
+      <TheraCard />
       {character && <JumpFatigueCard character={character} />}
       {character && <BookmarksCard character={character} />}
     </>
+  );
+}
+
+function TheraCard(): ReactNode {
+  const [rows, setRows] = useState<TheraConnection[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function load() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .getTheraConnections()
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }
+
+  return (
+    <div className="card thera-card" style={{ marginTop: 16 }}>
+      <h3>Thera / Turnur Connections <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· EVE-Scout</span></h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Scanned wormhole shortcuts into known space, soonest to collapse first.
+      </p>
+      <button onClick={load} disabled={loading}>{loading ? "Loading…" : "Load connections"}</button>
+      {rows && rows.length === 0 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No connections (or EVE-Scout unreachable).</p>
+      )}
+      {rows && rows.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Destination</th>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>From</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Ends</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 40).map((c, i) => (
+              <tr key={i}>
+                <td>
+                  {c.destination}
+                  <div style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                    {c.region} · {c.max_ship_size}
+                  </div>
+                </td>
+                <td className="loc">{c.hub}</td>
+                <td className="mono num">{c.remaining_hours}h</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 

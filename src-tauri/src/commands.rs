@@ -1468,6 +1468,15 @@ pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<Incursi
         .collect())
 }
 
+/// Current EVE-Scout Thera/Turnur wormhole connections (public 3P), soonest to
+/// collapse first. Empty/best-effort if EVE-Scout is unreachable.
+#[tauri::command]
+pub async fn get_thera_connections(
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<eve_core::eve_scout::TheraConnection>> {
+    Ok(state.eve_scout.connections().await.unwrap_or_default())
+}
+
 /// The character's upcoming calendar events (frontend renders the countdown).
 /// Empty when the scope isn't granted.
 #[tauri::command]
