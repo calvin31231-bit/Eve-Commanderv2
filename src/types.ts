@@ -372,6 +372,29 @@ export interface SkillPlanView {
   total_seconds: number;
 }
 
+export interface GatekeeperItem {
+  type_id: number;
+  name: string;
+  needed: number;
+  owned: number;
+  missing: number;
+  unit_price: number;
+  missing_cost: number;
+}
+
+export interface FitGatekeeperView {
+  parsed: boolean;
+  ship: string;
+  can_fly: boolean;
+  missing_skills: MissingSkillView[];
+  train_seconds: number;
+  items: GatekeeperItem[];
+  total_value: number;
+  acquisition_cost: number;
+  owned_fraction: number;
+  unresolved: string[];
+}
+
 export interface MissingSkillView {
   skill_type_id: number;
   name: string;

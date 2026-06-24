@@ -2678,6 +2678,139 @@ pub async fn can_fly_fit(
     })
 }
 
+/// One line item in the fit gatekeeper (ownership + cost for a fit component).
+#[derive(Debug, Serialize)]
+pub struct GatekeeperItem {
+    pub type_id: i64,
+    pub name: String,
+    pub needed: i64,
+    pub owned: i64,
+    pub missing: i64,
+    pub unit_price: f64,
+    /// Market cost of the units you still need to buy.
+    pub missing_cost: f64,
+}
+
+/// The full "can-I / should-I" verdict for a fit: can you fly it, do you own the
+/// parts, and what's the acquisition cost + total value.
+#[derive(Debug, Serialize)]
+pub struct FitGatekeeperView {
+    pub parsed: bool,
+    pub ship: String,
+    pub can_fly: bool,
+    pub missing_skills: Vec<MissingSkillView>,
+    pub train_seconds: i64,
+    pub items: Vec<GatekeeperItem>,
+    /// Market value of the whole fit (all components at reference price).
+    pub total_value: f64,
+    /// Cost to acquire everything you don't already own.
+    pub acquisition_cost: f64,
+    /// Fraction of components (by count) you already own.
+    pub owned_fraction: f64,
+    pub unresolved: Vec<String>,
+}
+
+/// Fit gatekeeper: parse a fit and answer can-I-fly (skills) **and** should-I —
+/// what you own vs. need (assets), and the ISK to acquire the rest (market).
+#[tauri::command]
+pub async fn fit_gatekeeper(
+    state: State<'_, AppState>,
+    character_id: i64,
+    eft: String,
+) -> CmdResult<FitGatekeeperView> {
+    let empty = FitGatekeeperView {
+        parsed: false,
+        ship: String::new(),
+        can_fly: false,
+        missing_skills: Vec::new(),
+        train_seconds: 0,
+        items: Vec::new(),
+        total_value: 0.0,
+        acquisition_cost: 0.0,
+        owned_fraction: 0.0,
+        unresolved: Vec::new(),
+    };
+    let Some(fit) = state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())? else {
+        return Ok(empty);
+    };
+
+    // Can-fly (skills).
+    let required = required_skills_for_fit(&state, &fit).await.map_err(|e| e.to_string())?;
+    let skill_ids: Vec<i64> = required.keys().copied().collect();
+    let skill_names = names_for(&state, &skill_ids).await;
+    let (missing_skills, train_seconds) =
+        evaluate_character(&state, character_id, &required, &skill_names).await.map_err(|e| e.to_string())?;
+
+    // Ownership (assets) + pricing (market).
+    let owned: std::collections::HashMap<i64, i64> = state
+        .assets
+        .all_holdings(character_id)
+        .await
+        .map(|groups| groups.into_iter().map(|g| (g.type_id, g.quantity)).collect())
+        .unwrap_or_default();
+    let prices = state.prices.price_map().await.unwrap_or_default();
+
+    // Assemble the component list: hull + each resolved item (by quantity).
+    let mut components: Vec<(i64, i64)> = Vec::new(); // (type_id, needed)
+    if let Some(id) = fit.ship_type_id {
+        components.push((id, 1));
+    }
+    for it in &fit.items {
+        if let Some(id) = it.type_id {
+            components.push((id, it.quantity.max(1)));
+        }
+    }
+    // Collapse duplicate type ids (e.g. two of the same module line).
+    let mut needed_by_type: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    let mut order: Vec<i64> = Vec::new();
+    for (id, n) in components {
+        if !needed_by_type.contains_key(&id) {
+            order.push(id);
+        }
+        *needed_by_type.entry(id).or_insert(0) += n;
+    }
+
+    let names = names_for(&state, &order).await;
+    let mut items = Vec::new();
+    let mut total_value = 0.0;
+    let mut acquisition_cost = 0.0;
+    let mut owned_units = 0i64;
+    let mut total_units = 0i64;
+    for id in order {
+        let needed = needed_by_type[&id];
+        let owned_qty = owned.get(&id).copied().unwrap_or(0).min(needed);
+        let missing = (needed - owned_qty).max(0);
+        let unit_price = prices.price(id).unwrap_or(0.0);
+        let missing_cost = unit_price * missing as f64;
+        total_value += unit_price * needed as f64;
+        acquisition_cost += missing_cost;
+        owned_units += owned_qty;
+        total_units += needed;
+        items.push(GatekeeperItem {
+            type_id: id,
+            name: named(&names, id),
+            needed,
+            owned: owned_qty,
+            missing,
+            unit_price,
+            missing_cost,
+        });
+    }
+
+    Ok(FitGatekeeperView {
+        parsed: true,
+        ship: fit.ship,
+        can_fly: missing_skills.is_empty(),
+        missing_skills,
+        train_seconds,
+        items,
+        total_value,
+        acquisition_cost,
+        owned_fraction: if total_units > 0 { owned_units as f64 / total_units as f64 } else { 0.0 },
+        unresolved: fit.unresolved,
+    })
+}
+
 /// The union of skills a resolved fit requires (ship + every module/charge/drone
 /// it could resolve), keeping the highest level demanded for each skill.
 async fn required_skills_for_fit(

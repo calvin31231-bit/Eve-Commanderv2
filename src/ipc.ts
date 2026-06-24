@@ -44,6 +44,7 @@ import type {
   ResolvedFit,
   SkillPlanView,
   CanFlyView,
+  FitGatekeeperView,
   DoctrineView,
   DscanResult,
   ThreatScanView,
@@ -133,6 +134,8 @@ export const api = {
   parseFit: (eft: string) => call<ResolvedFit | null>("parse_fit", { eft }),
   canFlyFit: (characterId: number, eft: string) =>
     call<CanFlyView>("can_fly_fit", { characterId, eft }),
+  fitGatekeeper: (characterId: number, eft: string) =>
+    call<FitGatekeeperView>("fit_gatekeeper", { characterId, eft }),
   doctrineCheck: (eft: string) => call<DoctrineView>("doctrine_check", { eft }),
   parseDscan: (text: string) => call<DscanResult>("parse_dscan", { text }),
   scanPilots: (names: string[]) => call<ThreatScanView>("scan_pilots", { names }),

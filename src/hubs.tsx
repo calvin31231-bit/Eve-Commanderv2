@@ -38,6 +38,7 @@ import type {
   ResolvedFit,
   SkillPlanView,
   CanFlyView,
+  FitGatekeeperView,
   DoctrineView,
   DscanResult,
   ThreatScanView,
@@ -1855,6 +1856,7 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
   const [fit, setFit] = useState<ResolvedFit | null>(null);
   const [canFly, setCanFly] = useState<CanFlyView | null>(null);
   const [doctrine, setDoctrine] = useState<DoctrineView | null>(null);
+  const [gate, setGate] = useState<FitGatekeeperView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function parse() {
@@ -1862,6 +1864,7 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
     setFit(null);
     setCanFly(null);
     setDoctrine(null);
+    setGate(null);
     if (!isTauri()) {
       setError("Design preview — connect the desktop shell to parse fits.");
       return;
@@ -1884,6 +1887,12 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
     api.doctrineCheck(eft).then(setDoctrine).catch(() => setDoctrine(null));
   }
 
+  function checkGate() {
+    if (!character || !isTauri()) return;
+    setGate(null);
+    api.fitGatekeeper(character.id, eft).then(setGate).catch(() => setGate(null));
+  }
+
   return (
     <div className="card fit-importer">
       <h3>Fitting · EFT Import</h3>
@@ -1904,10 +1913,44 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
             Can {character.name} fly this?
           </button>
         )}
+        {character && (
+          <button onClick={checkGate} disabled={!eft.trim()}>
+            Own / cost check
+          </button>
+        )}
         <button onClick={checkDoctrine} disabled={!eft.trim()}>
           Check all pilots
         </button>
       </div>
+      {gate && gate.parsed && (
+        <div style={{ marginTop: 10 }}>
+          <div className="cashflow-totals">
+            <span className={gate.can_fly ? "pos" : "neg"}>{gate.can_fly ? "Can fly" : `${gate.missing_skills.length} skills short`}</span>
+            <span>{(gate.owned_fraction * 100).toFixed(0)}% owned</span>
+            <span className="neg">{ISK.format(gate.acquisition_cost)} to buy</span>
+            <span>{ISK.format(gate.total_value)} value</span>
+          </div>
+          <table className="holdings" style={{ marginTop: 8 }}>
+            <tbody>
+              {gate.items.map((it) => (
+                <tr key={it.type_id}>
+                  <td>
+                    {it.needed > 1 ? `${it.needed}× ` : ""}{it.name}
+                  </td>
+                  <td className="mono num">
+                    {it.missing === 0 ? (
+                      <span className="badge safe">owned</span>
+                    ) : (
+                      `need ${it.missing}`
+                    )}
+                  </td>
+                  <td className="mono num neg">{it.missing_cost > 0 ? ISK.format(it.missing_cost) : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {error && <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{error}</p>}
       {canFly && canFly.parsed && (
         <div style={{ marginTop: 10 }}>
