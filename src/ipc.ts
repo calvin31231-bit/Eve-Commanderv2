@@ -243,4 +243,5 @@ export const api = {
   aiDetectEndpoints: () => call<AiEndpointView[]>("ai_detect_endpoints"),
   aiChat: (messages: ChatMessage[]) =>
     call<AiChatView>("ai_chat", { messages }),
+  aiBriefing: () => call<AiChatView>("ai_briefing"),
 };

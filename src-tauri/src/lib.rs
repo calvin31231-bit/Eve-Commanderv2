@@ -419,6 +419,7 @@ pub fn run() {
             commands::set_ai_settings,
             commands::ai_detect_endpoints,
             commands::ai_chat,
+            commands::ai_briefing,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

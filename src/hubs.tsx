@@ -2042,6 +2042,18 @@ function AiAssistant(): ReactNode {
       .finally(() => setThinking(false));
   }
 
+  function briefing() {
+    if (thinking) return;
+    setHistory((h) => [...h, { role: "user", content: "Daily briefing" }]);
+    setThinking(true);
+    setErr("");
+    api
+      .aiBriefing()
+      .then((r) => setHistory((h) => [...h, { role: "assistant", content: r.reply, tools: r.tools_used }]))
+      .catch((e) => setErr(String(e)))
+      .finally(() => setThinking(false));
+  }
+
   if (!isTauri()) {
     return (
       <div className="card"><p style={{ color: "var(--text-dim)" }}>The AI assistant runs in the desktop shell.</p></div>
@@ -2103,7 +2115,16 @@ function AiAssistant(): ReactNode {
       </div>
 
       <div className="card">
-        <h3>Chat</h3>
+        <h3>
+          Chat
+          <button
+            style={{ float: "right", fontSize: 11 }}
+            onClick={briefing}
+            disabled={!settings?.enabled || thinking}
+          >
+            Daily briefing
+          </button>
+        </h3>
         <div style={{ maxHeight: 360, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
           {history.length === 0 && (
             <p style={{ color: "var(--text-dim)", fontSize: 12 }}>

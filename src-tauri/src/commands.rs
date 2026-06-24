@@ -3299,15 +3299,9 @@ pub struct AiChatView {
     pub tools_used: Vec<String>,
 }
 
-/// Run one assistant turn over the supplied conversation. Builds the client from
-/// stored settings, offers the read-only tool registry, and drives the
-/// tool-call loop (bounded) before returning the final reply. Advisory only —
-/// no tool here changes game or app state.
-#[tauri::command]
-pub async fn ai_chat(
-    state: State<'_, AppState>,
-    messages: Vec<eve_core::ai::ChatMessage>,
-) -> CmdResult<AiChatView> {
+/// Build the AI client from stored settings, erroring with a user-facing message
+/// when the layer is disabled or unconfigured.
+async fn ai_client_from_settings(state: &AppState) -> CmdResult<eve_core::ai::AiClient> {
     let enabled = state.db.get_setting_or("ai_enabled", "false").await.map_err(|e| e.to_string())? == "true";
     if !enabled {
         return Err("AI layer is disabled — enable it in Tools → AI.".into());
@@ -3322,23 +3316,23 @@ pub async fn ai_chat(
         return Err("No AI model selected — pick one in Tools → AI.".into());
     }
     let api_key = state.tokens.load_refresh_token(AI_KEY_ID).ok().flatten();
-    let client = eve_core::ai::AiClient::new(base_url, model, api_key);
+    Ok(eve_core::ai::AiClient::new(base_url, model, api_key))
+}
+
+/// Drive the bounded tool-call loop for a seeded conversation and return the
+/// final reply plus the tools used. Shared by `ai_chat` and `ai_briefing`.
+async fn ai_run_conversation(
+    state: &AppState,
+    client: &eve_core::ai::AiClient,
+    mut convo: Vec<eve_core::ai::ChatMessage>,
+) -> CmdResult<AiChatView> {
     let tools = crate::ai_tools::tool_specs();
-
-    // Seed the conversation with the system prompt.
-    let mut convo = Vec::with_capacity(messages.len() + 1);
-    convo.push(eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt()));
-    convo.extend(messages);
-
     let mut tools_used = Vec::new();
-    // Bounded tool loop: the model may call tools a few times before answering.
     for _ in 0..5 {
         let resp = client.chat(&convo, &tools).await.map_err(|e| e.to_string())?;
         if resp.tool_calls.is_empty() {
             return Ok(AiChatView { reply: resp.content, tools_used });
         }
-        // Record the assistant's tool-call turn, then run each tool and feed the
-        // results back.
         convo.push(eve_core::ai::ChatMessage {
             role: eve_core::ai::Role::Assistant,
             content: resp.content.clone(),
@@ -3347,11 +3341,44 @@ pub async fn ai_chat(
         });
         for tc in &resp.tool_calls {
             tools_used.push(tc.name.clone());
-            let result = crate::ai_tools::execute_tool(&state, &tc.name, &tc.arguments).await;
+            let result = crate::ai_tools::execute_tool(state, &tc.name, &tc.arguments).await;
             convo.push(eve_core::ai::ChatMessage::tool_result(&tc.id, result));
         }
     }
     // Ran out of tool rounds — ask for a final answer without tools.
     let resp = client.chat(&convo, &[]).await.map_err(|e| e.to_string())?;
     Ok(AiChatView { reply: resp.content, tools_used })
+}
+
+/// Run one assistant turn over the supplied conversation. Builds the client from
+/// stored settings, offers the read-only tool registry, and drives the
+/// tool-call loop (bounded) before returning the final reply. Advisory only —
+/// no tool here changes game or app state.
+#[tauri::command]
+pub async fn ai_chat(
+    state: State<'_, AppState>,
+    messages: Vec<eve_core::ai::ChatMessage>,
+) -> CmdResult<AiChatView> {
+    let client = ai_client_from_settings(&state).await?;
+    let mut convo = Vec::with_capacity(messages.len() + 1);
+    convo.push(eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt()));
+    convo.extend(messages);
+    ai_run_conversation(&state, &client, convo).await
+}
+
+/// Generate a proactive "state of your empire" briefing: the assistant pulls net
+/// worth, wealth trend, and current-system risk via its tools and writes a short
+/// summary with one or two recommendations. The Jarvis morning-brief behavior.
+#[tauri::command]
+pub async fn ai_briefing(state: State<'_, AppState>) -> CmdResult<AiChatView> {
+    let client = ai_client_from_settings(&state).await?;
+    let convo = vec![
+        eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt()),
+        eve_core::ai::ChatMessage::user(
+            "Give me a brief 'state of my empire' summary. Check my account overview, my net-worth \
+             trend over the last 30 days, and my current system's risk. Keep it to a few sentences \
+             and end with one or two concrete recommendations.",
+        ),
+    ];
+    ai_run_conversation(&state, &client, convo).await
 }
