@@ -8,6 +8,7 @@
 
 mod commands;
 mod poller;
+mod snapshot;
 mod tray;
 
 use std::sync::{Arc, Mutex};
@@ -327,12 +328,21 @@ pub fn run() {
                 state.intensity.clone(),
                 state.notifications.clone(),
             );
+
+            // Periodically persist net-worth / SP snapshots for portfolio history.
+            snapshot::spawn(
+                state.db.clone(),
+                state.character.clone(),
+                state.assets.clone(),
+                state.prices.clone(),
+            );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::server_status,
             commands::list_characters,
             commands::get_account_overview,
+            commands::get_portfolio_history,
             commands::login,
             commands::set_active_character,
             commands::remove_character,

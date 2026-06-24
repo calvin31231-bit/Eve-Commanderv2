@@ -77,6 +77,72 @@ pub async fn list_characters(state: State<'_, AppState>) -> CmdResult<Vec<Charac
     state.db.list_characters().await.map_err(|e| e.to_string())
 }
 
+/// One point in a persisted metric history.
+#[derive(Debug, Serialize)]
+pub struct HistoryPoint {
+    /// Unix epoch seconds.
+    pub at: i64,
+    pub value: f64,
+}
+
+/// Portfolio history: net-worth (and SP) time-series over the last `days`, built
+/// from our persisted snapshots (ESI has no history). `characterId` omitted →
+/// account-wide totals. Includes the change vs the earliest point in range.
+#[derive(Debug, Serialize)]
+pub struct PortfolioHistory {
+    pub networth: Vec<HistoryPoint>,
+    pub sp: Vec<HistoryPoint>,
+    /// networth now − networth at the start of the window (0 if <2 points).
+    pub networth_change: f64,
+    pub networth_change_pct: f64,
+}
+
+/// Net-worth / SP history for a character (or account-wide when `character_id`
+/// is null), over the last `days`.
+#[tauri::command]
+pub async fn get_portfolio_history(
+    state: State<'_, AppState>,
+    character_id: Option<i64>,
+    days: i64,
+) -> CmdResult<PortfolioHistory> {
+    let since = now_epoch_secs() - days.max(1) * 86_400;
+    let (networth_raw, sp_raw) = match character_id {
+        Some(id) => (
+            state.db.snapshots(id, "networth", since).await.map_err(|e| e.to_string())?,
+            state.db.snapshots(id, "sp", since).await.map_err(|e| e.to_string())?,
+        ),
+        None => (
+            state.db.snapshots_total("networth", since).await.map_err(|e| e.to_string())?,
+            state.db.snapshots_total("sp", since).await.map_err(|e| e.to_string())?,
+        ),
+    };
+
+    let to_points = |v: Vec<eve_core::db::snapshots::Snapshot>| {
+        v.into_iter().map(|s| HistoryPoint { at: s.taken_at, value: s.value }).collect::<Vec<_>>()
+    };
+    let networth = to_points(networth_raw);
+    let sp = to_points(sp_raw);
+
+    let (networth_change, networth_change_pct) = match (networth.first(), networth.last()) {
+        (Some(first), Some(last)) if networth.len() >= 2 => {
+            let change = last.value - first.value;
+            let pct = if first.value > 0.0 { change / first.value * 100.0 } else { 0.0 };
+            (change, pct)
+        }
+        _ => (0.0, 0.0),
+    };
+
+    Ok(PortfolioHistory { networth, sp, networth_change, networth_change_pct })
+}
+
+/// Whole seconds since the Unix epoch.
+fn now_epoch_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 /// Account-wide overview: net worth / SP / wallet aggregated across every added
 /// character, with a per-character breakdown. Each character's figures are
 /// best-effort — a character missing a scope or token contributes what it can

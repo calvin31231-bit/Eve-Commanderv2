@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, isTauri } from "./ipc";
 import type {
   AccountOverview,
+  PortfolioHistory,
   AppSettings,
   CalendarEvent,
   CashflowSummary,
@@ -133,13 +134,16 @@ interface HomeProps {
 
 function Home({ status, statusError, characters, onLogin, onSelectCharacter }: HomeProps): ReactNode {
   const [account, setAccount] = useState<AccountOverview | null>(null);
+  const [history, setHistory] = useState<PortfolioHistory | null>(null);
 
   useEffect(() => {
     if (!isTauri() || characters.length === 0) {
       setAccount(null);
+      setHistory(null);
       return;
     }
     api.getAccountOverview().then(setAccount).catch(() => undefined);
+    api.getPortfolioHistory(null, 90).then(setHistory).catch(() => undefined);
   }, [characters.length]);
 
   return (
@@ -160,6 +164,24 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter }: H
               <span>{ISK.format(account.total_sp)} <small>SP</small></span>
             </div>
           </div>
+          {history && history.networth.length >= 2 ? (
+            <div className="networth-trend">
+              <div className="networth-trend-head">
+                <span style={{ color: "var(--text-dim)", fontSize: 12 }}>Net worth · 90 days</span>
+                <span className={history.networth_change >= 0 ? "pos" : "neg"}>
+                  {history.networth_change >= 0 ? "+" : ""}{ISK.format(history.networth_change)} ISK
+                  {" "}({history.networth_change_pct >= 0 ? "+" : ""}{history.networth_change_pct.toFixed(1)}%)
+                </span>
+              </div>
+              <NetWorthChart points={history.networth} />
+            </div>
+          ) : (
+            account && (
+              <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 6 }}>
+                Net-worth history builds as the app runs — your trend appears here within an hour.
+              </p>
+            )
+          )}
           {account.characters.length > 1 && (
             <table className="holdings account-breakdown">
               <thead>
@@ -828,6 +850,28 @@ function MarketBrowser(): ReactNode {
         </div>
       )}
     </div>
+  );
+}
+
+function NetWorthChart({ points }: { points: { at: number; value: number }[] }): ReactNode {
+  const w = 520;
+  const h = 90;
+  const vals = points.map((p) => p.value);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const span = max - min || 1;
+  const n = points.length;
+  const x = (i: number) => (i / (n - 1)) * w;
+  const y = (v: number) => h - ((v - min) / span) * (h - 8) - 4;
+  const line = points.map((p, i) => `${x(i)},${y(p.value)}`).join(" ");
+  const area = `0,${h} ${line} ${w},${h}`;
+  const up = vals[n - 1] >= vals[0];
+  const stroke = up ? "#4ade80" : "#f87171";
+  return (
+    <svg className="networth-chart" viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none">
+      <polygon points={area} fill={stroke} fillOpacity={0.12} />
+      <polyline points={line} fill="none" stroke={stroke} strokeWidth="1.5" />
+    </svg>
   );
 }
 

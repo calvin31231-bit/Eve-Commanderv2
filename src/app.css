@@ -202,6 +202,17 @@
   padding: 10px;
 }
 
+/* Net-worth trend (portfolio analytics) */
+.networth-trend { margin-top: 12px; }
+.networth-trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.networth-chart { display: block; }
+
 /* Route planner hop list */
 .route-list {
   margin: 0;

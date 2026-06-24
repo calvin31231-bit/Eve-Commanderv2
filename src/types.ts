@@ -161,6 +161,18 @@ export interface CharacterWorth {
   net_worth: number;
 }
 
+export interface HistoryPoint {
+  at: number;
+  value: number;
+}
+
+export interface PortfolioHistory {
+  networth: HistoryPoint[];
+  sp: HistoryPoint[];
+  networth_change: number;
+  networth_change_pct: number;
+}
+
 export interface AccountOverview {
   characters: CharacterWorth[];
   total_net_worth: number;

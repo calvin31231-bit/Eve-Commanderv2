@@ -7,6 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AccountOverview,
+  PortfolioHistory,
   AppSettings,
   CalendarEvent,
   CashflowSummary,
@@ -76,6 +77,8 @@ export const api = {
   serverStatus: () => call<ServerStatus>("server_status"),
   listCharacters: () => call<Character[]>("list_characters"),
   getAccountOverview: () => call<AccountOverview>("get_account_overview"),
+  getPortfolioHistory: (characterId: number | null, days: number) =>
+    call<PortfolioHistory>("get_portfolio_history", { characterId, days }),
   // Runs the whole SSO flow on the backend (opens the browser, captures the
   // loopback redirect) and resolves with the newly-added character.
   login: () => call<Character>("login"),
