@@ -50,6 +50,76 @@ pub fn tool_specs() -> Vec<ToolSpec> {
                 .into(),
             parameters: json!({ "type": "object", "properties": {} }),
         },
+        ToolSpec {
+            name: "account_overview".into(),
+            description: "The player's total net worth, wallet, and skill points aggregated across \
+                          all their characters, with a per-character breakdown."
+                .into(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        },
+        ToolSpec {
+            name: "portfolio_trend".into(),
+            description: "Net-worth change over the last N days from persisted local snapshots. \
+                          Use to answer how the player's wealth is trending."
+                .into(),
+            parameters: json!({
+                "type": "object",
+                "properties": { "days": { "type": "integer", "description": "Look-back window in days (default 30)" } }
+            }),
+        },
+        ToolSpec {
+            name: "rank_income".into(),
+            description: "Rank income activities by risk-adjusted ISK/hr over the time available. \
+                          Supply the activities you are comparing with their gross ISK/hr."
+                .into(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "hours": { "type": "number", "description": "Hours available" },
+                    "activities": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": { "type": "string" },
+                                "isk_per_hour": { "type": "number" },
+                                "risk": { "type": "number", "description": "0.0-1.0 expected loss fraction" },
+                                "setup_cost": { "type": "number" },
+                                "eligible": { "type": "boolean" }
+                            },
+                            "required": ["name", "isk_per_hour"]
+                        }
+                    }
+                },
+                "required": ["hours", "activities"]
+            }),
+        },
+        ToolSpec {
+            name: "skill_roi".into(),
+            description: "Rank candidate skill plans by ISK return on training time. Supply each \
+                          plan's training time and the income it unlocks."
+                .into(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "plans": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": { "type": "string" },
+                                "train_seconds": { "type": "integer" },
+                                "isk_per_hour": { "type": "number" },
+                                "hours_per_day": { "type": "number" },
+                                "upfront_isk": { "type": "number" }
+                            },
+                            "required": ["label", "train_seconds", "isk_per_hour", "hours_per_day"]
+                        }
+                    }
+                },
+                "required": ["plans"]
+            }),
+        },
     ]
 }
 
@@ -96,6 +166,26 @@ pub async fn execute_tool(state: &AppState, name: &str, arguments: &str) -> Stri
             }
         }
         "system_risk" => system_risk_json(state).await,
+        "account_overview" => account_overview_json(state).await,
+        "portfolio_trend" => {
+            let days = args.get("days").and_then(|v| v.as_i64()).unwrap_or(30).max(1);
+            portfolio_trend_json(state, days).await
+        }
+        "rank_income" => {
+            let hours = args.get("hours").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let activities: Vec<eve_core::income::IncomeActivity> = args
+                .get("activities")
+                .and_then(|a| serde_json::from_value(a.clone()).ok())
+                .unwrap_or_default();
+            json!(eve_core::income::rank_income(&activities, hours)).to_string()
+        }
+        "skill_roi" => {
+            let plans: Vec<eve_core::skillplan::RoiPlan> = args
+                .get("plans")
+                .and_then(|p| serde_json::from_value(p.clone()).ok())
+                .unwrap_or_default();
+            json!(eve_core::skillplan::rank_roi(&plans)).to_string()
+        }
         other => err(&format!("unknown tool '{other}'")),
     }
 }
@@ -152,6 +242,64 @@ async fn system_risk_json(state: &AppState) -> String {
         "score": risk.score,
         "level": risk.level.as_str(),
         "reasons": risk.reasons,
+    })
+    .to_string()
+}
+
+/// Aggregate net worth / wallet / SP across all characters (mirrors the
+/// `get_account_overview` command).
+async fn account_overview_json(state: &AppState) -> String {
+    let Ok(characters) = state.db.list_characters().await else {
+        return err("no character data");
+    };
+    let prices = state.prices.price_map().await.unwrap_or_default();
+    let mut worths = Vec::with_capacity(characters.len());
+    for c in characters {
+        let (wallet, skills, holdings) = tokio::join!(
+            state.character.wallet_balance(c.id),
+            state.character.skills(c.id),
+            state.assets.all_holdings(c.id),
+        );
+        let wallet_balance = wallet.unwrap_or(0.0);
+        let total_sp = skills.map(|s| s.total_sp).unwrap_or(0);
+        let asset_value = holdings
+            .map(|groups| eve_core::assets::value_holdings(&groups, &prices, 0).total_value)
+            .unwrap_or(0.0);
+        worths.push(eve_core::account::CharacterWorth::new(
+            c.id,
+            c.name,
+            wallet_balance,
+            asset_value,
+            total_sp,
+        ));
+    }
+    json!(eve_core::account::aggregate(worths)).to_string()
+}
+
+/// Net-worth trend over `days` from persisted snapshots (account-wide).
+async fn portfolio_trend_json(state: &AppState, days: i64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let since = now - days * 86_400;
+    let Ok(points) = state.db.snapshots_total("networth", since).await else {
+        return err("no snapshot data yet");
+    };
+    let (change, pct) = match (points.first(), points.last()) {
+        (Some(f), Some(l)) if points.len() >= 2 => {
+            let c = l.value - f.value;
+            (c, if f.value > 0.0 { c / f.value * 100.0 } else { 0.0 })
+        }
+        _ => (0.0, 0.0),
+    };
+    json!({
+        "days": days,
+        "samples": points.len(),
+        "start_value": points.first().map(|p| p.value).unwrap_or(0.0),
+        "end_value": points.last().map(|p| p.value).unwrap_or(0.0),
+        "change": change,
+        "change_pct": pct,
     })
     .to_string()
 }
