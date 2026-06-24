@@ -123,6 +123,22 @@ pub fn tool_specs() -> Vec<ToolSpec> {
     ]
 }
 
+/// Format durable memory notes into a system-message body for recall, or `None`
+/// when there's nothing worth injecting. Caps the count so context stays small.
+/// Pure.
+pub fn memory_context(notes: &[(String, String, String)]) -> Option<String> {
+    if notes.is_empty() {
+        return None;
+    }
+    let mut out = String::from(
+        "What you remember about this player (use it to personalize advice; do not repeat it back verbatim):\n",
+    );
+    for (kind, title, body) in notes.iter().take(20) {
+        out.push_str(&format!("- [{kind}] {title}: {body}\n"));
+    }
+    Some(out)
+}
+
 /// The system prompt framing the assistant's role and guardrails.
 pub fn system_prompt() -> String {
     "You are the EVE Commander assistant, an advisor inside an EVE Online companion app. \
@@ -302,4 +318,25 @@ async fn portfolio_trend_json(state: &AppState, days: i64) -> String {
         "change_pct": pct,
     })
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn memory_context_none_when_empty() {
+        assert!(memory_context(&[]).is_none());
+    }
+
+    #[test]
+    fn memory_context_lists_notes() {
+        let notes = vec![
+            ("goal".into(), "Carrier".into(), "Train toward a Nyx".into()),
+            ("preference".into(), "Lowsec".into(), "Avoids lowsec".into()),
+        ];
+        let ctx = memory_context(&notes).unwrap();
+        assert!(ctx.contains("[goal] Carrier: Train toward a Nyx"));
+        assert!(ctx.contains("[preference] Lowsec"));
+    }
 }

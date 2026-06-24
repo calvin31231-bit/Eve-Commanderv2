@@ -3319,6 +3319,21 @@ async fn ai_client_from_settings(state: &AppState) -> CmdResult<eve_core::ai::Ai
     Ok(eve_core::ai::AiClient::new(base_url, model, api_key))
 }
 
+/// Seed a conversation with the system prompt and, when present, a recall
+/// message built from the player's durable memory notes. Shared by `ai_chat`
+/// and `ai_briefing` so the assistant is personalized in both.
+async fn ai_seed_messages(state: &AppState) -> Vec<eve_core::ai::ChatMessage> {
+    let mut convo = vec![eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt())];
+    if let Ok(notes) = state.db.list_memory().await {
+        let formatted: Vec<(String, String, String)> =
+            notes.into_iter().map(|n| (n.kind, n.title, n.body)).collect();
+        if let Some(ctx) = crate::ai_tools::memory_context(&formatted) {
+            convo.push(eve_core::ai::ChatMessage::system(ctx));
+        }
+    }
+    convo
+}
+
 /// Drive the bounded tool-call loop for a seeded conversation and return the
 /// final reply plus the tools used. Shared by `ai_chat` and `ai_briefing`.
 async fn ai_run_conversation(
@@ -3360,8 +3375,7 @@ pub async fn ai_chat(
     messages: Vec<eve_core::ai::ChatMessage>,
 ) -> CmdResult<AiChatView> {
     let client = ai_client_from_settings(&state).await?;
-    let mut convo = Vec::with_capacity(messages.len() + 1);
-    convo.push(eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt()));
+    let mut convo = ai_seed_messages(&state).await;
     convo.extend(messages);
     ai_run_conversation(&state, &client, convo).await
 }
@@ -3372,14 +3386,12 @@ pub async fn ai_chat(
 #[tauri::command]
 pub async fn ai_briefing(state: State<'_, AppState>) -> CmdResult<AiChatView> {
     let client = ai_client_from_settings(&state).await?;
-    let convo = vec![
-        eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt()),
-        eve_core::ai::ChatMessage::user(
-            "Give me a brief 'state of my empire' summary. Check my account overview, my net-worth \
-             trend over the last 30 days, and my current system's risk. Keep it to a few sentences \
-             and end with one or two concrete recommendations.",
-        ),
-    ];
+    let mut convo = ai_seed_messages(&state).await;
+    convo.push(eve_core::ai::ChatMessage::user(
+        "Give me a brief 'state of my empire' summary. Check my account overview, my net-worth \
+         trend over the last 30 days, and my current system's risk. Keep it to a few sentences \
+         and end with one or two concrete recommendations.",
+    ));
     ai_run_conversation(&state, &client, convo).await
 }
 
