@@ -18,6 +18,7 @@ use eve_core::assets::AssetsClient;
 use eve_core::auth::{LoginManager, SsoClient, TokenManager};
 use eve_core::auth::token_store::TokenStore;
 use eve_core::bookmarks::BookmarksClient;
+use eve_core::calendar::CalendarClient;
 use eve_core::character::CharacterClient;
 use eve_core::clones::ClonesClient;
 use eve_core::config::Config;
@@ -105,6 +106,8 @@ pub struct AppState {
     pub research: ResearchClient,
     /// Personal bookmark reads for the Navigation hub.
     pub bookmarks: BookmarksClient,
+    /// Upcoming calendar-event reads for the Character hub.
+    pub calendar: CalendarClient,
     /// Layered id→name resolver (cache → SDE → ESI) for the hubs. Owns the SDE
     /// (full prebuilt `sde.sqlite` if shipped, otherwise a common-items seed).
     pub names: NameResolver,
@@ -224,6 +227,7 @@ fn build_state() -> AppState {
     let pve = PveClient::new(esi.clone());
     let research = ResearchClient::new(esi.clone(), token_manager.clone());
     let bookmarks = BookmarksClient::new(esi.clone(), token_manager.clone());
+    let calendar = CalendarClient::new(esi.clone(), token_manager.clone());
     let names = NameResolver::new(esi.clone(), db.clone(), sde);
 
     // Load persisted settings (data-freshness intensity, notification threshold)
@@ -279,6 +283,7 @@ fn build_state() -> AppState {
         pve,
         research,
         bookmarks,
+        calendar,
         names,
         notifications,
         intensity,
@@ -360,6 +365,7 @@ pub fn run() {
             commands::get_fw_systems,
             commands::get_research_agents,
             commands::get_bookmarks,
+            commands::get_calendar,
             commands::get_combat_summary,
             commands::get_local_intel,
             commands::cost_skill_plan,

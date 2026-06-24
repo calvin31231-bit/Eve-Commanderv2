@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AccountOverview,
   AppSettings,
+  CalendarEvent,
   CashflowSummary,
   Character,
   CharacterGroup,
@@ -98,6 +99,8 @@ export const api = {
     call<LocationValueView[]>("get_assets_by_location", { characterId, limit }),
   getClones: (characterId: number) =>
     call<ClonesView>("get_clones", { characterId }),
+  getCalendar: (characterId: number) =>
+    call<CalendarEvent[]>("get_calendar", { characterId }),
   getCashflow: (characterId: number) =>
     call<CashflowSummary>("get_cashflow", { characterId }),
   getIndustryJobs: (characterId: number) =>

@@ -33,6 +33,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-characters.read_fatigue.v1",
     "esi-characters.read_agents_research.v1",
     "esi-bookmarks.read_character_bookmarks.v1",
+    "esi-calendar.read_calendar_events.v1",
     "esi-mail.read_mail.v1",
     "esi-mail.organize_mail.v1",
     "esi-clones.read_clones.v1",
@@ -1465,6 +1466,16 @@ pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<Incursi
             system_count: i.infested_solar_systems.len() as i64,
         })
         .collect())
+}
+
+/// The character's upcoming calendar events (frontend renders the countdown).
+/// Empty when the scope isn't granted.
+#[tauri::command]
+pub async fn get_calendar(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<eve_core::calendar::CalendarEvent>> {
+    Ok(state.calendar.events(character_id).await.unwrap_or_default())
 }
 
 /// A personal bookmark with its location named.

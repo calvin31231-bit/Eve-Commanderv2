@@ -160,6 +160,12 @@ pub const CATALOG: &[Endpoint] = &[
         scope: Some("esi-characters.read_agents_research.v1"),
     },
     Endpoint {
+        key: "calendar",
+        path: "/latest/characters/{cid}/calendar/",
+        class: PollClass::Slow,
+        scope: Some("esi-calendar.read_calendar_events.v1"),
+    },
+    Endpoint {
         key: "mail",
         path: "/latest/characters/{cid}/mail/",
         class: PollClass::Fast,

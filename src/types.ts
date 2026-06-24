@@ -534,6 +534,14 @@ export interface RouteHop {
   security: number;
 }
 
+export interface CalendarEvent {
+  event_id: number;
+  title: string;
+  event_date: string;
+  event_response: string;
+  importance: number;
+}
+
 export interface BookmarkView {
   bookmark_id: number;
   label: string;

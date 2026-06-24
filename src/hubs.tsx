@@ -8,6 +8,7 @@ import { api, isTauri } from "./ipc";
 import type {
   AccountOverview,
   AppSettings,
+  CalendarEvent,
   CashflowSummary,
   Character,
   CharacterAttributes,
@@ -331,6 +332,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
   const [queue, setQueue] = useState<QueuedSkillView[]>([]);
   const [attrs, setAttrs] = useState<CharacterAttributes | null>(null);
   const [txns, setTxns] = useState<TransactionView[]>([]);
+  const [calendar, setCalendar] = useState<CalendarEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sub, setSub] = useState("overview");
@@ -346,6 +348,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     setQueue([]);
     setAttrs(null);
     setTxns([]);
+    setCalendar([]);
     setError(null);
     if (!character) return;
     if (!isTauri()) {
@@ -387,6 +390,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
     api.getSkillQueue(character.id).then(setQueue).catch(() => undefined);
     api.getAttributes(character.id).then(setAttrs).catch(() => undefined);
     api.getTransactions(character.id, 10).then(setTxns).catch(() => undefined);
+    api.getCalendar(character.id).then(setCalendar).catch(() => undefined);
   }, [character?.id]);
 
   if (!character) {
@@ -526,6 +530,25 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
               ))}
             </div>
           )}
+        </div>
+      )}
+      {sub === "overview" && calendar.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Calendar <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {calendar.length} upcoming</span></h3>
+          <table className="holdings">
+            <tbody>
+              {calendar.slice(0, 8).map((e) => {
+                const secs = Math.floor((new Date(e.event_date).getTime() - Date.now()) / 1000);
+                return (
+                  <tr key={e.event_id}>
+                    <td>{e.title}</td>
+                    <td className="loc">{e.event_response.replace(/_/g, " ")}</td>
+                    <td className="mono num">{secs > 0 ? formatDuration(secs) : shortDate(e.event_date)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
       {sub === "wallet" && cashflow && cashflow.entry_count > 0 && (
