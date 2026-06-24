@@ -40,6 +40,8 @@ import type {
   SkillPlanView,
   RoiPlan,
   RoiResult,
+  IncomeActivity,
+  IncomeRanking,
   CanFlyView,
   FitGatekeeperView,
   DoctrineView,
@@ -1870,6 +1872,117 @@ function CorpStructures({ character }: { character: Character | null }): ReactNo
   );
 }
 
+// Cross-content income optimizer: rank what to do right now by risk-adjusted
+// ISK/hr over the time you have. Activities are user-described (gross ISK/hr,
+// risk, setup, eligibility); the backend ranks them deterministically.
+function IncomeOptimizer(): ReactNode {
+  const [acts, setActs] = useState<IncomeActivity[]>([]);
+  const [results, setResults] = useState<IncomeRanking[] | null>(null);
+  const [hours, setHours] = useState("3");
+  const [name, setName] = useState("");
+  const [rate, setRate] = useState("60");
+  const [risk, setRisk] = useState("0");
+  const [setup, setSetup] = useState("0");
+  const [eligible, setEligible] = useState(true);
+
+  function add() {
+    if (!name.trim()) return;
+    setActs((a) => [
+      ...a,
+      {
+        name: name.trim(),
+        isk_per_hour: (parseFloat(rate) || 0) * 1_000_000,
+        risk: (parseFloat(risk) || 0) / 100,
+        setup_cost: (parseFloat(setup) || 0) * 1_000_000,
+        eligible,
+      },
+    ]);
+    setResults(null);
+    setName("");
+  }
+
+  function rank() {
+    if (!isTauri() || acts.length === 0) return;
+    api.rankIncome(acts, parseFloat(hours) || 0).then(setResults).catch(() => setResults([]));
+  }
+
+  return (
+    <div className="card">
+      <h3>
+        Income Optimizer{" "}
+        <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· what should I do?</span>
+      </h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Rank activities by risk-adjusted ISK/hr over your available time. ISK in millions, risk in %.
+        Untick "can do" for things you're not yet set up for.
+      </p>
+      <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+        Hours available{" "}
+        <input value={hours} onChange={(e) => setHours(e.target.value)} style={{ width: 60 }} />
+      </label>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.4fr repeat(3, 1fr) auto auto",
+          gap: 6,
+          alignItems: "end",
+          marginTop: 8,
+        }}
+      >
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Activity
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ratting" />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          ISK/hr (M)
+          <input value={rate} onChange={(e) => setRate(e.target.value)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Risk %
+          <input value={risk} onChange={(e) => setRisk(e.target.value)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Setup (M)
+          <input value={setup} onChange={(e) => setSetup(e.target.value)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)", display: "flex", gap: 4, alignItems: "center" }}>
+          <input type="checkbox" checked={eligible} onChange={(e) => setEligible(e.target.checked)} />
+          Can do
+        </label>
+        <button onClick={add}>Add</button>
+      </div>
+      {acts.length > 0 && (
+        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+          <button onClick={rank}>Rank {acts.length}</button>
+          <button onClick={() => { setActs([]); setResults(null); }}>Clear</button>
+        </div>
+      )}
+      {results && results.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Activity</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Eff. ISK/hr</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Session</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((r, i) => (
+              <tr key={r.name + i} style={{ opacity: r.eligible ? 1 : 0.5 }}>
+                <td>{i === 0 && r.eligible ? "★ " : ""}{r.name}{r.eligible ? "" : " (locked)"}</td>
+                <td className="mono num pos">{ISK.format(r.effective_isk_per_hour)}</td>
+                <td className={"mono num" + (r.session_profit >= 0 ? " pos" : "")}>
+                  {ISK.format(r.session_profit)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function ToolsHub(): ReactNode {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState(false);
@@ -1901,11 +2014,13 @@ function ToolsHub(): ReactNode {
         tabs={[
           { id: "settings", label: "Settings" },
           { id: "lp", label: "LP Optimizer" },
+          { id: "income", label: "Income Optimizer" },
         ]}
         active={sub}
         onSelect={setSub}
       />
       {sub === "lp" && <LpOptimizer />}
+      {sub === "income" && <IncomeOptimizer />}
       {sub === "settings" && (!isTauri() ? (
         <div className="card"><p style={{ color: "var(--text-dim)" }}>Design preview — settings load in the desktop shell.</p></div>
       ) : !settings ? (

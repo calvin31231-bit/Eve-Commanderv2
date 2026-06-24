@@ -395,6 +395,7 @@ pub fn run() {
             commands::get_local_intel,
             commands::cost_skill_plan,
             commands::rank_skill_roi,
+            commands::rank_income,
             commands::get_contracts,
             commands::get_mining,
             commands::get_planets,

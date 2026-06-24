@@ -46,6 +46,8 @@ import type {
   SkillPlanView,
   RoiPlan,
   RoiResult,
+  IncomeActivity,
+  IncomeRanking,
   CanFlyView,
   FitGatekeeperView,
   DoctrineView,
@@ -191,6 +193,8 @@ export const api = {
     targets: { skill_type_id: number; target_level: number }[],
   ) => call<SkillPlanView>("cost_skill_plan", { characterId, targets }),
   rankSkillRoi: (plans: RoiPlan[]) => call<RoiResult[]>("rank_skill_roi", { plans }),
+  rankIncome: (activities: IncomeActivity[], hours: number) =>
+    call<IncomeRanking[]>("rank_income", { activities, hours }),
   getMining: (characterId: number) =>
     call<MiningView>("get_mining", { characterId }),
   getPlanets: (characterId: number) =>

@@ -399,6 +399,21 @@ export interface RoiResult {
   roi_score: number;
 }
 
+export interface IncomeActivity {
+  name: string;
+  isk_per_hour: number;
+  risk: number;
+  setup_cost: number;
+  eligible: boolean;
+}
+
+export interface IncomeRanking {
+  name: string;
+  eligible: boolean;
+  effective_isk_per_hour: number;
+  session_profit: number;
+}
+
 export interface GatekeeperItem {
   type_id: number;
   name: string;

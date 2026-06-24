@@ -1548,6 +1548,17 @@ pub async fn cost_skill_plan(
     Ok(SkillPlanView { steps, total_sp, total_seconds })
 }
 
+/// Rank income activities by risk-adjusted ISK return over the time available.
+/// Each activity is described in ISK terms (gross ISK/hr, risk, setup cost,
+/// eligibility); ranking lives in `eve_core::income::rank_income`.
+#[tauri::command]
+pub fn rank_income(
+    activities: Vec<eve_core::income::IncomeActivity>,
+    hours: f64,
+) -> CmdResult<Vec<eve_core::income::IncomeRanking>> {
+    Ok(eve_core::income::rank_income(&activities, hours))
+}
+
 /// Rank candidate skill plans by ISK return on training time. Each plan is
 /// described in ISK terms (income unlocked, time to train, optional upfront
 /// cost); the deterministic ranking lives in `eve_core::skillplan::rank_roi`.
