@@ -34,6 +34,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-characters.read_agents_research.v1",
     "esi-bookmarks.read_character_bookmarks.v1",
     "esi-calendar.read_calendar_events.v1",
+    "esi-fleets.read_fleet.v1",
     "esi-mail.read_mail.v1",
     "esi-mail.organize_mail.v1",
     "esi-clones.read_clones.v1",
@@ -1466,6 +1467,59 @@ pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<Incursi
             system_count: i.infested_solar_systems.len() as i64,
         })
         .collect())
+}
+
+/// One fleet member, named.
+#[derive(Debug, Serialize)]
+pub struct FleetMemberView {
+    pub name: String,
+    pub ship: String,
+    pub system: String,
+    pub role: String,
+}
+
+/// Live fleet composition for the active character.
+#[derive(Debug, Serialize)]
+pub struct FleetView {
+    pub in_fleet: bool,
+    pub member_count: i64,
+    pub members: Vec<FleetMemberView>,
+}
+
+/// The character's current fleet composition (members + ships + systems). When
+/// the character isn't in a fleet (or lacks the scope), `in_fleet` is false.
+#[tauri::command]
+pub async fn get_fleet(state: State<'_, AppState>, character_id: i64) -> CmdResult<FleetView> {
+    let Ok(info) = state.fleet.current(character_id).await else {
+        return Ok(FleetView { in_fleet: false, member_count: 0, members: Vec::new() });
+    };
+    let members = state
+        .fleet
+        .members(character_id, info.fleet_id)
+        .await
+        .unwrap_or_default();
+
+    let mut ids: Vec<i64> = Vec::new();
+    for m in &members {
+        ids.push(m.character_id);
+        ids.push(m.ship_type_id);
+        ids.push(m.solar_system_id);
+    }
+    let names = names_for(&state, &ids).await;
+
+    Ok(FleetView {
+        in_fleet: true,
+        member_count: members.len() as i64,
+        members: members
+            .into_iter()
+            .map(|m| FleetMemberView {
+                name: named(&names, m.character_id),
+                ship: named(&names, m.ship_type_id),
+                system: named(&names, m.solar_system_id),
+                role: m.role_name.replace('_', " "),
+            })
+            .collect(),
+    })
 }
 
 /// Current EVE-Scout Thera/Turnur wormhole connections (public 3P), soonest to

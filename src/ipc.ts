@@ -15,6 +15,7 @@ import type {
   ColonyView,
   CorpStructureView,
   CorpMemberView,
+  FleetView,
   LpStoreView,
   Contract,
   CharacterAttributes,
@@ -190,6 +191,7 @@ export const api = {
     call<CorpStructureView[]>("get_corp_structures", { characterId }),
   getCorpMembers: (characterId: number) =>
     call<CorpMemberView[]>("get_corp_members", { characterId }),
+  getFleet: (characterId: number) => call<FleetView>("get_fleet", { characterId }),
   lpStore: (corporation: string) => call<LpStoreView>("lp_store", { corporation }),
   listGroups: () => call<CharacterGroup[]>("list_groups"),
   createGroup: (name: string) => call<CharacterGroup>("create_group", { name }),

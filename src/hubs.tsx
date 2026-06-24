@@ -54,6 +54,7 @@ import type {
   TheraConnection,
   CorpStructureView,
   CorpMemberView,
+  FleetView,
   LpStoreView,
 } from "./types";
 
@@ -1469,6 +1470,7 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
           { id: "groups", label: "Groups" },
           { id: "structures", label: "Structures" },
           { id: "members", label: "Members" },
+          { id: "fleet", label: "Fleet" },
         ]}
         active={sub}
         onSelect={setSub}
@@ -1517,7 +1519,51 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
       )}
       {sub === "structures" && <CorpStructures character={character} />}
       {sub === "members" && <CorpMembers character={character} />}
+      {sub === "fleet" && <FleetView_ character={character} />}
     </>
+  );
+}
+
+function FleetView_({ character }: { character: Character | null }): ReactNode {
+  const [fleet, setFleet] = useState<FleetView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function load() {
+    if (!character || !isTauri()) return;
+    setLoading(true);
+    api.getFleet(character.id).then(setFleet).catch(() => setFleet(null)).finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    setFleet(null);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [character?.id]);
+
+  if (!character) return <div className="sub">Select a character to read its fleet.</div>;
+  return (
+    <div className="card fleet-view" style={{ maxWidth: 720 }}>
+      <h3>
+        Fleet {fleet?.in_fleet && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {fleet.member_count}</span>}
+      </h3>
+      <button onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+      {fleet && !fleet.in_fleet && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>Not currently in a fleet.</p>
+      )}
+      {fleet && fleet.in_fleet && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <tbody>
+            {fleet.members.map((m, i) => (
+              <tr key={i}>
+                <td>{m.name}</td>
+                <td className="loc">{m.ship}{m.system ? ` · ${m.system}` : ""}</td>
+                <td className="mono num">{m.role}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 
