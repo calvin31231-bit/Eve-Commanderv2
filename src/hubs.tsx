@@ -58,6 +58,8 @@ import type {
   AiSettingsView,
   AiEndpointView,
   MemoryNoteView,
+  SavedPlanView,
+  SavedFitView,
   RouteView,
   CourierView,
   RegionMapView,
@@ -697,6 +699,7 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [importMsg, setImportMsg] = useState("");
+  const [saved, setSaved] = useState<SavedPlanView[] | null>(null);
 
   function recost(next: typeof targets) {
     setTargets(next);
@@ -713,10 +716,10 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
       .catch(() => setPlan(null));
   }
 
-  function runImport() {
-    if (!isTauri() || !importText.trim()) return;
+  function applyText(text: string, clearInput: boolean) {
+    if (!isTauri() || !text.trim()) return;
     api
-      .importSkillPlan(importText)
+      .importSkillPlan(text)
       .then((res) => {
         const merged = [...targets];
         for (const t of res.targets) {
@@ -726,12 +729,25 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
         }
         recost(merged);
         setImportMsg(
-          `Imported ${res.targets.length} skill(s)` +
+          `Loaded ${res.targets.length} skill(s)` +
             (res.unresolved.length ? `, ${res.unresolved.length} unresolved: ${res.unresolved.slice(0, 5).join(", ")}` : ""),
         );
-        setImportText("");
+        if (clearInput) setImportText("");
       })
       .catch((e) => setImportMsg(String(e)));
+  }
+
+  function loadLibrary() {
+    if (!isTauri()) return;
+    api.listSkillPlans().then(setSaved).catch(() => setSaved([]));
+  }
+
+  function savePlan() {
+    if (!isTauri() || targets.length === 0) return;
+    const name = window.prompt("Save plan as:");
+    if (!name) return;
+    const body = targets.map((t) => `${t.name} ${t.target_level}`).join("\n");
+    api.saveSkillPlan(name, body).then(() => { setImportMsg(`Saved "${name}".`); if (saved) loadLibrary(); }).catch((e) => setImportMsg(String(e)));
   }
 
   return (
@@ -741,12 +757,43 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
         <button style={{ float: "right", fontSize: 11 }} onClick={() => setShowImport((v) => !v)}>
           Import
         </button>
+        <button
+          style={{ float: "right", fontSize: 11, marginRight: 6 }}
+          onClick={() => { setShowImport(true); loadLibrary(); }}
+        >
+          Library
+        </button>
+        <button
+          style={{ float: "right", fontSize: 11, marginRight: 6 }}
+          onClick={savePlan}
+          disabled={targets.length === 0}
+        >
+          Save
+        </button>
       </h3>
       <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
-        Add skills and target levels to estimate SP and training time at your attributes.
+        Add skills and target levels to estimate SP and training time at your attributes. Save a plan to
+        reuse it on a new character.
       </p>
       {showImport && (
         <div style={{ marginBottom: 10 }}>
+          {saved && (
+            <div style={{ marginBottom: 8 }}>
+              {saved.length === 0 && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>No saved plans yet.</span>}
+              {saved.map((p) => (
+                <div key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 3 }}>
+                  <button style={{ fontSize: 11 }} onClick={() => applyText(p.body, false)}>Load</button>
+                  <span style={{ fontSize: 13 }}>{p.name}</span>
+                  <button
+                    style={{ fontSize: 11, marginLeft: "auto" }}
+                    onClick={() => api.deleteSkillPlan(p.id).then(loadLibrary)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <textarea
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
@@ -754,7 +801,7 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
             style={{ width: "100%", minHeight: 80, fontFamily: "monospace", fontSize: 12 }}
           />
           <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
-            <button onClick={runImport}>Import plan</button>
+            <button onClick={() => applyText(importText, true)}>Import plan</button>
             {importMsg && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{importMsg}</span>}
           </div>
         </div>
@@ -2530,6 +2577,19 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
   const [doctrine, setDoctrine] = useState<DoctrineView | null>(null);
   const [gate, setGate] = useState<FitGatekeeperView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<SavedFitView[] | null>(null);
+
+  function loadLibrary() {
+    if (!isTauri()) return;
+    api.listFits().then(setSaved).catch(() => setSaved([]));
+  }
+
+  function saveFit() {
+    if (!isTauri() || !eft.trim()) return;
+    const name = window.prompt("Save fit as:");
+    if (!name) return;
+    api.saveFit(name, eft).then(() => { setError(null); if (saved) loadLibrary(); }).catch((e) => setError(String(e)));
+  }
 
   function parse() {
     setError(null);
@@ -2593,7 +2653,29 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
         <button onClick={checkDoctrine} disabled={!eft.trim()}>
           Check all pilots
         </button>
+        <button onClick={saveFit} disabled={!eft.trim()}>Save fit</button>
+        <button onClick={() => (saved ? setSaved(null) : loadLibrary())}>
+          {saved ? "Hide library" : "Library"}
+        </button>
       </div>
+      {saved && (
+        <div style={{ marginTop: 8 }}>
+          {saved.length === 0 && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>No saved fits yet.</span>}
+          {saved.map((f) => (
+            <div key={f.id} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 3 }}>
+              <button style={{ fontSize: 11 }} onClick={() => { setEft(f.eft); setSaved(null); }}>Load</button>
+              <span style={{ fontSize: 13 }}>{f.name}</span>
+              {f.ship && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>· {f.ship}</span>}
+              <button
+                style={{ fontSize: 11, marginLeft: "auto" }}
+                onClick={() => api.deleteFit(f.id).then(loadLibrary)}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {gate && gate.parsed && (
         <div style={{ marginTop: 10 }}>
           <div className="cashflow-totals">

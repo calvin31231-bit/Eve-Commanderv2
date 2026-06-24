@@ -89,6 +89,35 @@ impl Database {
         })
         .collect::<Vec<_>>();
 
+        let skill_plans = sqlx::query("SELECT name, body, created_at, updated_at FROM skill_plans")
+            .fetch_all(&self.app)
+            .await?
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "name": r.get::<String, _>("name"),
+                    "body": r.get::<String, _>("body"),
+                    "created_at": r.get::<i64, _>("created_at"),
+                    "updated_at": r.get::<i64, _>("updated_at"),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let saved_fits = sqlx::query("SELECT name, ship, eft, created_at, updated_at FROM saved_fits")
+            .fetch_all(&self.app)
+            .await?
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "name": r.get::<String, _>("name"),
+                    "ship": r.get::<String, _>("ship"),
+                    "eft": r.get::<String, _>("eft"),
+                    "created_at": r.get::<i64, _>("created_at"),
+                    "updated_at": r.get::<i64, _>("updated_at"),
+                })
+            })
+            .collect::<Vec<_>>();
+
         Ok(serde_json::json!({
             "format": "eve-commander-export",
             "version": 1,
@@ -98,6 +127,8 @@ impl Database {
             "group_members": group_members,
             "snapshots": snapshots,
             "ai_memory": ai_memory,
+            "skill_plans": skill_plans,
+            "saved_fits": saved_fits,
         }))
     }
 
@@ -109,6 +140,8 @@ impl Database {
             "character_groups",
             "snapshots",
             "ai_memory",
+            "skill_plans",
+            "saved_fits",
             "names",
             "settings",
             "characters",

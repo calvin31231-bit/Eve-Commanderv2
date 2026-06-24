@@ -68,3 +68,24 @@ CREATE TABLE IF NOT EXISTS ai_memory (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_updated ON ai_memory (updated_at);
+
+-- Reusable skill-plan library: named plans stored independent of any character
+-- (body is the importable text form) so they can be loaded onto a new alt.
+CREATE TABLE IF NOT EXISTS skill_plans (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    body       TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- Reusable fit library: named EFT fits, character-independent, to recall/check
+-- against any character or export to the in-game fitting window.
+CREATE TABLE IF NOT EXISTS saved_fits (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    ship       TEXT    NOT NULL DEFAULT '',
+    eft        TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);

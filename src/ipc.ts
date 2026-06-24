@@ -74,6 +74,8 @@ import type {
   ChatMessage,
   AiChatView,
   MemoryNoteView,
+  SavedPlanView,
+  SavedFitView,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -256,4 +258,12 @@ export const api = {
     call<void>("pin_memory", { id, pinned }),
   exportData: () => call<string>("export_data"),
   wipeData: () => call<void>("wipe_data"),
+  saveSkillPlan: (name: string, body: string) =>
+    call<number>("save_skill_plan", { name, body }),
+  listSkillPlans: () => call<SavedPlanView[]>("list_skill_plans"),
+  deleteSkillPlan: (id: number) => call<void>("delete_skill_plan", { id }),
+  saveFit: (name: string, eft: string) =>
+    call<number>("save_fit", { name, eft }),
+  listFits: () => call<SavedFitView[]>("list_fits"),
+  deleteFit: (id: number) => call<void>("delete_fit", { id }),
 };

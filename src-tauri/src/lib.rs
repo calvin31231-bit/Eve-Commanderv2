@@ -427,6 +427,12 @@ pub fn run() {
             commands::pin_memory,
             commands::export_data,
             commands::wipe_data,
+            commands::save_skill_plan,
+            commands::list_skill_plans,
+            commands::delete_skill_plan,
+            commands::save_fit,
+            commands::list_fits,
+            commands::delete_fit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

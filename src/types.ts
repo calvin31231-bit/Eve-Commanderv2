@@ -800,3 +800,18 @@ export interface SkillImportView {
   targets: ImportedSkillView[];
   unresolved: string[];
 }
+
+export interface SavedPlanView {
+  id: number;
+  name: string;
+  body: string;
+  updated_at: number;
+}
+
+export interface SavedFitView {
+  id: number;
+  name: string;
+  ship: string;
+  eft: string;
+  updated_at: number;
+}

@@ -3541,3 +3541,96 @@ pub async fn import_skill_plan(state: State<'_, AppState>, text: String) -> CmdR
     }
     Ok(SkillImportView { targets, unresolved })
 }
+
+// ---- Skill-plan & fit libraries ---------------------------------------------
+
+/// A saved skill plan in the library.
+#[derive(Debug, Serialize)]
+pub struct SavedPlanView {
+    pub id: i64,
+    pub name: String,
+    pub body: String,
+    pub updated_at: i64,
+}
+
+/// Save a reusable skill plan (the `body` is importable text, one "Skill Name
+/// LEVEL" per line) so it can be loaded onto any character later.
+#[tauri::command]
+pub async fn save_skill_plan(state: State<'_, AppState>, name: String, body: String) -> CmdResult<i64> {
+    let name = name.trim();
+    if name.is_empty() || body.trim().is_empty() {
+        return Err("a plan needs a name and at least one skill".into());
+    }
+    state
+        .db
+        .save_skill_plan(name, body.trim(), now_epoch_secs())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List saved skill plans (most recent first).
+#[tauri::command]
+pub async fn list_skill_plans(state: State<'_, AppState>) -> CmdResult<Vec<SavedPlanView>> {
+    let plans = state.db.list_skill_plans().await.map_err(|e| e.to_string())?;
+    Ok(plans
+        .into_iter()
+        .map(|p| SavedPlanView { id: p.id, name: p.name, body: p.body, updated_at: p.updated_at })
+        .collect())
+}
+
+/// Delete a saved skill plan.
+#[tauri::command]
+pub async fn delete_skill_plan(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_skill_plan(id).await.map_err(|e| e.to_string())
+}
+
+/// A saved fit in the library.
+#[derive(Debug, Serialize)]
+pub struct SavedFitView {
+    pub id: i64,
+    pub name: String,
+    pub ship: String,
+    pub eft: String,
+    pub updated_at: i64,
+}
+
+/// Pull the ship type out of an EFT header line `[Ship, Fit name]`.
+fn eft_ship(eft: &str) -> String {
+    eft.lines()
+        .next()
+        .and_then(|l| l.trim().strip_prefix('['))
+        .and_then(|l| l.split(',').next())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Save a reusable EFT fit so it can be recalled/checked against any character.
+#[tauri::command]
+pub async fn save_fit(state: State<'_, AppState>, name: String, eft: String) -> CmdResult<i64> {
+    let name = name.trim();
+    if name.is_empty() || eft.trim().is_empty() {
+        return Err("a fit needs a name and EFT text".into());
+    }
+    let ship = eft_ship(&eft);
+    state
+        .db
+        .save_fit(name, &ship, eft.trim(), now_epoch_secs())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List saved fits (most recent first).
+#[tauri::command]
+pub async fn list_fits(state: State<'_, AppState>) -> CmdResult<Vec<SavedFitView>> {
+    let fits = state.db.list_fits().await.map_err(|e| e.to_string())?;
+    Ok(fits
+        .into_iter()
+        .map(|f| SavedFitView { id: f.id, name: f.name, ship: f.ship, eft: f.eft, updated_at: f.updated_at })
+        .collect())
+}
+
+/// Delete a saved fit.
+#[tauri::command]
+pub async fn delete_fit(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_fit(id).await.map_err(|e| e.to_string())
+}

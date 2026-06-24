@@ -6,6 +6,7 @@
 
 pub mod ai_memory;
 pub mod characters;
+pub mod library;
 pub mod names;
 pub mod portability;
 pub mod settings;
