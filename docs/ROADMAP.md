@@ -321,6 +321,11 @@ A standout safety feature (the PySpy / Pirate's Little Helper / EVE OS Local Int
 - **Phase 5 — Navigation, Corp & Content:** route planner + avoidance + ESI waypoint set; **courier/hauling logistics (reward/collateral calc, marketplaces)**; Dotlan-style sov/ADM overlay; WH chain mapper (+mass) + EVE-Scout/Thera; **live fleet boss management (ESI fleets)**; **in-game UI bridge (open-window / waypoint) woven through every module**; **bookmark manager**; **jump-fatigue tracker**; corp/alliance management incl. **SRP, recruitment/HR + corp-security vetting, timerboards, moon scheduling**; **PvE content suite (missions/agent finder, incursions, faction warfare, abyssal run stats)**; LP optimizer; calendar/events. *Ship: the FC/director/PvE app.*
 - **Phase 6 — The 10x differentiators** (list above), each built on data layers already shipped.
 - **Phase 6.5 — AI foundation (the Jarvis):** AI gateway + tool registry over existing commands, OpenAI-compatible local-LLM client with auto-detect, MCP server/client, local RAG (`sqlite-vec`), the **tiered memory store + compression/consolidation jobs**, the Commander orchestrator, and the first domain agents (Market, Threat/Intel, Fitting). Per-domain agents then light up alongside their modules; proactive Briefing agent wires into the Situational Awareness rail. Optional voice (whisper.cpp/Piper). *Ship: optional, off-by-default; local-first.*
+  - ✅ **OpenAI-compatible client** (`ai::AiClient`) — Ollama/LM Studio/llama.cpp/cloud, pure tested wire-format, endpoint auto-detect.
+  - ✅ **Tool registry + Commander orchestrator** — 10 read-only tools (item/market/arbitrage/risk/account/portfolio/income/skill-ROI) with a bounded tool-call loop; cloud key in OS keychain.
+  - ✅ **Proactive briefing** — "state of your empire" one-shot via the tools.
+  - ✅ **Durable memory** — pure salience scoring + importance/recency eviction (pinned-spared), `ai_memory` store, recall injected into chat + briefing, inspect/pin/forget UI.
+  - ⏳ **Remaining:** MCP server/client (two-way), `sqlite-vec` RAG over SDE + notes, per-domain specialist agents, optional voice.
 - **Phase 7 — Polish & scale:** plugin/extension API, layout customization, perf pass (DuckDB for heavy analytics if needed), localization, auto-update, opt-in telemetry, community fit/plan sharing.
 
 ---
