@@ -251,4 +251,6 @@ export const api = {
   forgetMemory: (id: number) => call<void>("forget_memory", { id }),
   pinMemory: (id: number, pinned: boolean) =>
     call<void>("pin_memory", { id, pinned }),
+  exportData: () => call<string>("export_data"),
+  wipeData: () => call<void>("wipe_data"),
 };

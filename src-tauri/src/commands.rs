@@ -3478,3 +3478,27 @@ pub async fn forget_memory(state: State<'_, AppState>, id: i64) -> CmdResult<()>
 pub async fn pin_memory(state: State<'_, AppState>, id: i64, pinned: bool) -> CmdResult<()> {
     state.db.set_memory_pinned(id, pinned).await.map_err(|e| e.to_string())
 }
+
+// ---- Data portability (privacy / trust) -------------------------------------
+
+/// Export all durable local data as a pretty-printed JSON string for the user to
+/// save. Excludes secrets (keychain tokens) and the regenerable name cache.
+#[tauri::command]
+pub async fn export_data(state: State<'_, AppState>) -> CmdResult<String> {
+    let bundle = state.db.export_all().await.map_err(|e| e.to_string())?;
+    serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())
+}
+
+/// Wipe ALL local data: every durable table plus each character's keychain
+/// refresh token and the AI cloud key. Irreversible — the UI must confirm first.
+#[tauri::command]
+pub async fn wipe_data(state: State<'_, AppState>) -> CmdResult<()> {
+    // Clear keychain secrets first (characters + the AI key), then the DB.
+    if let Ok(characters) = state.db.list_characters().await {
+        for c in characters {
+            let _ = state.tokens.delete_refresh_token(c.id);
+        }
+    }
+    let _ = state.tokens.delete_refresh_token(AI_KEY_ID);
+    state.db.wipe_all().await.map_err(|e| e.to_string())
+}

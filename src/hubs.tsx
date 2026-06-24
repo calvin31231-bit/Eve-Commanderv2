@@ -2349,7 +2349,74 @@ function ToolsHub(): ReactNode {
           <div className="setting-saved" style={{ opacity: saved ? 1 : 0 }}>Saved ✓</div>
         </div>
       ))}
+      {sub === "settings" && <DataPrivacy />}
     </>
+  );
+}
+
+// Data portability + privacy: one-click export of all local data, and a
+// confirmed wipe. Reinforces the local-first trust story.
+function DataPrivacy(): ReactNode {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [confirming, setConfirming] = useState(false);
+
+  function exportData() {
+    if (!isTauri()) return;
+    setBusy(true);
+    setMsg("");
+    api
+      .exportData()
+      .then((json) => {
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `eve-commander-export-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setMsg("Exported.");
+      })
+      .catch((e) => setMsg(String(e)))
+      .finally(() => setBusy(false));
+  }
+
+  function wipe() {
+    if (!isTauri()) return;
+    setBusy(true);
+    setMsg("");
+    api
+      .wipeData()
+      .then(() => setMsg("All local data wiped. Restart to begin fresh."))
+      .catch((e) => setMsg(String(e)))
+      .finally(() => { setBusy(false); setConfirming(false); });
+  }
+
+  if (!isTauri()) return null;
+
+  return (
+    <div className="card">
+      <h3>Data &amp; Privacy</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        All your data is local. Export it any time, or wipe everything. Tokens live in the OS keychain and are
+        never included in exports.
+      </p>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button onClick={exportData} disabled={busy}>Export all data</button>
+        {!confirming ? (
+          <button onClick={() => setConfirming(true)} disabled={busy} style={{ color: "var(--danger, #f87171)" }}>
+            Wipe all data…
+          </button>
+        ) : (
+          <>
+            <span style={{ fontSize: 12, color: "var(--danger, #f87171)" }}>This cannot be undone.</span>
+            <button onClick={wipe} disabled={busy} style={{ color: "var(--danger, #f87171)" }}>Confirm wipe</button>
+            <button onClick={() => setConfirming(false)} disabled={busy}>Cancel</button>
+          </>
+        )}
+      </div>
+      {msg && <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>{msg}</p>}
+    </div>
   );
 }
 

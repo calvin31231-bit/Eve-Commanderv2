@@ -424,6 +424,8 @@ pub fn run() {
             commands::list_memory,
             commands::forget_memory,
             commands::pin_memory,
+            commands::export_data,
+            commands::wipe_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");
