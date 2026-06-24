@@ -779,3 +779,13 @@ export interface AiChatView {
   reply: string;
   tools_used: string[];
 }
+
+export interface MemoryNoteView {
+  id: number;
+  kind: string;
+  title: string;
+  body: string;
+  salience: number;
+  pinned: boolean;
+  created_at: number;
+}

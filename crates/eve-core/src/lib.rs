@@ -21,6 +21,7 @@
 
 pub mod account;
 pub mod ai;
+pub mod ai_memory;
 pub mod assets;
 pub mod auth;
 pub mod bookmarks;

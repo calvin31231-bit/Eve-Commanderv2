@@ -72,6 +72,7 @@ import type {
   AiEndpointView,
   ChatMessage,
   AiChatView,
+  MemoryNoteView,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -244,4 +245,10 @@ export const api = {
   aiChat: (messages: ChatMessage[]) =>
     call<AiChatView>("ai_chat", { messages }),
   aiBriefing: () => call<AiChatView>("ai_briefing"),
+  addMemory: (kind: string, title: string, body: string) =>
+    call<number | null>("add_memory", { kind, title, body }),
+  listMemory: () => call<MemoryNoteView[]>("list_memory"),
+  forgetMemory: (id: number) => call<void>("forget_memory", { id }),
+  pinMemory: (id: number, pinned: boolean) =>
+    call<void>("pin_memory", { id, pinned }),
 };

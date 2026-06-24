@@ -57,6 +57,7 @@ import type {
   FleetAarView,
   AiSettingsView,
   AiEndpointView,
+  MemoryNoteView,
   RouteView,
   CourierView,
   RegionMapView,
@@ -2169,7 +2170,98 @@ function AiAssistant(): ReactNode {
           <button onClick={send} disabled={!settings?.enabled || thinking}>Send</button>
         </div>
       </div>
+
+      <MemoryViewer />
     </>
+  );
+}
+
+// Inspect / curate the assistant's durable memory: the small set of facts it
+// keeps about the player. Transparent and editable per the plan — pin, forget.
+function MemoryViewer(): ReactNode {
+  const [notes, setNotes] = useState<MemoryNoteView[] | null>(null);
+  const [kind, setKind] = useState("goal");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+
+  function load() {
+    if (!isTauri()) return;
+    api.listMemory().then(setNotes).catch(() => setNotes([]));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function add() {
+    if (!title.trim() || !body.trim()) return;
+    api.addMemory(kind, title, body).then(() => {
+      setTitle("");
+      setBody("");
+      load();
+    }).catch(() => undefined);
+  }
+
+  return (
+    <div className="card">
+      <h3>Memory <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· what the assistant remembers</span></h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Durable facts about you (goals, preferences, decisions). Stored locally; pin to keep, forget to delete.
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 6, alignItems: "end" }}>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Kind
+          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="goal">goal</option>
+            <option value="decision">decision</option>
+            <option value="preference">preference</option>
+            <option value="relationship">relationship</option>
+            <option value="correction">correction</option>
+          </select>
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Title
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Carrier goal" />
+        </label>
+        <button onClick={add}>Add</button>
+      </div>
+      <input
+        style={{ marginTop: 6, width: "100%" }}
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="The fact to remember…"
+      />
+      {notes && notes.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <tbody>
+            {notes.map((n) => (
+              <tr key={n.id}>
+                <td style={{ fontSize: 11, color: "var(--text-dim)" }}>{n.kind}</td>
+                <td>
+                  <strong>{n.title}</strong>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{n.body}</div>
+                </td>
+                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                  <button
+                    style={{ fontSize: 11 }}
+                    onClick={() => api.pinMemory(n.id, !n.pinned).then(load)}
+                  >
+                    {n.pinned ? "Unpin" : "Pin"}
+                  </button>{" "}
+                  <button style={{ fontSize: 11 }} onClick={() => api.forgetMemory(n.id).then(load)}>
+                    Forget
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {notes && notes.length === 0 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No memories yet.</p>
+      )}
+    </div>
   );
 }
 

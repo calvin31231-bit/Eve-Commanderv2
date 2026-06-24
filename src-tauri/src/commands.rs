@@ -3382,3 +3382,87 @@ pub async fn ai_briefing(state: State<'_, AppState>) -> CmdResult<AiChatView> {
     ];
     ai_run_conversation(&state, &client, convo).await
 }
+
+// ---- AI durable memory ------------------------------------------------------
+
+/// A memory note surfaced to the UI.
+#[derive(Debug, Serialize)]
+pub struct MemoryNoteView {
+    pub id: i64,
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub salience: f64,
+    pub pinned: bool,
+    pub created_at: i64,
+}
+
+/// Soft cap on durable memory notes (importance/recency eviction beyond this).
+const AI_MEMORY_CAP: usize = 200;
+
+fn parse_memory_kind(s: &str) -> eve_core::ai_memory::MemoryKind {
+    use eve_core::ai_memory::MemoryKind::*;
+    match s {
+        "goal" => Goal,
+        "decision" => Decision,
+        "correction" => Correction,
+        "preference" => Preference,
+        "relationship" => Relationship,
+        _ => Chitchat,
+    }
+}
+
+/// Add a durable memory note about the player. Scores salience, persists only if
+/// it clears the threshold, and enforces the storage cap. Returns the new note
+/// id, or null if the note was too low-value to keep.
+#[tauri::command]
+pub async fn add_memory(
+    state: State<'_, AppState>,
+    kind: String,
+    title: String,
+    body: String,
+) -> CmdResult<Option<i64>> {
+    let mk = parse_memory_kind(&kind);
+    let salience = eve_core::ai_memory::salience_score(mk, &body);
+    if !eve_core::ai_memory::should_persist(salience) {
+        return Ok(None);
+    }
+    let now = now_epoch_secs();
+    let id = state
+        .db
+        .add_memory(mk.as_str(), title.trim(), body.trim(), salience, now)
+        .await
+        .map_err(|e| e.to_string())?;
+    state.db.enforce_memory_cap(AI_MEMORY_CAP, now).await.map_err(|e| e.to_string())?;
+    Ok(Some(id))
+}
+
+/// List all durable memory notes (most salient first).
+#[tauri::command]
+pub async fn list_memory(state: State<'_, AppState>) -> CmdResult<Vec<MemoryNoteView>> {
+    let notes = state.db.list_memory().await.map_err(|e| e.to_string())?;
+    Ok(notes
+        .into_iter()
+        .map(|n| MemoryNoteView {
+            id: n.id,
+            kind: n.kind,
+            title: n.title,
+            body: n.body,
+            salience: n.salience,
+            pinned: n.pinned,
+            created_at: n.created_at,
+        })
+        .collect())
+}
+
+/// Forget (delete) a memory note.
+#[tauri::command]
+pub async fn forget_memory(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_memory(id).await.map_err(|e| e.to_string())
+}
+
+/// Pin or unpin a memory note so it never (or may again) evict.
+#[tauri::command]
+pub async fn pin_memory(state: State<'_, AppState>, id: i64, pinned: bool) -> CmdResult<()> {
+    state.db.set_memory_pinned(id, pinned).await.map_err(|e| e.to_string())
+}

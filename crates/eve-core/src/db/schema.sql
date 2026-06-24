@@ -52,3 +52,19 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+
+-- Durable AI memory: the small, curated set of facts the assistant keeps about
+-- the player (goals, decisions, preferences). Bounded by an importance/recency
+-- eviction policy; pinned notes never evict. See `ai_memory` for the policy.
+CREATE TABLE IF NOT EXISTS ai_memory (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT    NOT NULL,
+    title      TEXT    NOT NULL,
+    body       TEXT    NOT NULL,
+    salience   REAL    NOT NULL,
+    pinned     INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_memory_updated ON ai_memory (updated_at);

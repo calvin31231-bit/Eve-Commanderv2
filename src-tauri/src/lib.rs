@@ -420,6 +420,10 @@ pub fn run() {
             commands::ai_detect_endpoints,
             commands::ai_chat,
             commands::ai_briefing,
+            commands::add_memory,
+            commands::list_memory,
+            commands::forget_memory,
+            commands::pin_memory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");
