@@ -55,6 +55,8 @@ import type {
   SystemRiskView,
   CombatLogView,
   FleetAarView,
+  AiSettingsView,
+  AiEndpointView,
   RouteView,
   CourierView,
   RegionMapView,
@@ -1984,6 +1986,172 @@ function IncomeOptimizer(): ReactNode {
   );
 }
 
+// The AI "Jarvis" layer: off-by-default, local-first. Settings (endpoint/model)
+// plus a chat that drives the read-only tool registry on the backend.
+function AiAssistant(): ReactNode {
+  const [settings, setSettings] = useState<AiSettingsView | null>(null);
+  const [baseUrl, setBaseUrl] = useState("");
+  const [model, setModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [endpoints, setEndpoints] = useState<AiEndpointView[] | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [history, setHistory] = useState<{ role: "user" | "assistant"; content: string; tools?: string[] }[]>([]);
+  const [input, setInput] = useState("");
+  const [thinking, setThinking] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    api.getAiSettings().then((s) => {
+      setSettings(s);
+      setBaseUrl(s.base_url);
+      setModel(s.model);
+    }).catch(() => undefined);
+  }, []);
+
+  function save(next?: Partial<AiSettingsView>) {
+    if (!settings) return;
+    const enabled = next?.enabled ?? settings.enabled;
+    api
+      .setAiSettings(enabled, baseUrl, model, apiKey === "" ? null : apiKey)
+      .then(() => {
+        setSettings({ ...settings, enabled, base_url: baseUrl, model, has_api_key: settings.has_api_key || apiKey !== "" });
+        setApiKey("");
+        setSaved(true);
+        window.setTimeout(() => setSaved(false), 1500);
+      })
+      .catch((e) => setErr(String(e)));
+  }
+
+  function detect() {
+    api.aiDetectEndpoints().then(setEndpoints).catch(() => setEndpoints([]));
+  }
+
+  function send() {
+    const text = input.trim();
+    if (!text || thinking) return;
+    const nextHistory = [...history, { role: "user" as const, content: text }];
+    setHistory(nextHistory);
+    setInput("");
+    setThinking(true);
+    setErr("");
+    api
+      .aiChat(nextHistory.map((m) => ({ role: m.role, content: m.content })))
+      .then((r) => setHistory((h) => [...h, { role: "assistant", content: r.reply, tools: r.tools_used }]))
+      .catch((e) => setErr(String(e)))
+      .finally(() => setThinking(false));
+  }
+
+  if (!isTauri()) {
+    return (
+      <div className="card"><p style={{ color: "var(--text-dim)" }}>The AI assistant runs in the desktop shell.</p></div>
+    );
+  }
+
+  return (
+    <>
+      <div className="card">
+        <h3>AI Assistant <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· local-first, off by default</span></h3>
+        <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+          Point at any OpenAI-compatible endpoint (Ollama, LM Studio, llama.cpp). With a local model your
+          data never leaves the machine. The assistant calls read-only tools for real numbers and only advises —
+          it never acts in-game.
+        </p>
+        <label className="setting-row">
+          <div><div className="setting-name">Enable AI</div></div>
+          <input
+            type="checkbox"
+            checked={settings?.enabled ?? false}
+            onChange={(e) => save({ enabled: e.target.checked })}
+          />
+        </label>
+        <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Base URL
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="http://127.0.0.1:11434/v1" />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Model
+            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. llama3.1" />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            API key {settings?.has_api_key ? "(stored)" : "(optional, for cloud)"}
+            <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="leave blank for local" />
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <button onClick={() => save()}>Save</button>
+          <button onClick={detect}>Detect local</button>
+          {saved && <span style={{ color: "var(--accent)", fontSize: 12, alignSelf: "center" }}>Saved</span>}
+        </div>
+        {endpoints && (
+          <div style={{ marginTop: 8, fontSize: 12 }}>
+            {endpoints.length === 0 && <span style={{ color: "var(--text-dim)" }}>No local endpoint found.</span>}
+            {endpoints.map((ep) => (
+              <div key={ep.base_url} style={{ marginTop: 4 }}>
+                <button
+                  style={{ fontSize: 11 }}
+                  onClick={() => { setBaseUrl(ep.base_url); if (ep.models[0]) setModel(ep.models[0]); }}
+                >
+                  Use {ep.label}
+                </button>{" "}
+                <span style={{ color: "var(--text-dim)" }}>{ep.models.slice(0, 4).join(", ") || "(no models)"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>Chat</h3>
+        <div style={{ maxHeight: 360, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+          {history.length === 0 && (
+            <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+              Ask things like &ldquo;is my current system safe?&rdquo;, &ldquo;price-check Tritanium across hubs&rdquo;,
+              or &ldquo;any good hauls right now?&rdquo;
+            </p>
+          )}
+          {history.map((m, i) => (
+            <div
+              key={i}
+              style={{
+                alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                maxWidth: "85%",
+                background: m.role === "user" ? "var(--accent-dim, #1e3a5f)" : "var(--panel, #161b26)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: "6px 10px",
+                fontSize: 13,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {m.content}
+              {m.tools && m.tools.length > 0 && (
+                <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 4 }}>
+                  used: {m.tools.join(", ")}
+                </div>
+              )}
+            </div>
+          ))}
+          {thinking && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Thinking…</div>}
+        </div>
+        {err && <p style={{ color: "var(--danger, #f87171)", fontSize: 12 }}>{err}</p>}
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <input
+            style={{ flex: 1 }}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") send(); }}
+            placeholder={settings?.enabled ? "Ask the assistant…" : "Enable AI above first"}
+            disabled={!settings?.enabled}
+          />
+          <button onClick={send} disabled={!settings?.enabled || thinking}>Send</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function ToolsHub(): ReactNode {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState(false);
@@ -2016,12 +2184,14 @@ function ToolsHub(): ReactNode {
           { id: "settings", label: "Settings" },
           { id: "lp", label: "LP Optimizer" },
           { id: "income", label: "Income Optimizer" },
+          { id: "ai", label: "AI Assistant" },
         ]}
         active={sub}
         onSelect={setSub}
       />
       {sub === "lp" && <LpOptimizer />}
       {sub === "income" && <IncomeOptimizer />}
+      {sub === "ai" && <AiAssistant />}
       {sub === "settings" && (!isTauri() ? (
         <div className="card"><p style={{ color: "var(--text-dim)" }}>Design preview — settings load in the desktop shell.</p></div>
       ) : !settings ? (

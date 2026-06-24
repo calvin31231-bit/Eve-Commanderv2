@@ -3200,3 +3200,158 @@ pub async fn remove_character(state: State<'_, AppState>, character_id: i64) -> 
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+// ---- AI "Jarvis" layer ------------------------------------------------------
+//
+// Off by default and local-first. Non-secret settings (enabled / base URL /
+// model) live in the settings table; the optional cloud API key is held in the
+// OS keychain (reusing the token store under a reserved id) — never on disk in
+// plaintext.
+
+/// Reserved token-store id for the AI cloud API key (not a real character).
+const AI_KEY_ID: i64 = -1;
+
+/// AI configuration surfaced to the UI. The key itself is never returned — only
+/// whether one is set.
+#[derive(Debug, Serialize)]
+pub struct AiSettingsView {
+    pub enabled: bool,
+    pub base_url: String,
+    pub model: String,
+    pub has_api_key: bool,
+}
+
+/// Read the AI layer's configuration.
+#[tauri::command]
+pub async fn get_ai_settings(state: State<'_, AppState>) -> CmdResult<AiSettingsView> {
+    let enabled = state.db.get_setting_or("ai_enabled", "false").await.map_err(|e| e.to_string())? == "true";
+    let base_url = state
+        .db
+        .get_setting_or("ai_base_url", "http://127.0.0.1:11434/v1")
+        .await
+        .map_err(|e| e.to_string())?;
+    let model = state.db.get_setting_or("ai_model", "").await.map_err(|e| e.to_string())?;
+    let has_api_key = state
+        .tokens
+        .load_refresh_token(AI_KEY_ID)
+        .map(|k| matches!(k, Some(s) if !s.is_empty()))
+        .unwrap_or(false);
+    Ok(AiSettingsView { enabled, base_url, model, has_api_key })
+}
+
+/// Persist AI configuration. `api_key` is optional: `None` leaves the stored key
+/// untouched, `Some("")` clears it, and a non-empty value replaces it (keychain).
+#[tauri::command]
+pub async fn set_ai_settings(
+    state: State<'_, AppState>,
+    enabled: bool,
+    base_url: String,
+    model: String,
+    api_key: Option<String>,
+) -> CmdResult<()> {
+    state
+        .db
+        .set_setting("ai_enabled", if enabled { "true" } else { "false" })
+        .await
+        .map_err(|e| e.to_string())?;
+    state.db.set_setting("ai_base_url", base_url.trim()).await.map_err(|e| e.to_string())?;
+    state.db.set_setting("ai_model", model.trim()).await.map_err(|e| e.to_string())?;
+    match api_key {
+        Some(k) if k.is_empty() => {
+            state.tokens.delete_refresh_token(AI_KEY_ID).map_err(|e| e.to_string())?;
+        }
+        Some(k) => {
+            state.tokens.save_refresh_token(AI_KEY_ID, &k).map_err(|e| e.to_string())?;
+        }
+        None => {}
+    }
+    Ok(())
+}
+
+/// A reachable local AI endpoint and the models it advertises.
+#[derive(Debug, Serialize)]
+pub struct AiEndpointView {
+    pub label: String,
+    pub base_url: String,
+    pub models: Vec<String>,
+}
+
+/// Probe the well-known local OpenAI-compatible endpoints (Ollama, LM Studio, …)
+/// and report those that respond, with their model lists. Lets the setup wizard
+/// auto-detect a running local model.
+#[tauri::command]
+pub async fn ai_detect_endpoints() -> CmdResult<Vec<AiEndpointView>> {
+    let mut found = Vec::new();
+    for &(label, base_url) in eve_core::ai::LOCAL_ENDPOINTS {
+        let client = eve_core::ai::AiClient::new(base_url, "", None);
+        if let Ok(models) = client.list_models().await {
+            found.push(AiEndpointView { label: label.to_string(), base_url: base_url.to_string(), models });
+        }
+    }
+    Ok(found)
+}
+
+/// The result of an AI chat turn: the assistant's reply plus a transcript of any
+/// tools it called (so the UI can show its reasoning).
+#[derive(Debug, Serialize)]
+pub struct AiChatView {
+    pub reply: String,
+    pub tools_used: Vec<String>,
+}
+
+/// Run one assistant turn over the supplied conversation. Builds the client from
+/// stored settings, offers the read-only tool registry, and drives the
+/// tool-call loop (bounded) before returning the final reply. Advisory only —
+/// no tool here changes game or app state.
+#[tauri::command]
+pub async fn ai_chat(
+    state: State<'_, AppState>,
+    messages: Vec<eve_core::ai::ChatMessage>,
+) -> CmdResult<AiChatView> {
+    let enabled = state.db.get_setting_or("ai_enabled", "false").await.map_err(|e| e.to_string())? == "true";
+    if !enabled {
+        return Err("AI layer is disabled — enable it in Tools → AI.".into());
+    }
+    let base_url = state
+        .db
+        .get_setting_or("ai_base_url", "http://127.0.0.1:11434/v1")
+        .await
+        .map_err(|e| e.to_string())?;
+    let model = state.db.get_setting_or("ai_model", "").await.map_err(|e| e.to_string())?;
+    if model.is_empty() {
+        return Err("No AI model selected — pick one in Tools → AI.".into());
+    }
+    let api_key = state.tokens.load_refresh_token(AI_KEY_ID).ok().flatten();
+    let client = eve_core::ai::AiClient::new(base_url, model, api_key);
+    let tools = crate::ai_tools::tool_specs();
+
+    // Seed the conversation with the system prompt.
+    let mut convo = Vec::with_capacity(messages.len() + 1);
+    convo.push(eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt()));
+    convo.extend(messages);
+
+    let mut tools_used = Vec::new();
+    // Bounded tool loop: the model may call tools a few times before answering.
+    for _ in 0..5 {
+        let resp = client.chat(&convo, &tools).await.map_err(|e| e.to_string())?;
+        if resp.tool_calls.is_empty() {
+            return Ok(AiChatView { reply: resp.content, tools_used });
+        }
+        // Record the assistant's tool-call turn, then run each tool and feed the
+        // results back.
+        convo.push(eve_core::ai::ChatMessage {
+            role: eve_core::ai::Role::Assistant,
+            content: resp.content.clone(),
+            tool_call_id: None,
+            tool_calls: resp.tool_calls.clone(),
+        });
+        for tc in &resp.tool_calls {
+            tools_used.push(tc.name.clone());
+            let result = crate::ai_tools::execute_tool(&state, &tc.name, &tc.arguments).await;
+            convo.push(eve_core::ai::ChatMessage::tool_result(&tc.id, result));
+        }
+    }
+    // Ran out of tool rounds — ask for a final answer without tools.
+    let resp = client.chat(&convo, &[]).await.map_err(|e| e.to_string())?;
+    Ok(AiChatView { reply: resp.content, tools_used })
+}

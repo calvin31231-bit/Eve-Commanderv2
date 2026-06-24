@@ -6,6 +6,7 @@
 //! on developer/CI machines with those libraries present — the headless
 //! `eve-core` crate carries the logic that is unit-tested everywhere.
 
+mod ai_tools;
 mod commands;
 mod poller;
 mod snapshot;
@@ -414,6 +415,10 @@ pub fn run() {
             commands::unread_notifications,
             commands::mark_notifications_read,
             commands::dismiss_notification,
+            commands::get_ai_settings,
+            commands::set_ai_settings,
+            commands::ai_detect_endpoints,
+            commands::ai_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

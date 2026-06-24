@@ -20,6 +20,7 @@
 //! disallowed cache scraping. See `docs/EULA-notes.md`.
 
 pub mod account;
+pub mod ai;
 pub mod assets;
 pub mod auth;
 pub mod bookmarks;

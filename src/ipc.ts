@@ -68,6 +68,10 @@ import type {
   JumpFatigue,
   BookmarkView,
   TheraConnection,
+  AiSettingsView,
+  AiEndpointView,
+  ChatMessage,
+  AiChatView,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -229,4 +233,14 @@ export const api = {
   markNotificationsRead: () => call<void>("mark_notifications_read"),
   dismissNotification: (key: string) =>
     call<void>("dismiss_notification", { key }),
+  getAiSettings: () => call<AiSettingsView>("get_ai_settings"),
+  setAiSettings: (
+    enabled: boolean,
+    baseUrl: string,
+    model: string,
+    apiKey: string | null,
+  ) => call<void>("set_ai_settings", { enabled, baseUrl, model, apiKey }),
+  aiDetectEndpoints: () => call<AiEndpointView[]>("ai_detect_endpoints"),
+  aiChat: (messages: ChatMessage[]) =>
+    call<AiChatView>("ai_chat", { messages }),
 };

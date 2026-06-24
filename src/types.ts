@@ -755,3 +755,27 @@ export interface Notification {
   created_at: number;
   read: boolean;
 }
+
+export interface AiSettingsView {
+  enabled: boolean;
+  base_url: string;
+  model: string;
+  has_api_key: boolean;
+}
+
+export interface AiEndpointView {
+  label: string;
+  base_url: string;
+  models: string[];
+}
+
+// Mirrors eve_core::ai::ChatMessage (tool fields omitted for the simple UI).
+export interface ChatMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+}
+
+export interface AiChatView {
+  reply: string;
+  tools_used: string[];
+}
