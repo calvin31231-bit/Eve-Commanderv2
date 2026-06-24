@@ -1237,6 +1237,55 @@ pub async fn scan_station_trades(
         .collect())
 }
 
+/// One cross-hub haul candidate with its item name resolved.
+#[derive(Debug, Serialize)]
+pub struct ArbitrageView {
+    pub type_id: i64,
+    pub name: String,
+    pub buy_hub: String,
+    pub sell_hub: String,
+    pub buy_price: f64,
+    pub sell_price: f64,
+    pub profit_per_unit: f64,
+    pub margin_pct: f64,
+}
+
+/// Scan a list of item types for the best cross-hub flip per item (buy at the
+/// cheapest hub, sell at the richest), ranked by per-unit profit after sales
+/// tax. When `typeIds` is omitted, a curated default set is scanned.
+/// `salesTax` is a fraction (0.045 = 4.5%).
+#[tauri::command]
+pub async fn scan_arbitrage(
+    state: State<'_, AppState>,
+    type_ids: Option<Vec<i64>>,
+    sales_tax: Option<f64>,
+) -> CmdResult<Vec<ArbitrageView>> {
+    let ids = type_ids.unwrap_or_else(default_scan_types);
+    let mut fees = eve_core::marketdata::TradeFees::default();
+    if let Some(t) = sales_tax {
+        fees.sales_tax = t;
+    }
+    let opps = state
+        .marketdata
+        .arbitrage(&ids, fees)
+        .await
+        .map_err(|e| e.to_string())?;
+    let names = names_for(&state, &opps.iter().map(|o| o.type_id).collect::<Vec<_>>()).await;
+    Ok(opps
+        .into_iter()
+        .map(|o| ArbitrageView {
+            type_id: o.type_id,
+            name: named(&names, o.type_id),
+            buy_hub: o.flip.buy_hub,
+            sell_hub: o.flip.sell_hub,
+            buy_price: o.flip.buy_price,
+            sell_price: o.flip.sell_price,
+            profit_per_unit: o.flip.profit_per_unit,
+            margin_pct: o.flip.margin_pct,
+        })
+        .collect())
+}
+
 /// A small curated set of liquid, commonly-flipped items for the default scan
 /// when the caller supplies no list (minerals, salvage, common modules/ships).
 fn default_scan_types() -> Vec<i64> {

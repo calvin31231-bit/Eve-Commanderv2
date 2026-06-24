@@ -303,6 +303,17 @@ export interface TradeOpportunity {
   daily_potential: number;
 }
 
+export interface ArbitrageView {
+  type_id: number;
+  name: string;
+  buy_hub: string;
+  sell_hub: string;
+  buy_price: number;
+  sell_price: number;
+  profit_per_unit: number;
+  margin_pct: number;
+}
+
 export interface RefineYieldView {
   type_id: number;
   name: string;

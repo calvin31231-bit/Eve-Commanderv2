@@ -216,6 +216,65 @@ pub struct TradeOpportunity {
     pub metrics: TradeMetrics,
 }
 
+/// The best cross-hub buy-low / sell-high flip for an item.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HubArbitrage {
+    /// Hub to buy at (lowest sell price).
+    pub buy_hub: String,
+    /// Hub to sell at (highest buy price).
+    pub sell_hub: String,
+    /// Price paid per unit (best sell at `buy_hub`).
+    pub buy_price: f64,
+    /// Price received per unit (best buy at `sell_hub`).
+    pub sell_price: f64,
+    /// Net profit per unit after sales tax on the sale.
+    pub profit_per_unit: f64,
+    /// Profit as a fraction of the buy price.
+    pub margin_pct: f64,
+}
+
+/// Find the best cross-hub flip from per-hub quotes: buy where the sell price is
+/// lowest, sell where the buy price is highest, net of sales tax. Returns `None`
+/// unless the two hubs differ and the flip is profitable. Pure.
+pub fn best_arbitrage(hubs: &[HubQuote], fees: TradeFees) -> Option<HubArbitrage> {
+    // Cheapest place to buy (lowest best_sell) and richest place to sell
+    // (highest best_buy).
+    let buy = hubs
+        .iter()
+        .filter_map(|h| h.best_sell.map(|p| (h, p)))
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
+    let sell = hubs
+        .iter()
+        .filter_map(|h| h.best_buy.map(|p| (h, p)))
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
+
+    // A real haul moves between two different hubs.
+    if buy.0.hub == sell.0.hub {
+        return None;
+    }
+    let buy_price = buy.1;
+    let sell_price = sell.1;
+    let profit = sell_price * (1.0 - fees.sales_tax) - buy_price;
+    if profit <= 0.0 || buy_price <= 0.0 {
+        return None;
+    }
+    Some(HubArbitrage {
+        buy_hub: buy.0.hub.clone(),
+        sell_hub: sell.0.hub.clone(),
+        buy_price,
+        sell_price,
+        profit_per_unit: profit,
+        margin_pct: profit / buy_price,
+    })
+}
+
+/// A profitable cross-hub haul candidate (type + its best flip).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArbitrageOpportunity {
+    pub type_id: i64,
+    pub flip: HubArbitrage,
+}
+
 /// Reads public regional market data.
 #[derive(Clone)]
 pub struct MarketDataClient {
@@ -293,6 +352,37 @@ impl MarketDataClient {
             b.metrics
                 .daily_potential
                 .partial_cmp(&a.metrics.daily_potential)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(out)
+    }
+
+    /// Scan a set of types for the best cross-hub flip per item. Fetches each
+    /// item's per-hub quotes best-effort (skipping ones that fail or have no
+    /// profitable flip) and returns opportunities sorted by per-unit profit,
+    /// highest first.
+    pub async fn arbitrage(
+        &self,
+        type_ids: &[i64],
+        fees: TradeFees,
+    ) -> Result<Vec<ArbitrageOpportunity>> {
+        let mut out = Vec::new();
+        for &type_id in type_ids {
+            let hubs = match self.compare(type_id).await {
+                Ok(h) => h,
+                Err(e) => {
+                    tracing::warn!("arbitrage: compare {type_id} failed: {e}");
+                    continue;
+                }
+            };
+            if let Some(flip) = best_arbitrage(&hubs, fees) {
+                out.push(ArbitrageOpportunity { type_id, flip });
+            }
+        }
+        out.sort_by(|a, b| {
+            b.flip
+                .profit_per_unit
+                .partial_cmp(&a.flip.profit_per_unit)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         Ok(out)
@@ -377,5 +467,34 @@ mod tests {
     fn trade_metrics_none_on_one_sided_book() {
         let q = quote_from_orders(&[order(10.0, 5, false)]);
         assert!(trade_metrics(&q, 100, TradeFees::default()).is_none());
+    }
+
+    #[test]
+    fn arbitrage_picks_cheapest_buy_and_richest_sell() {
+        let hubs = vec![
+            HubQuote { hub: "Jita".into(), best_sell: Some(100.0), best_buy: Some(95.0) },
+            HubQuote { hub: "Amarr".into(), best_sell: Some(140.0), best_buy: Some(130.0) },
+            HubQuote { hub: "Hek".into(), best_sell: Some(110.0), best_buy: Some(90.0) },
+        ];
+        // Buy Jita @100, sell Amarr @130, 4.5% tax → 130*0.955 - 100 = 24.15.
+        let a = best_arbitrage(&hubs, TradeFees::default()).unwrap();
+        assert_eq!(a.buy_hub, "Jita");
+        assert_eq!(a.sell_hub, "Amarr");
+        assert!((a.profit_per_unit - 24.15).abs() < 1e-6);
+    }
+
+    #[test]
+    fn arbitrage_none_when_unprofitable_or_same_hub() {
+        // Best buy and best sell are the same hub → no haul.
+        let single = vec![HubQuote { hub: "Jita".into(), best_sell: Some(100.0), best_buy: Some(99.0) }];
+        assert!(best_arbitrage(&single, TradeFees::default()).is_none());
+
+        // Cross-hub but spread doesn't beat the tax.
+        let thin = vec![
+            HubQuote { hub: "Jita".into(), best_sell: Some(100.0), best_buy: Some(80.0) },
+            HubQuote { hub: "Amarr".into(), best_sell: Some(105.0), best_buy: Some(101.0) },
+        ];
+        // 101*0.955 - 100 = -3.5 → None.
+        assert!(best_arbitrage(&thin, TradeFees::default()).is_none());
     }
 }

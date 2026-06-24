@@ -39,6 +39,7 @@ import type {
   Notification,
   ServerStatus,
   TradeOpportunity,
+  ArbitrageView,
   ReprocessView,
   BuildPlanView,
   ResolvedFit,
@@ -127,6 +128,8 @@ export const api = {
     salesTax?: number,
   ) =>
     call<TradeOpportunity[]>("scan_station_trades", { typeIds, brokerFee, salesTax }),
+  scanArbitrage: (typeIds?: number[], salesTax?: number) =>
+    call<ArbitrageView[]>("scan_arbitrage", { typeIds, salesTax }),
   reprocessItem: (typeId: number, units: number, efficiency?: number) =>
     call<ReprocessView | null>("reprocess_item", { typeId, units, efficiency }),
   planBuild: (productTypeId: number, runs: number, me: number, activity?: string) =>

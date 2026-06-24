@@ -33,6 +33,7 @@ import type {
   ResearchAgentView,
   ServerStatus,
   TradeOpportunity,
+  ArbitrageView,
   ReprocessView,
   BuildPlanView,
   ResolvedFit,
@@ -947,6 +948,63 @@ function StationScanner(): ReactNode {
   );
 }
 
+function ArbitrageScanner(): ReactNode {
+  const [rows, setRows] = useState<ArbitrageView[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function scan() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .scanArbitrage()
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }
+
+  return (
+    <div className="card station-scanner">
+      <h3>
+        Hub Arbitrage{" "}
+        <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· hauling</span>
+      </h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Best buy-low / sell-high haul across the five major hubs, net of 4.5% tax.
+      </p>
+      <button onClick={scan} disabled={loading}>
+        {loading ? "Scanning…" : rows ? "Rescan" : "Scan"}
+      </button>
+      {rows && rows.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Item</th>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Route</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Margin</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Profit/u</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((o) => (
+              <tr key={o.type_id}>
+                <td>{o.name}</td>
+                <td style={{ fontSize: 12 }}>
+                  {o.buy_hub} → {o.sell_hub}
+                </td>
+                <td className="mono num">{(o.margin_pct * 100).toFixed(1)}%</td>
+                <td className="mono num pos">{ISK.format(o.profit_per_unit)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {rows && rows.length === 0 && !loading && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No profitable hauls found.</p>
+      )}
+    </div>
+  );
+}
+
 // Shared item search box: resolves a typed query to an ItemHit and reports the
 // pick to the parent. Used by the reprocessing and build-planner cards.
 function ItemPicker({
@@ -1360,6 +1418,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
         <>
           <MarketBrowser />
           <StationScanner />
+          <ArbitrageScanner />
         </>
       )}
       {sub === "industry" && (
