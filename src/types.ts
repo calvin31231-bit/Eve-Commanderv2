@@ -517,6 +517,8 @@ export interface MapNode {
   x: number;
   z: number;
   kills: number;
+  sov_alliance_id: number;
+  sov_owner: string;
 }
 
 export interface RegionMapView {

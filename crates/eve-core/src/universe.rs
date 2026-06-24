@@ -46,6 +46,16 @@ pub struct SystemKills {
     pub pod_kills: i64,
 }
 
+/// Sovereignty ownership of a system (ESI `GET /sovereignty/map/`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct SovEntry {
+    pub system_id: i64,
+    #[serde(default)]
+    pub alliance_id: Option<i64>,
+    #[serde(default)]
+    pub faction_id: Option<i64>,
+}
+
 /// Reads universe topology over the cache-first ESI client.
 #[derive(Clone)]
 pub struct UniverseClient {
@@ -67,6 +77,13 @@ impl UniverseClient {
     pub async fn system_kills(&self) -> Result<Vec<SystemKills>> {
         self.esi
             .get_public_json::<Vec<SystemKills>>("/latest/universe/system_kills/")
+            .await
+    }
+
+    /// Sovereignty ownership for every claimable system (one public call).
+    pub async fn sovereignty(&self) -> Result<Vec<SovEntry>> {
+        self.esi
+            .get_public_json::<Vec<SovEntry>>("/latest/sovereignty/map/")
             .await
     }
 

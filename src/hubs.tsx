@@ -2241,8 +2241,11 @@ function RegionMap(): ReactNode {
             const hot = n.kills > 0;
             return (
               <g key={n.system_id}>
-                <title>{`${n.name} · sec ${n.security.toFixed(1)}${hot ? ` · ${n.kills} kills/hr` : ""}`}</title>
+                <title>{`${n.name} · sec ${n.security.toFixed(1)}${n.sov_owner ? ` · ${n.sov_owner}` : ""}${hot ? ` · ${n.kills} kills/hr` : ""}`}</title>
                 {hot && <circle cx={p.x} cy={p.y} r={6 + Math.min(n.kills, 12)} fill="#f87171" fillOpacity={0.25} />}
+                {n.sov_alliance_id !== 0 && (
+                  <circle cx={p.x} cy={p.y} r={7} fill="none" stroke="#a78bfa" strokeWidth="1" strokeOpacity={0.7} />
+                )}
                 <circle cx={p.x} cy={p.y} r={4} fill={secColor(n.security)} stroke={hot ? "#f87171" : "none"} strokeWidth="1.5" />
                 {hot && (
                   <text x={p.x} y={p.y - 8} textAnchor="middle" fontSize="9" fill="#f87171" fontWeight="700">
@@ -2255,7 +2258,7 @@ function RegionMap(): ReactNode {
         </svg>
       )}
       <p style={{ color: "var(--text-dim)", fontSize: 11, marginBottom: 0 }}>
-        Node colour = security; red halo = ship kills in the last hour (hover for details).
+        Node colour = security; red halo = ship kills/hr; purple ring = held sovereignty (hover for owner).
       </p>
     </div>
   );

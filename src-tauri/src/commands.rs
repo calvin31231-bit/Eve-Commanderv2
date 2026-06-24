@@ -1929,7 +1929,8 @@ pub async fn get_system_safety(state: State<'_, AppState>) -> CmdResult<SystemSa
     })
 }
 
-/// A system positioned on the region map, with its recent ship-kill count.
+/// A system positioned on the region map, with its recent ship-kill count and
+/// sovereignty owner (alliance) when claimed.
 #[derive(Debug, Serialize)]
 pub struct MapNode {
     pub system_id: i64,
@@ -1938,6 +1939,9 @@ pub struct MapNode {
     pub x: f64,
     pub z: f64,
     pub kills: i64,
+    /// Sovereignty-holding alliance id (0 = unclaimed/high-sec).
+    pub sov_alliance_id: i64,
+    pub sov_owner: String,
 }
 
 /// A Dotlan-style region map: positioned systems + intra-region jumps + a kill
@@ -2004,23 +2008,49 @@ pub async fn get_region_map(
         .map(|(_, n)| n)
         .unwrap_or_else(|| format!("Region {region_id}"));
 
-    // Kill heatmap (one ESI call for all of New Eden; best-effort).
+    // Kill heatmap + sovereignty overlay (one ESI call each, best-effort).
     let kills: std::collections::HashMap<i64, i64> = state
         .universe
         .system_kills()
         .await
         .map(|v| v.into_iter().map(|k| (k.system_id, k.ship_kills + k.pod_kills)).collect())
         .unwrap_or_default();
+    let sov: std::collections::HashMap<i64, i64> = state
+        .universe
+        .sovereignty()
+        .await
+        .map(|v| {
+            v.into_iter()
+                .filter_map(|s| s.alliance_id.map(|a| (s.system_id, a)))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Resolve sov-holding alliance names for systems in this region.
+    let alliance_ids: Vec<i64> = systems
+        .iter()
+        .filter_map(|s| sov.get(&s.system_id).copied())
+        .collect();
+    let alliance_names = names_for(&state, &alliance_ids).await;
 
     let nodes = systems
         .into_iter()
-        .map(|s| MapNode {
-            kills: kills.get(&s.system_id).copied().unwrap_or(0),
-            system_id: s.system_id,
-            name: s.name,
-            security: s.security,
-            x: s.x,
-            z: s.z,
+        .map(|s| {
+            let sov_alliance_id = sov.get(&s.system_id).copied().unwrap_or(0);
+            MapNode {
+                kills: kills.get(&s.system_id).copied().unwrap_or(0),
+                sov_owner: if sov_alliance_id != 0 {
+                    named(&alliance_names, sov_alliance_id)
+                } else {
+                    String::new()
+                },
+                sov_alliance_id,
+                system_id: s.system_id,
+                name: s.name,
+                security: s.security,
+                x: s.x,
+                z: s.z,
+            }
         })
         .collect();
 
