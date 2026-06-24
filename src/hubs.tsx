@@ -38,6 +38,8 @@ import type {
   BuildPlanView,
   ResolvedFit,
   SkillPlanView,
+  RoiPlan,
+  RoiResult,
   CanFlyView,
   FitGatekeeperView,
   DoctrineView,
@@ -670,7 +672,12 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
-      {sub === "skills" && <SkillPlanner character={character} />}
+      {sub === "skills" && (
+        <>
+          <SkillPlanner character={character} />
+          <SkillRoiPlanner />
+        </>
+      )}
       {sub === "mail" && <MailCard character={character} />}
     </>
   );
@@ -756,6 +763,102 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
           <span>{(plan.total_sp / 1000).toFixed(0)}k SP</span>
           <span className="pos">{formatDuration(plan.total_seconds)} total</span>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Ranks candidate skill plans by ISK return on training time. The player
+// describes each plan in ISK terms (income unlocked, days to train); the
+// backend does the deterministic ranking.
+function SkillRoiPlanner(): ReactNode {
+  const [plans, setPlans] = useState<RoiPlan[]>([]);
+  const [results, setResults] = useState<RoiResult[] | null>(null);
+  const [label, setLabel] = useState("");
+  const [trainDays, setTrainDays] = useState("30");
+  const [iskHr, setIskHr] = useState("50");
+  const [hoursDay, setHoursDay] = useState("2");
+  const [upfront, setUpfront] = useState("0");
+
+  function add() {
+    if (!label.trim()) return;
+    const plan: RoiPlan = {
+      label: label.trim(),
+      train_seconds: Math.round((parseFloat(trainDays) || 0) * 86400),
+      isk_per_hour: (parseFloat(iskHr) || 0) * 1_000_000,
+      hours_per_day: parseFloat(hoursDay) || 0,
+      upfront_isk: (parseFloat(upfront) || 0) * 1_000_000,
+    };
+    setPlans((p) => [...p, plan]);
+    setResults(null);
+    setLabel("");
+  }
+
+  function rank() {
+    if (!isTauri() || plans.length === 0) return;
+    api.rankSkillRoi(plans).then(setResults).catch(() => setResults([]));
+  }
+
+  return (
+    <div className="card">
+      <h3>
+        Skill-Plan ROI{" "}
+        <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· train by return</span>
+      </h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Rank training plans by ISK unlocked per day of training — not just time. Enter the income
+        each plan unlocks; values in millions of ISK.
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr repeat(4, 1fr) auto", gap: 6, alignItems: "end" }}>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Plan
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Marauder" />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Train days
+          <input value={trainDays} onChange={(e) => setTrainDays(e.target.value)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          ISK/hr (M)
+          <input value={iskHr} onChange={(e) => setIskHr(e.target.value)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Hrs/day
+          <input value={hoursDay} onChange={(e) => setHoursDay(e.target.value)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Upfront (M)
+          <input value={upfront} onChange={(e) => setUpfront(e.target.value)} />
+        </label>
+        <button onClick={add}>Add</button>
+      </div>
+      {plans.length > 0 && (
+        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={rank}>Rank {plans.length} plan(s)</button>
+          <button onClick={() => { setPlans([]); setResults(null); }}>Clear</button>
+        </div>
+      )}
+      {results && results.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Plan</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Train</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>ISK/day</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Payback</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((r, i) => (
+              <tr key={r.label + i}>
+                <td>{i === 0 ? "★ " : ""}{r.label}</td>
+                <td className="mono num">{r.train_days.toFixed(0)}d</td>
+                <td className="mono num pos">{ISK.format(r.daily_gain)}</td>
+                <td className="mono num">{r.payback_days < 1e6 ? `${r.payback_days.toFixed(0)}d` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );

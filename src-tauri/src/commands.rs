@@ -1548,6 +1548,16 @@ pub async fn cost_skill_plan(
     Ok(SkillPlanView { steps, total_sp, total_seconds })
 }
 
+/// Rank candidate skill plans by ISK return on training time. Each plan is
+/// described in ISK terms (income unlocked, time to train, optional upfront
+/// cost); the deterministic ranking lives in `eve_core::skillplan::rank_roi`.
+#[tauri::command]
+pub fn rank_skill_roi(
+    plans: Vec<eve_core::skillplan::RoiPlan>,
+) -> CmdResult<Vec<eve_core::skillplan::RoiResult>> {
+    Ok(eve_core::skillplan::rank_roi(&plans))
+}
+
 /// One active incursion with its staging system + faction named.
 #[derive(Debug, Serialize)]
 pub struct IncursionView {

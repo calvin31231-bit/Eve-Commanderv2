@@ -383,6 +383,22 @@ export interface SkillPlanView {
   total_seconds: number;
 }
 
+export interface RoiPlan {
+  label: string;
+  train_seconds: number;
+  isk_per_hour: number;
+  hours_per_day: number;
+  upfront_isk: number;
+}
+
+export interface RoiResult {
+  label: string;
+  train_days: number;
+  daily_gain: number;
+  payback_days: number;
+  roi_score: number;
+}
+
 export interface GatekeeperItem {
   type_id: number;
   name: string;

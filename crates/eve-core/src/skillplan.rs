@@ -93,6 +93,64 @@ pub fn cost_plan(steps: &[PlanStep]) -> PlanCost {
     PlanCost { steps: costed, total_sp, total_seconds }
 }
 
+/// A candidate skill plan described in ISK terms: how much income it unlocks and
+/// how long it takes to train, so plans can be ranked by return — not just time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoiPlan {
+    pub label: String,
+    /// Training time for the plan (seconds), e.g. from `cost_plan`.
+    pub train_seconds: i64,
+    /// Extra ISK per hour this plan unlocks while the activity is run.
+    pub isk_per_hour: f64,
+    /// Hours per day the player expects to run the activity.
+    pub hours_per_day: f64,
+    /// One-off ISK outlay to use the plan (hull/modules/skillbooks). 0 if none.
+    #[serde(default)]
+    pub upfront_isk: f64,
+}
+
+/// A ranked skill plan with its computed economics.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoiResult {
+    pub label: String,
+    pub train_days: f64,
+    pub daily_gain: f64,
+    /// Days for the unlocked income to repay training-time + upfront cost. The
+    /// training time is valued at the plan's own daily gain (opportunity cost).
+    pub payback_days: f64,
+    /// ISK/day of income unlocked per day of training invested — the ranking key.
+    /// Higher means "train this first".
+    pub roi_score: f64,
+}
+
+/// Rank candidate skill plans by ISK return on training time, best first. Pure.
+/// Plans with no daily gain sort last with an infinite payback.
+pub fn rank_roi(plans: &[RoiPlan]) -> Vec<RoiResult> {
+    let mut out: Vec<RoiResult> = plans
+        .iter()
+        .map(|p| {
+            let train_days = (p.train_seconds as f64 / 86_400.0).max(0.0);
+            let daily_gain = (p.isk_per_hour * p.hours_per_day).max(0.0);
+            let (payback_days, roi_score) = if daily_gain > 0.0 {
+                // Repay the upfront outlay plus the income forgone while training.
+                let train_cost = daily_gain * train_days;
+                ((p.upfront_isk + train_cost) / daily_gain, daily_gain / train_days.max(0.01))
+            } else {
+                (f64::INFINITY, 0.0)
+            };
+            RoiResult {
+                label: p.label.clone(),
+                train_days,
+                daily_gain,
+                payback_days,
+                roi_score,
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| b.roi_score.partial_cmp(&a.roi_score).unwrap_or(std::cmp::Ordering::Equal));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,5 +187,42 @@ mod tests {
         assert_eq!(cost.steps[1].sp, 0);
         assert_eq!(cost.total_sp, cost.steps[0].sp);
         assert!(cost.total_seconds > 0);
+    }
+
+    #[test]
+    fn roi_ranks_high_return_first() {
+        let plans = vec![
+            // Big earner, quick train → should rank first.
+            RoiPlan {
+                label: "Marauder".into(),
+                train_seconds: 10 * 86_400,
+                isk_per_hour: 200_000_000.0,
+                hours_per_day: 3.0,
+                upfront_isk: 1_500_000_000.0,
+            },
+            // Smaller earner, long train.
+            RoiPlan {
+                label: "Hauler".into(),
+                train_seconds: 40 * 86_400,
+                isk_per_hour: 20_000_000.0,
+                hours_per_day: 2.0,
+                upfront_isk: 0.0,
+            },
+        ];
+        let r = rank_roi(&plans);
+        assert_eq!(r[0].label, "Marauder");
+        assert!(r[0].roi_score > r[1].roi_score);
+        assert!(r[0].payback_days > 0.0 && r[0].payback_days.is_finite());
+    }
+
+    #[test]
+    fn roi_zero_gain_sorts_last_with_infinite_payback() {
+        let plans = vec![
+            RoiPlan { label: "Dead".into(), train_seconds: 86_400, isk_per_hour: 0.0, hours_per_day: 4.0, upfront_isk: 0.0 },
+            RoiPlan { label: "Live".into(), train_seconds: 86_400, isk_per_hour: 10.0, hours_per_day: 4.0, upfront_isk: 0.0 },
+        ];
+        let r = rank_roi(&plans);
+        assert_eq!(r[0].label, "Live");
+        assert!(r[1].payback_days.is_infinite());
     }
 }
