@@ -392,6 +392,7 @@ pub fn run() {
             commands::get_thera_connections,
             commands::get_fleet,
             commands::get_combat_summary,
+            commands::get_fleet_aar,
             commands::get_local_intel,
             commands::cost_skill_plan,
             commands::rank_skill_roi,

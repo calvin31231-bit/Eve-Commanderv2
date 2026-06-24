@@ -103,6 +103,31 @@ pub fn latest_log(dir: &Path, prefix: &str) -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
+/// The `max` most-recently-modified `.txt` logs in `dir` matching `prefix`,
+/// newest first. Used to pick up a multiboxer's separate per-character Gamelogs
+/// from the current session for a combined fleet after-action report.
+pub fn recent_logs(dir: &Path, prefix: &str, max: usize) -> Vec<PathBuf> {
+    let mut found: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("txt") {
+            continue;
+        }
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !prefix.is_empty() && !name.starts_with(prefix) {
+            continue;
+        }
+        if let Ok(mtime) = entry.metadata().and_then(|m| m.modified()) {
+            found.push((mtime, path));
+        }
+    }
+    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.into_iter().take(max).map(|(_, p)| p).collect()
+}
+
 /// Read + decode a log file to a string.
 pub fn read_log(path: &Path) -> Option<String> {
     let bytes = std::fs::read(path).ok()?;

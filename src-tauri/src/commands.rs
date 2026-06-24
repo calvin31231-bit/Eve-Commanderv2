@@ -2029,6 +2029,51 @@ pub fn get_combat_summary() -> CombatLogView {
     CombatLogView { found: true, summary: Some(eve_core::logs::gamelog::summarize_combat(&events)) }
 }
 
+/// A combined multi-box fleet after-action report, plus a found flag.
+#[derive(Debug, Serialize)]
+pub struct FleetAarView {
+    pub found: bool,
+    pub fleet: Option<eve_core::logs::gamelog::FleetAar>,
+}
+
+/// Read the most recent Gamelogs (one per boxed character) and merge them into a
+/// combined fleet after-action report: per-pilot DPS contributions plus fleet
+/// totals and combined target/attacker tables. Passive local-file reads.
+#[tauri::command]
+pub fn get_fleet_aar(max_pilots: Option<usize>) -> FleetAarView {
+    let Some(dir) = eve_core::logs::gamelogs_dir() else {
+        return FleetAarView { found: false, fleet: None };
+    };
+    let max = max_pilots.unwrap_or(8).clamp(1, 32);
+    let paths = eve_core::logs::recent_logs(&dir, "", max);
+    if paths.is_empty() {
+        return FleetAarView { found: false, fleet: None };
+    }
+    let mut pilots = Vec::new();
+    for path in paths {
+        let Some(text) = eve_core::logs::read_log(&path) else { continue };
+        let events = eve_core::logs::gamelog::parse_gamelog(&text);
+        if events.is_empty() {
+            continue;
+        }
+        // Label by the log's file stem (timestamp_listenerId) — the pilot is not
+        // in the file body, but this disambiguates the streams.
+        let label = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("pilot")
+            .to_string();
+        pilots.push((label, events));
+    }
+    if pilots.is_empty() {
+        return FleetAarView { found: false, fleet: None };
+    }
+    FleetAarView {
+        found: true,
+        fleet: Some(eve_core::logs::gamelog::merge_fleet_aar(pilots)),
+    }
+}
+
 /// Read the most recent Local chatlog and summarize who has spoken + the current
 /// system. Passive local-file read; the EULA-safe Local intel signal.
 #[tauri::command]

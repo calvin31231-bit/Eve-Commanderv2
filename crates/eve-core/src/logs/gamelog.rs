@@ -174,6 +174,83 @@ pub fn parse_gamelog(text: &str) -> Vec<DamageEvent> {
     text.lines().filter_map(parse_combat_line).collect()
 }
 
+/// One pilot's contribution within a fleet after-action report.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FleetPilot {
+    pub name: String,
+    pub summary: AarSummary,
+}
+
+/// A combined, multi-box fleet after-action report: each pilot's own AAR plus
+/// fleet totals and combined target/attacker tables.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FleetAar {
+    pub pilots: Vec<FleetPilot>,
+    pub damage_dealt: i64,
+    pub damage_received: i64,
+    /// Wall-clock span of the whole engagement across all pilots' logs (min 1s).
+    pub duration_seconds: i64,
+    pub dps_dealt: f64,
+    pub dps_received: f64,
+    pub top_targets: Vec<EntityDamage>,
+    pub top_attackers: Vec<EntityDamage>,
+}
+
+/// Merge several pilots' Gamelog event streams into one fleet AAR. Each pilot
+/// keeps an individual summary; fleet DPS uses the engagement's overall span
+/// (earliest to latest event across all pilots) so combined DPS is honest rather
+/// than a sum of per-pilot rates. Pure.
+pub fn merge_fleet_aar(pilots: Vec<(String, Vec<DamageEvent>)>) -> FleetAar {
+    use std::collections::HashMap;
+
+    let mut out_pilots = Vec::with_capacity(pilots.len());
+    let mut damage_dealt = 0;
+    let mut damage_received = 0;
+    let mut targets: HashMap<String, i64> = HashMap::new();
+    let mut attackers: HashMap<String, i64> = HashMap::new();
+    let (mut first, mut last): (Option<OffsetDateTime>, Option<OffsetDateTime>) = (None, None);
+
+    for (name, events) in pilots {
+        for e in &events {
+            match e.direction {
+                Direction::Dealt => {
+                    damage_dealt += e.amount;
+                    *targets.entry(e.entity.clone()).or_insert(0) += e.amount;
+                }
+                Direction::Received => {
+                    damage_received += e.amount;
+                    *attackers.entry(e.entity.clone()).or_insert(0) += e.amount;
+                }
+            }
+            first = Some(first.map_or(e.at, |f| f.min(e.at)));
+            last = Some(last.map_or(e.at, |l| l.max(e.at)));
+        }
+        out_pilots.push(FleetPilot { name, summary: summarize_combat(&events) });
+    }
+
+    let duration_seconds = match (first, last) {
+        (Some(f), Some(l)) => (l - f).whole_seconds().max(1),
+        _ => 1,
+    };
+    let mut top_targets = to_sorted(targets);
+    let mut top_attackers = to_sorted(attackers);
+    top_targets.truncate(5);
+    top_attackers.truncate(5);
+    // Strongest contributors first.
+    out_pilots.sort_by(|a, b| b.summary.damage_dealt.cmp(&a.summary.damage_dealt));
+
+    FleetAar {
+        pilots: out_pilots,
+        damage_dealt,
+        damage_received,
+        duration_seconds,
+        dps_dealt: damage_dealt as f64 / duration_seconds as f64,
+        dps_received: damage_received as f64 / duration_seconds as f64,
+        top_targets,
+        top_attackers,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,5 +298,19 @@ mod tests {
         assert_eq!(s.event_count, 0);
         assert_eq!(s.duration_seconds, 1);
         assert_eq!(s.dps_dealt, 0.0);
+    }
+
+    #[test]
+    fn fleet_aar_combines_pilots_and_keeps_individuals() {
+        let a = parse_gamelog(&format!("{DEALT}\n{RECV}"));
+        let b = parse_gamelog(&format!("{DEALT}\n{DEALT}"));
+        let fleet = merge_fleet_aar(vec![("Alpha".into(), a), ("Bravo".into(), b)]);
+        // Combined dealt = 247 (alpha) + 494 (bravo) = 741.
+        assert_eq!(fleet.damage_dealt, 741);
+        assert_eq!(fleet.damage_received, 88);
+        assert_eq!(fleet.pilots.len(), 2);
+        // Sorted by damage dealt: Bravo (494) before Alpha (247).
+        assert_eq!(fleet.pilots[0].name, "Bravo");
+        assert_eq!(fleet.top_targets[0].damage, 741);
     }
 }

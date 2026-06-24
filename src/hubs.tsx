@@ -54,6 +54,7 @@ import type {
   SystemSafetyView,
   SystemRiskView,
   CombatLogView,
+  FleetAarView,
   RouteView,
   CourierView,
   RegionMapView,
@@ -2371,7 +2372,12 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
           <GateCampCheck />
         </>
       )}
-      {sub === "aar" && <CombatLogPanel />}
+      {sub === "aar" && (
+        <>
+          <CombatLogPanel />
+          <FleetAarPanel />
+        </>
+      )}
     </>
   );
 }
@@ -2919,6 +2925,79 @@ function CombatLogPanel(): ReactNode {
                     <tr key={t.entity}>
                       <td>{t.entity}</td>
                       <td className="mono num neg">{ISK.format(t.damage)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Combined multi-box fleet after-action report: merges the most recent Gamelogs
+// (one per boxed character) into fleet totals + per-pilot DPS contributions.
+function FleetAarPanel(): ReactNode {
+  const [data, setData] = useState<FleetAarView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function load() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .getFleetAar(8)
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }
+
+  const f = data?.fleet;
+  return (
+    <div className="card combat-log">
+      <h3>Fleet AAR · Multi-box</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Merges your recent Gamelogs into one fleet report — combined DPS and each pilot&apos;s share.
+      </p>
+      <button onClick={load} disabled={loading}>
+        {loading ? "Reading…" : "Analyze fleet logs"}
+      </button>
+      {data && !data.found && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No Gamelogs found — run multiple clients so each writes its own log.
+        </p>
+      )}
+      {f && (
+        <div style={{ marginTop: 10 }}>
+          <div className="cashflow-totals">
+            <span className="pos">{ISK.format(f.damage_dealt)} dealt · {f.dps_dealt.toFixed(0)} dps</span>
+            <span className="neg">{ISK.format(f.damage_received)} taken · {f.dps_received.toFixed(0)} dps</span>
+            <span style={{ color: "var(--text-dim)" }}>{formatDuration(f.duration_seconds)}</span>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 2px" }}>
+            Pilots ({f.pilots.length})
+          </p>
+          <table className="holdings">
+            <tbody>
+              {f.pilots.map((p, i) => (
+                <tr key={p.name + i}>
+                  <td>{p.name}</td>
+                  <td className="mono num pos">{p.summary.dps_dealt.toFixed(0)} dps</td>
+                  <td className="mono num">{ISK.format(p.summary.damage_dealt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {f.top_targets.length > 0 && (
+            <>
+              <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 2px" }}>Fleet top targets</p>
+              <table className="holdings">
+                <tbody>
+                  {f.top_targets.map((t) => (
+                    <tr key={t.entity}>
+                      <td>{t.entity}</td>
+                      <td className="mono num pos">{ISK.format(t.damage)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -58,6 +58,7 @@ import type {
   SystemSafetyView,
   SystemRiskView,
   CombatLogView,
+  FleetAarView,
   IncursionView,
   FwSystemView,
   LocalIntel,
@@ -185,6 +186,8 @@ export const api = {
   openMarketWindow: (characterId: number, typeId: number) =>
     call<void>("open_market_window", { characterId, typeId }),
   getCombatSummary: () => call<CombatLogView>("get_combat_summary"),
+  getFleetAar: (maxPilots?: number) =>
+    call<FleetAarView>("get_fleet_aar", { maxPilots }),
   getLocalIntel: () => call<LocalIntel | null>("get_local_intel"),
   getIncursions: () => call<IncursionView[]>("get_incursions"),
   getFwSystems: () => call<FwSystemView[]>("get_fw_systems"),

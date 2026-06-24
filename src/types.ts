@@ -565,6 +565,27 @@ export interface CombatLogView {
   summary: AarSummary | null;
 }
 
+export interface FleetPilot {
+  name: string;
+  summary: AarSummary;
+}
+
+export interface FleetAar {
+  pilots: FleetPilot[];
+  damage_dealt: number;
+  damage_received: number;
+  duration_seconds: number;
+  dps_dealt: number;
+  dps_received: number;
+  top_targets: EntityDamage[];
+  top_attackers: EntityDamage[];
+}
+
+export interface FleetAarView {
+  found: boolean;
+  fleet: FleetAar | null;
+}
+
 export interface LocalIntel {
   system: string | null;
   speakers: string[];
