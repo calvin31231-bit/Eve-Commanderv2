@@ -389,6 +389,7 @@ impl Converter {
             64, 51, // damage multiplier, rate-of-fire/activation time (ms)
             72, 1159, // shield-extender + armor-plate flat HP bonuses
             68, 84, 73, // shield-boost, armor-repair amounts, module cycle time (ms)
+            331, // implant slot (1-10) — marks a type as an implant
             4, 70, 37, 38, // mass, agility, max velocity, cargo capacity
             14, 13, 12, 102, 101, 1137, // hi/med/low slots, turret/launcher hardpoints, rig slots
             1271, 283, // drone bandwidth, drone bay

@@ -839,3 +839,10 @@ export interface FitStatsView {
   cap_peak_recharge: number;
   note: string;
 }
+
+export interface ImplantView {
+  type_id: number;
+  name: string;
+  slot: number;
+  category: string;
+}

@@ -255,6 +255,16 @@ impl Sde {
             .collect())
     }
 
+    /// All types that carry `attribute_id`, as `(type_id, value)`. Used to
+    /// enumerate implants (attribute 331 = implant slot).
+    pub async fn types_with_attribute(&self, attribute_id: i64) -> Result<Vec<(i64, f64)>> {
+        let rows = sqlx::query("SELECT type_id, value FROM type_attributes WHERE attribute_id = ?1")
+            .bind(attribute_id)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.iter().map(|r| (r.get::<i64, _>("type_id"), r.get::<f64, _>("value"))).collect())
+    }
+
     /// Resolve a solar system id to a [`SolarSystem`].
     pub async fn solar_system(&self, system_id: i64) -> Result<Option<SolarSystem>> {
         let row = sqlx::query("SELECT system_id, name, security FROM solar_systems WHERE system_id = ?1")

@@ -2201,6 +2201,49 @@ pub(crate) async fn compute_fit_stats(
     })
 }
 
+/// One implant for the RPG-style implant fitter: its slot, name, and boost
+/// category for filtering.
+#[derive(Debug, Serialize)]
+pub struct ImplantView {
+    pub type_id: i64,
+    pub name: String,
+    /// Implant slot 1–10.
+    pub slot: i64,
+    /// Boost category (Intelligence/Memory/…/Hardwiring) for filtering.
+    pub category: String,
+}
+
+/// List every implant in the SDE (types carrying the implant-slot attribute),
+/// with slot and boost category resolved — the catalogue the implant fitter
+/// filters by slot and boost type. Needs the prebuilt SDE with dogma attributes.
+#[tauri::command]
+pub async fn list_implants(state: State<'_, AppState>) -> CmdResult<Vec<ImplantView>> {
+    let sde = state.names.sde();
+    let slots = sde.types_with_attribute(331).await.map_err(|e| e.to_string())?;
+    if slots.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids: Vec<i64> = slots.iter().map(|(id, _)| *id).collect();
+    let names = sde.name_types(&ids).await.map_err(|e| e.to_string())?;
+    let name_of: std::collections::HashMap<i64, String> =
+        names.into_iter().map(|n| (n.type_id, n.name)).collect();
+
+    let mut out: Vec<ImplantView> = slots
+        .into_iter()
+        .filter_map(|(type_id, slot)| {
+            let name = name_of.get(&type_id)?.clone();
+            Some(ImplantView {
+                type_id,
+                slot: slot as i64,
+                category: eve_core::implants::classify(&name).as_str().to_string(),
+                name,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.slot.cmp(&b.slot).then_with(|| a.name.cmp(&b.name)));
+    Ok(out)
+}
+
 /// Parse pasted D-scan clipboard text into a grouped readout with danger
 /// callouts (combat probes, tackle hulls). Pure — needs no character or network.
 #[tauri::command]

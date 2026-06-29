@@ -41,6 +41,7 @@ pub mod esi;
 pub mod eve_scout;
 pub mod fitting;
 pub mod fleet;
+pub mod implants;
 pub mod income;
 pub mod industry;
 pub mod industry_plan;

@@ -45,6 +45,7 @@ import type {
   BuildPlanView,
   ResolvedFit,
   FitStatsView,
+  ImplantView,
   SkillPlanView,
   SkillImportView,
   RoiPlan,
@@ -155,6 +156,7 @@ export const api = {
   parseFit: (eft: string) => call<ResolvedFit | null>("parse_fit", { eft }),
   fitStats: (eft: string, characterId: number | null) =>
     call<FitStatsView>("fit_stats", { eft, characterId }),
+  listImplants: () => call<ImplantView[]>("list_implants"),
   canFlyFit: (characterId: number, eft: string) =>
     call<CanFlyView>("can_fly_fit", { characterId, eft }),
   fitGatekeeper: (characterId: number, eft: string) =>

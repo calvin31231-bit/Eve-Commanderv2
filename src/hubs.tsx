@@ -3,7 +3,7 @@
 // Strategy"). Phase 0 ships the shell + Home; other hubs are placeholders that
 // later phases fill in.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, isTauri } from "./ipc";
 import type {
   AccountOverview,
@@ -46,6 +46,7 @@ import type {
   CanFlyView,
   FitGatekeeperView,
   FitStatsView,
+  ImplantView,
   DoctrineView,
   DscanResult,
   ThreatScanView,
@@ -469,6 +470,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           { id: "wallet", label: "Wallet" },
           { id: "assets", label: "Assets" },
           { id: "skills", label: "Skill Plan" },
+          { id: "implants", label: "Implants" },
           { id: "mail", label: "Mail" },
         ]}
         active={sub}
@@ -688,7 +690,137 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           <SkillRoiPlanner />
         </>
       )}
+      {sub === "implants" && <ImplantFitter />}
       {sub === "mail" && <MailCard character={character} />}
+    </>
+  );
+}
+
+// RPG-style implant fitter: a 10-slot rack you equip implants into, with a
+// browsable catalogue filtered by slot, boost category, and name search.
+function ImplantFitter(): ReactNode {
+  const [all, setAll] = useState<ImplantView[] | null>(null);
+  const [rack, setRack] = useState<Record<number, ImplantView>>({});
+  const [slotFilter, setSlotFilter] = useState("0"); // 0 = any
+  const [catFilter, setCatFilter] = useState("Any");
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    api.listImplants().then(setAll).catch(() => setAll([]));
+  }, []);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    (all ?? []).forEach((i) => set.add(i.category));
+    return ["Any", ...Array.from(set).sort()];
+  }, [all]);
+
+  const filtered = useMemo(() => {
+    const slot = Number(slotFilter);
+    const needle = q.trim().toLowerCase();
+    return (all ?? [])
+      .filter((i) => (slot === 0 || i.slot === slot))
+      .filter((i) => (catFilter === "Any" || i.category === catFilter))
+      .filter((i) => (needle === "" || i.name.toLowerCase().includes(needle)))
+      .slice(0, 200);
+  }, [all, slotFilter, catFilter, q]);
+
+  function equip(i: ImplantView) {
+    setRack((r) => ({ ...r, [i.slot]: i }));
+  }
+  function unequip(slot: number) {
+    setRack((r) => {
+      const next = { ...r };
+      delete next[slot];
+      return next;
+    });
+  }
+
+  if (!isTauri()) {
+    return <div className="card"><p style={{ color: "var(--text-dim)" }}>The implant fitter runs in the desktop shell.</p></div>;
+  }
+  if (all && all.length === 0) {
+    return (
+      <div className="card">
+        <h3>Implant Fitter</h3>
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No implants in the SDE yet — rebuild sde.sqlite with the latest converter (implant slot attribute).
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="card">
+        <h3>Implant Rack <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· slots 1–10</span></h3>
+        <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+          Build a clone loadout: pick an implant from the catalogue to slot it. One implant per slot.
+        </p>
+        <table className="holdings">
+          <tbody>
+            {Array.from({ length: 10 }, (_, k) => k + 1).map((slot) => {
+              const eq = rack[slot];
+              return (
+                <tr key={slot}>
+                  <td style={{ width: 56, color: "var(--text-dim)" }}>Slot {slot}</td>
+                  <td>{eq ? eq.name : <span style={{ color: "var(--text-dim)" }}>— empty —</span>}</td>
+                  <td style={{ fontSize: 11, color: "var(--text-dim)" }}>{eq?.category ?? ""}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {eq && <button style={{ fontSize: 11 }} onClick={() => unequip(slot)}>Remove</button>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <h3>Catalogue</h3>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Slot
+            <select value={slotFilter} onChange={(e) => setSlotFilter(e.target.value)}>
+              <option value="0">Any</option>
+              {Array.from({ length: 10 }, (_, k) => k + 1).map((s) => (
+                <option key={s} value={String(s)}>{s}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Boost type
+            <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)", flex: 1 }}>
+            Search
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="implant name…" style={{ width: "100%" }} />
+          </label>
+        </div>
+        {!all && <p style={{ color: "var(--text-dim)", fontSize: 12 }}>Loading…</p>}
+        {all && (
+          <table className="holdings" style={{ marginTop: 8 }}>
+            <tbody>
+              {filtered.map((i) => (
+                <tr key={i.type_id}>
+                  <td style={{ width: 40, color: "var(--text-dim)" }}>{i.slot}</td>
+                  <td>{i.name}</td>
+                  <td style={{ fontSize: 11, color: "var(--text-dim)" }}>{i.category}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <button style={{ fontSize: 11 }} onClick={() => equip(i)}>Slot it</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {all && filtered.length === 0 && (
+          <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No implants match.</p>
+        )}
+      </div>
     </>
   );
 }
