@@ -664,14 +664,6 @@ export interface CalendarEvent {
   importance: number;
 }
 
-export interface BookmarkView {
-  bookmark_id: number;
-  label: string;
-  notes: string;
-  location_name: string;
-  created: string;
-}
-
 export interface TheraConnection {
   hub: string;
   destination: string;

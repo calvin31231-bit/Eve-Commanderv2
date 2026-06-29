@@ -1789,44 +1789,6 @@ pub async fn get_calendar(
     Ok(state.calendar.events(character_id).await.unwrap_or_default())
 }
 
-/// A personal bookmark with its location named.
-#[derive(Debug, Serialize)]
-pub struct BookmarkView {
-    pub bookmark_id: i64,
-    pub label: String,
-    pub notes: String,
-    pub location_name: String,
-    pub created: String,
-}
-
-/// The character's personal bookmarks (newest first), location names resolved
-/// (citadels included). Empty when the scope isn't granted.
-#[tauri::command]
-pub async fn get_bookmarks(
-    state: State<'_, AppState>,
-    character_id: i64,
-) -> CmdResult<Vec<BookmarkView>> {
-    let bookmarks = match state.bookmarks.bookmarks(character_id).await {
-        Ok(b) => b,
-        Err(_) => return Ok(Vec::new()),
-    };
-    let loc_ids: Vec<i64> = bookmarks.iter().map(|b| b.location_id).collect();
-    let names = names_with_structures(&state, character_id, &loc_ids).await;
-    Ok(bookmarks
-        .into_iter()
-        .map(|b| BookmarkView {
-            location_name: names
-                .get(&b.location_id)
-                .cloned()
-                .unwrap_or_else(|| format!("Location {}", b.location_id)),
-            bookmark_id: b.bookmark_id,
-            label: b.label,
-            notes: b.notes,
-            created: b.created,
-        })
-        .collect())
-}
-
 /// One R&D agent with its datacore type named (frontend computes accrued RP).
 #[derive(Debug, Serialize)]
 pub struct ResearchAgentView {

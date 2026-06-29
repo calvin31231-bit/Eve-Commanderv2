@@ -76,7 +76,6 @@ import type {
   CourierView,
   RegionMapView,
   JumpFatigue,
-  BookmarkView,
   TheraConnection,
   AiSettingsView,
   AiEndpointView,
@@ -208,8 +207,6 @@ export const api = {
     }),
   getJumpFatigue: (characterId: number) =>
     call<JumpFatigue | null>("get_jump_fatigue", { characterId }),
-  getBookmarks: (characterId: number) =>
-    call<BookmarkView[]>("get_bookmarks", { characterId }),
   getTheraConnections: () => call<TheraConnection[]>("get_thera_connections"),
   setRouteWaypoint: (characterId: number, system: string) =>
     call<void>("set_route_waypoint", { characterId, system }),

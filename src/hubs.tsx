@@ -61,6 +61,7 @@ import type {
   CombatLogView,
   FleetAarView,
   AbyssTrackerView,
+  LootValueView,
   AiSettingsView,
   AiEndpointView,
   MemoryNoteView,
@@ -70,7 +71,6 @@ import type {
   CourierView,
   RegionMapView,
   JumpFatigue,
-  BookmarkView,
   TheraConnection,
   CorpStructureView,
   CorpMemberView,
@@ -2648,6 +2648,68 @@ function MemoryViewer(): ReactNode {
   );
 }
 
+// Item appraisal: paste any inventory selection (or a typed item list) and get
+// a per-item market valuation + total, using the shared price reference.
+function AppraisalTool(): ReactNode {
+  const [text, setText] = useState("");
+  const [result, setResult] = useState<LootValueView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function appraise() {
+    if (!isTauri() || !text.trim()) return;
+    setLoading(true);
+    api.valueLoot(text).then(setResult).catch(() => setResult(null)).finally(() => setLoading(false));
+  }
+
+  return (
+    <div className="card">
+      <h3>Appraisal <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· what's it worth?</span></h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Paste an inventory selection (in-game: select all → copy) or type items as
+        <span className="mono"> Name⇥Qty</span> per line. Valued at the ESI reference price.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={"Tritanium\t10000\nPyerite\t5000\nDamage Control II\t3"}
+        style={{ width: "100%", minHeight: 100, fontFamily: "monospace", fontSize: 12 }}
+      />
+      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+        <button onClick={appraise} disabled={loading || !text.trim()}>{loading ? "Pricing…" : "Appraise"}</button>
+        {result && <span style={{ alignSelf: "center", fontSize: 13 }} className="pos">{ISK.format(result.total)} total</span>}
+      </div>
+      {result && result.lines.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Item</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Qty</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Unit</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.lines.map((l, i) => (
+              <tr key={l.name + i}>
+                <td>{l.name}</td>
+                <td className="mono num">{l.quantity.toLocaleString()}</td>
+                <td className="mono num">{ISK.format(l.unit_price)}</td>
+                <td className="mono num pos">{ISK.format(l.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {result && result.unresolved.length > 0 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 6 }}>
+          Unpriced ({result.unresolved.length}): {result.unresolved.slice(0, 8).join(", ")}
+          {result.unresolved.length > 8 ? "…" : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ToolsHub(): ReactNode {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState(false);
@@ -2680,6 +2742,7 @@ function ToolsHub(): ReactNode {
           { id: "settings", label: "Settings" },
           { id: "lp", label: "LP Optimizer" },
           { id: "income", label: "Income Optimizer" },
+          { id: "appraisal", label: "Appraisal" },
           { id: "ai", label: "AI Assistant" },
         ]}
         active={sub}
@@ -2687,6 +2750,7 @@ function ToolsHub(): ReactNode {
       />
       {sub === "lp" && <LpOptimizer />}
       {sub === "income" && <IncomeOptimizer />}
+      {sub === "appraisal" && <AppraisalTool />}
       {sub === "ai" && <AiAssistant />}
       {sub === "settings" && (!isTauri() ? (
         <div className="card"><p style={{ color: "var(--text-dim)" }}>Design preview — settings load in the desktop shell.</p></div>
@@ -4244,7 +4308,6 @@ function NavigationHub({ character }: { character: Character | null }): ReactNod
       <CourierCalc />
       <TheraCard />
       {character && <JumpFatigueCard character={character} />}
-      {character && <BookmarksCard character={character} />}
     </>
   );
 }
@@ -4298,36 +4361,6 @@ function TheraCard(): ReactNode {
           </tbody>
         </table>
       )}
-    </div>
-  );
-}
-
-function BookmarksCard({ character }: { character: Character }): ReactNode {
-  const [rows, setRows] = useState<BookmarkView[] | null>(null);
-
-  useEffect(() => {
-    setRows(null);
-    if (!isTauri()) return;
-    api.getBookmarks(character.id).then(setRows).catch(() => setRows([]));
-  }, [character.id]);
-
-  if (!rows || rows.length === 0) return null;
-  return (
-    <div className="card bookmarks-card" style={{ marginTop: 16 }}>
-      <h3>Bookmarks <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {rows.length}</span></h3>
-      <table className="holdings">
-        <tbody>
-          {rows.slice(0, 60).map((b) => (
-            <tr key={b.bookmark_id}>
-              <td>
-                {b.label || "(unlabeled)"}
-                {b.notes && <div style={{ color: "var(--text-dim)", fontSize: 11 }}>{b.notes}</div>}
-              </td>
-              <td className="loc">{b.location_name}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

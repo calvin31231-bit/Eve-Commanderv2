@@ -19,7 +19,6 @@ use tauri::Manager;
 use eve_core::assets::AssetsClient;
 use eve_core::auth::{LoginManager, SsoClient, TokenManager};
 use eve_core::auth::token_store::TokenStore;
-use eve_core::bookmarks::BookmarksClient;
 use eve_core::calendar::CalendarClient;
 use eve_core::character::CharacterClient;
 use eve_core::clones::ClonesClient;
@@ -108,8 +107,6 @@ pub struct AppState {
     pub pve: PveClient,
     /// R&D agent / datacore reads (passive income) for the Economy hub.
     pub research: ResearchClient,
-    /// Personal bookmark reads for the Navigation hub.
-    pub bookmarks: BookmarksClient,
     /// Upcoming calendar-event reads for the Character hub.
     pub calendar: CalendarClient,
     /// EVE-Scout Thera/Turnur connections for the Navigation hub.
@@ -234,7 +231,6 @@ fn build_state() -> AppState {
     let lp = LpClient::new(esi.clone());
     let pve = PveClient::new(esi.clone());
     let research = ResearchClient::new(esi.clone(), token_manager.clone());
-    let bookmarks = BookmarksClient::new(esi.clone(), token_manager.clone());
     let calendar = CalendarClient::new(esi.clone(), token_manager.clone());
     let eve_scout = EveScoutClient::new(config.user_agent.clone());
     let fleet = FleetClient::new(esi.clone(), token_manager.clone());
@@ -292,7 +288,6 @@ fn build_state() -> AppState {
         lp,
         pve,
         research,
-        bookmarks,
         calendar,
         eve_scout,
         fleet,
@@ -393,7 +388,6 @@ pub fn run() {
             commands::get_incursions,
             commands::get_fw_systems,
             commands::get_research_agents,
-            commands::get_bookmarks,
             commands::get_calendar,
             commands::get_thera_connections,
             commands::get_fleet,
