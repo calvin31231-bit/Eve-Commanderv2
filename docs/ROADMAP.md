@@ -330,6 +330,26 @@ A standout safety feature (the PySpy / Pirate's Little Helper / EVE OS Local Int
 
 ---
 
+## Build status (audit)
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0 — Foundation | ✅ Complete | Shell/routing/theme/tray, SSO PKCE + keychain, cache-first ESI (ETag/304, error-budget breaker), poll scheduler, SDE + `sde-tools` converter, multi-char + Groups, settings. |
+| 1 — Character Core | ✅ Complete | Skills/training, wallet/accounting, assets/valuation, clones/implants, mining ledger, EVEmail. |
+| 2 — Markets & Industry | ✅ Complete | Market browser + hub compare + station-trade scanner, industry planner (ME/TE, jobs, reactions, invention odds), reprocess + insurance calcs, contracts. |
+| 3 — Fitting & Skills | ✅ Complete (exceeds) | Dogma EHP/DPS/cap with resists + active tank + character damage skills + hull-bonus display; EFT in/out; fit library + doctrine sim; skill editor + EVEmon import + ROI + **remap optimizer**; can-I-fly + gatekeeper; PI planner. Only **esi-fittings game-sync** unbuilt. |
+| 4 — Live layer | ✅ Complete | Log tailer, intel map + unified system risk, D-scan, threat scanner, gate-camp + background check, combat AAR + multibox fleet AAR, zKill, notify rules + Discord. |
+| 5 — Nav/Corp/Content | ◑ Mostly | Built: routing + avoidance + waypoint, courier, sov-owner overlay, **WH mass roller** + Thera/EVE-Scout, fleet read, in-game UI bridge, jump-fatigue, corp members/structures/**SRP**/**recruitment**, PvE incursions/FW/**abyss tracker**, LP, calendar. Gaps: **fleet write-ops**, ADM figures, WH signature/chain mapper, agent/mission finder, moon scheduling, dedicated timerboard, container-log theft. (Bookmark mgr removed — CCP retired the ESI scope.) |
+| 6 — 10x differentiators | ✅ Complete | Income optimizer, unified risk, hub arbitrage (ISK/m³), portfolio analytics, multibox fleet AAR, fit gatekeeper, skill-plan ROI. |
+| 6.5 — AI (Jarvis) | ◑ Partial | Built: OpenAI-compatible local client + auto-detect, tool registry + orchestrator, proactive briefing, durable memory + recall. Gaps: **MCP server/client**, **sqlite-vec vector RAG**, **voice**, separate per-domain agents. |
+| 7 — Polish & scale | ◑ Partial | Built: data export/wipe, local libraries (skill plans / fits / implant loadouts) + EVEmon/EFT import, appraisal. Gaps: **plugin API**, **dashboard layout customization**, **localization**, **auto-update**, **opt-in telemetry**, cloud/community sharing. |
+
+**Remaining gaps split two ways:**
+- *Buildable & self-contained* (no live ESI needed): WH signature/chain tracker, structure reinforcement timerboard, opt-in telemetry flag, localization scaffolding, configurable dashboard widgets.
+- *Needs a live client / 3P / infra* (validate on the user's machine): fleet write-ops, contacts/standings editor, esi-fittings sync, container-log theft detection, MCP server, sqlite-vec RAG, voice, auto-update + code-signing, cloud sync.
+
+---
+
 ## Repository structure (created in Phase 0)
 
 ```
