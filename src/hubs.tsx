@@ -2623,7 +2623,7 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
   function checkStats() {
     if (!isTauri() || !eft.trim()) return;
     setStats(null);
-    api.fitStats(eft).then(setStats).catch((e) => setError(String(e)));
+    api.fitStats(eft, character?.id ?? null).then(setStats).catch((e) => setError(String(e)));
   }
 
   function loadLibrary() {
@@ -2734,6 +2734,11 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
                 <span className="pos">{Math.round(stats.total_ehp).toLocaleString()} EHP</span>
                 <span>{Math.round(stats.dps).toLocaleString()} DPS</span>
                 <span>{Math.round(stats.volley).toLocaleString()} volley</span>
+                {(stats.shield_rps > 0 || stats.armor_rps > 0) && (
+                  <span className="pos">
+                    {Math.round(Math.max(stats.shield_rps, stats.armor_rps)).toLocaleString()} HP/s rep
+                  </span>
+                )}
                 <span>{Math.round(stats.cap_peak_recharge * 10) / 10} GJ/s cap</span>
               </div>
               <table className="holdings" style={{ marginTop: 8 }}>

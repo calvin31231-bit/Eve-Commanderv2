@@ -833,6 +833,8 @@ export interface FitStatsView {
   total_ehp: number;
   dps: number;
   volley: number;
+  shield_rps: number;
+  armor_rps: number;
   cap_capacity: number;
   cap_peak_recharge: number;
   note: string;

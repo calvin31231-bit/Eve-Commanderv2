@@ -195,7 +195,7 @@ pub async fn execute_tool(state: &AppState, name: &str, arguments: &str) -> Stri
         "system_risk" => system_risk_json(state).await,
         "fit_stats" => {
             let eft = args.get("eft").and_then(|v| v.as_str()).unwrap_or("");
-            match crate::commands::compute_fit_stats(state, eft).await {
+            match crate::commands::compute_fit_stats(state, eft, None).await {
                 Ok(s) => serde_json::to_string(&s).unwrap_or_else(|e| err(&e.to_string())),
                 Err(e) => err(&e),
             }

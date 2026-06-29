@@ -2055,24 +2055,36 @@ pub struct FitStatsView {
     pub total_ehp: f64,
     pub dps: f64,
     pub volley: f64,
+    /// Local shield-boost HP/s from fitted boosters.
+    pub shield_rps: f64,
+    /// Local armor-repair HP/s from fitted reps.
+    pub armor_rps: f64,
     pub cap_capacity: f64,
     /// Peak passive cap recharge (GJ/s).
     pub cap_peak_recharge: f64,
     pub note: String,
 }
 
-/// Compute dogma stats for a pasted EFT fit: **base-hull** EHP and capacitor
-/// (from the ship's own attributes — module buffs are the effect layer, not yet
-/// applied) plus **fit-accurate** DPS/volley from the fitted weapons and their
-/// charges. Needs the prebuilt SDE with dogma attributes (rebuild it if `found`
+/// Compute dogma stats for a pasted EFT fit: EHP (with buffer/resist modules),
+/// fit-accurate DPS/volley, local active-tank rep rate, and capacitor. When
+/// `characterId` is supplied, the character's universal weapon-damage skills are
+/// applied. Needs the prebuilt SDE with dogma attributes (rebuild it if `found`
 /// is false). Deterministic math lives in `eve_core::dogma`.
 #[tauri::command]
-pub async fn fit_stats(state: State<'_, AppState>, eft: String) -> CmdResult<FitStatsView> {
-    compute_fit_stats(&state, &eft).await
+pub async fn fit_stats(
+    state: State<'_, AppState>,
+    eft: String,
+    character_id: Option<i64>,
+) -> CmdResult<FitStatsView> {
+    compute_fit_stats(&state, &eft, character_id).await
 }
 
 /// Core of [`fit_stats`], callable from the AI tool registry too.
-pub(crate) async fn compute_fit_stats(state: &AppState, eft: &str) -> CmdResult<FitStatsView> {
+pub(crate) async fn compute_fit_stats(
+    state: &AppState,
+    eft: &str,
+    character_id: Option<i64>,
+) -> CmdResult<FitStatsView> {
     use eve_core::dogma;
 
     let empty = |note: &str| FitStatsView {
@@ -2084,6 +2096,8 @@ pub(crate) async fn compute_fit_stats(state: &AppState, eft: &str) -> CmdResult<
         total_ehp: 0.0,
         dps: 0.0,
         volley: 0.0,
+        shield_rps: 0.0,
+        armor_rps: 0.0,
         cap_capacity: 0.0,
         cap_peak_recharge: 0.0,
         note: note.to_string(),
@@ -2107,6 +2121,22 @@ pub(crate) async fn compute_fit_stats(state: &AppState, eft: &str) -> CmdResult<
     let (cap_capacity, recharge) = dogma::ship_cap(&ship_attrs);
     let cap = dogma::cap_stats(cap_capacity, recharge, 0.0);
 
+    // Universal weapon-damage skills, when a character is supplied. Surgical
+    // Strike (3315) +3%/lvl turret damage; Warhead Upgrades (20211) +2%/lvl
+    // missile damage. (Ship hull bonuses and specialisations are not modelled.)
+    let (turret_mult, missile_mult) = match character_id {
+        Some(id) => match state.character.skills(id).await {
+            Ok(sheet) => {
+                let level = |sid: i64| {
+                    sheet.skills.iter().find(|s| s.skill_id == sid).map(|s| s.trained_skill_level).unwrap_or(0)
+                };
+                (1.0 + 0.03 * level(3315) as f64, 1.0 + 0.02 * level(20211) as f64)
+            }
+            Err(_) => (1.0, 1.0),
+        },
+        None => (1.0, 1.0),
+    };
+
     // Fetch each fitted module's attributes once; reuse for both the buffer/
     // resist pass and weapon damage.
     let mut module_attrs = Vec::new();
@@ -2126,7 +2156,14 @@ pub(crate) async fn compute_fit_stats(state: &AppState, eft: &str) -> CmdResult<
             },
             None => None,
         };
-        if let Some(w) = dogma::weapon_from(&module, charge_attrs.as_ref()) {
+        if let Some(mut w) = dogma::weapon_from(&module, charge_attrs.as_ref()) {
+            // A loaded charge means a turret (has a damage multiplier) or a
+            // missile launcher; apply the matching damage skill. Drones (no
+            // charge) get no skill bonus here.
+            if item.charge.is_some() {
+                let has_mult = module.contains_key(&eve_core::dogma::attr::DAMAGE_MULTIPLIER);
+                w.multiplier *= if has_mult { turret_mult } else { missile_mult };
+            }
             for _ in 0..item.quantity.max(1) {
                 weapons.push(w);
             }
@@ -2142,6 +2179,7 @@ pub(crate) async fn compute_fit_stats(state: &AppState, eft: &str) -> CmdResult<
         dogma::apply_buffer_modules(base_shield, base_armor, base_hull, &module_attrs);
     let ehp = dogma::total_ehp(&shield, &armor, &hull, &dogma::DamageProfile::uniform());
     let dmg = dogma::fit_damage(&weapons);
+    let reps = dogma::local_reps(&module_attrs);
 
     Ok(FitStatsView {
         found: true,
@@ -2152,10 +2190,13 @@ pub(crate) async fn compute_fit_stats(state: &AppState, eft: &str) -> CmdResult<
         total_ehp: ehp.total,
         dps: dmg.dps,
         volley: dmg.volley,
+        shield_rps: reps.shield_rps,
+        armor_rps: reps.armor_rps,
         cap_capacity,
         cap_peak_recharge: cap.peak_recharge,
-        note: "EHP includes buffer + resist modules (stacking-penalised); cap is base-hull; DPS \
-               reflects the fitted weapons. Active reps and skill bonuses not yet modelled."
+        note: "EHP includes buffer + resist modules (stacking-penalised). DPS reflects fitted \
+               weapons + your turret/missile damage skills; ship hull bonuses and specialisations \
+               not yet modelled. Cap is base-hull peak recharge."
             .to_string(),
     })
 }

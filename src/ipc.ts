@@ -153,7 +153,8 @@ export const api = {
   planBuild: (productTypeId: number, runs: number, me: number, activity?: string) =>
     call<BuildPlanView | null>("plan_build", { productTypeId, runs, me, activity }),
   parseFit: (eft: string) => call<ResolvedFit | null>("parse_fit", { eft }),
-  fitStats: (eft: string) => call<FitStatsView>("fit_stats", { eft }),
+  fitStats: (eft: string, characterId: number | null) =>
+    call<FitStatsView>("fit_stats", { eft, characterId }),
   canFlyFit: (characterId: number, eft: string) =>
     call<CanFlyView>("can_fly_fit", { characterId, eft }),
   fitGatekeeper: (characterId: number, eft: string) =>

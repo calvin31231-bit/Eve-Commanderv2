@@ -334,12 +334,45 @@ pub fn apply_buffer_modules(
     (new_shield, new_armor, hull)
 }
 
+/// Local active-tank rate (HP repaired per second) from fitted boosters/reps.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RepStats {
+    pub shield_rps: f64,
+    pub armor_rps: f64,
+}
+
+/// Sum local shield-boost (attr 68) and armor-repair (attr 84) amounts over their
+/// cycle time (attr 73, ms) into HP/s. Local reps are not stacking-penalised.
+/// Pure.
+pub fn local_reps(modules: &[Attrs]) -> RepStats {
+    let (mut shield, mut armor) = (0.0, 0.0);
+    for m in modules {
+        let dur = get(m, 73) / 1000.0;
+        if dur <= 0.0 {
+            continue;
+        }
+        shield += get(m, 68) / dur;
+        armor += get(m, 84) / dur;
+    }
+    RepStats { shield_rps: shield, armor_rps: armor }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn map(pairs: &[(i64, f64)]) -> Attrs {
         pairs.iter().copied().collect()
+    }
+
+    #[test]
+    fn local_reps_sum_boost_over_cycle() {
+        // Shield booster: 200 HP / 4s = 50 HP/s. Armor rep: 150 HP / 5s = 30 HP/s.
+        let booster = map(&[(68, 200.0), (73, 4000.0)]);
+        let rep = map(&[(84, 150.0), (73, 5000.0)]);
+        let r = local_reps(&[booster, rep]);
+        assert!((r.shield_rps - 50.0).abs() < 1e-6);
+        assert!((r.armor_rps - 30.0).abs() < 1e-6);
     }
 
     #[test]
