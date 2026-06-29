@@ -78,6 +78,7 @@ import type {
   JumpFatigue,
   TheraConnection,
   RollPlan,
+  SrpBoardView,
   AiSettingsView,
   AiEndpointView,
   ChatMessage,
@@ -208,6 +209,27 @@ export const api = {
     }),
   rollWormhole: (totalMass: number, maxJumpMass: number, shipPassMass: number) =>
     call<RollPlan>("roll_wormhole", { totalMass, maxJumpMass, shipPassMass }),
+  submitSrpClaim: (claim: {
+    pilot: string;
+    ship: string;
+    loss_value: number;
+    location: string;
+    killmail_url: string;
+    notes: string;
+  }) =>
+    call<number>("submit_srp_claim", {
+      pilot: claim.pilot,
+      ship: claim.ship,
+      lossValue: claim.loss_value,
+      location: claim.location,
+      killmailUrl: claim.killmail_url,
+      notes: claim.notes,
+    }),
+  getSrpBoard: () => call<SrpBoardView>("get_srp_board"),
+  decideSrpClaim: (id: number, status: string, payout: number, reviewerNote: string) =>
+    call<void>("decide_srp_claim", { id, status, payout, reviewerNote }),
+  markSrpPaid: (id: number) => call<void>("mark_srp_paid", { id }),
+  deleteSrpClaim: (id: number) => call<void>("delete_srp_claim", { id }),
   getJumpFatigue: (characterId: number) =>
     call<JumpFatigue | null>("get_jump_fatigue", { characterId }),
   getTheraConnections: () => call<TheraConnection[]>("get_thera_connections"),

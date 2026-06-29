@@ -12,6 +12,7 @@ pub mod names;
 pub mod portability;
 pub mod settings;
 pub mod snapshots;
+pub mod srp;
 
 use std::path::Path;
 use std::str::FromStr;

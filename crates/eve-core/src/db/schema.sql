@@ -116,3 +116,22 @@ CREATE TABLE IF NOT EXISTS abyss_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_abyss_runs_time ON abyss_runs (ran_at);
+
+-- Ship Replacement Program claims: members submit losses, a reviewer approves
+-- (with a payout) or rejects, approved claims are marked paid.
+CREATE TABLE IF NOT EXISTS srp_claims (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    submitted_at  INTEGER NOT NULL,
+    pilot         TEXT    NOT NULL DEFAULT '',
+    ship          TEXT    NOT NULL DEFAULT '',
+    loss_value    REAL    NOT NULL DEFAULT 0,
+    location      TEXT    NOT NULL DEFAULT '',
+    killmail_url  TEXT    NOT NULL DEFAULT '',
+    notes         TEXT    NOT NULL DEFAULT '',
+    status        TEXT    NOT NULL DEFAULT 'pending',
+    payout        REAL    NOT NULL DEFAULT 0,
+    reviewer_note TEXT    NOT NULL DEFAULT '',
+    decided_at    INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_srp_claims_time ON srp_claims (submitted_at);

@@ -4197,6 +4197,84 @@ pub async fn delete_abyss_run(state: State<'_, AppState>, id: i64) -> CmdResult<
     state.db.delete_abyss_run(id).await.map_err(|e| e.to_string())
 }
 
+/// The SRP board: the claim queue + aggregate stats.
+#[derive(Debug, Serialize)]
+pub struct SrpBoardView {
+    pub claims: Vec<eve_core::srp::SrpClaim>,
+    pub summary: eve_core::srp::SrpSummary,
+}
+
+/// Submit an SRP claim (status pending).
+#[tauri::command]
+pub async fn submit_srp_claim(
+    state: State<'_, AppState>,
+    pilot: String,
+    ship: String,
+    loss_value: f64,
+    location: String,
+    killmail_url: String,
+    notes: String,
+) -> CmdResult<i64> {
+    if pilot.trim().is_empty() || ship.trim().is_empty() {
+        return Err("a claim needs a pilot and a ship".into());
+    }
+    state
+        .db
+        .add_srp_claim(
+            now_epoch_secs(),
+            pilot.trim(),
+            ship.trim(),
+            loss_value.max(0.0),
+            location.trim(),
+            killmail_url.trim(),
+            notes.trim(),
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The SRP claim queue plus board stats (owed/paid, counts by status).
+#[tauri::command]
+pub async fn get_srp_board(state: State<'_, AppState>) -> CmdResult<SrpBoardView> {
+    let claims = state.db.list_srp_claims().await.map_err(|e| e.to_string())?;
+    let summary = eve_core::srp::summarize(&claims);
+    Ok(SrpBoardView { claims, summary })
+}
+
+/// Approve or reject a claim with a payout + reviewer note. `status` must be
+/// "approved" or "rejected".
+#[tauri::command]
+pub async fn decide_srp_claim(
+    state: State<'_, AppState>,
+    id: i64,
+    status: String,
+    payout: f64,
+    reviewer_note: String,
+) -> CmdResult<()> {
+    let status = match status.as_str() {
+        "approved" => eve_core::srp::APPROVED,
+        "rejected" => eve_core::srp::REJECTED,
+        _ => return Err("status must be 'approved' or 'rejected'".into()),
+    };
+    state
+        .db
+        .decide_srp_claim(id, status, payout.max(0.0), reviewer_note.trim(), now_epoch_secs())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Mark an approved claim as paid.
+#[tauri::command]
+pub async fn mark_srp_paid(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.mark_srp_paid(id).await.map_err(|e| e.to_string())
+}
+
+/// Delete an SRP claim.
+#[tauri::command]
+pub async fn delete_srp_claim(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_srp_claim(id).await.map_err(|e| e.to_string())
+}
+
 /// One valued loot line.
 #[derive(Debug, Serialize)]
 pub struct LootLineView {

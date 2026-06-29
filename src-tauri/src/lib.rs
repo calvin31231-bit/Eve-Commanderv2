@@ -441,6 +441,11 @@ pub fn run() {
             commands::get_abyss_tracker,
             commands::delete_abyss_run,
             commands::value_loot,
+            commands::submit_srp_claim,
+            commands::get_srp_board,
+            commands::decide_srp_claim,
+            commands::mark_srp_paid,
+            commands::delete_srp_claim,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

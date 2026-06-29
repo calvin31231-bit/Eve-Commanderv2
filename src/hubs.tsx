@@ -63,6 +63,7 @@ import type {
   AbyssTrackerView,
   LootValueView,
   RollPlan,
+  SrpBoardView,
   AiSettingsView,
   AiEndpointView,
   MemoryNoteView,
@@ -1982,6 +1983,149 @@ function PlanetsEmpty({ character }: { character: Character }): ReactNode {
 
 // Character groups ("stables"/"hats") — create sets of characters for
 // cross-character views. The model/DB shipped in Phase 0; this is its UI.
+// Ship Replacement Program board: submit losses, review (approve/reject with a
+// payout), and track what's owed and paid. Local — no ESI writes.
+function SrpBoard(): ReactNode {
+  const [data, setData] = useState<SrpBoardView | null>(null);
+  const [pilot, setPilot] = useState("");
+  const [ship, setShip] = useState("");
+  const [loss, setLoss] = useState("");
+  const [location, setLocation] = useState("");
+  const [km, setKm] = useState("");
+  const [notes, setNotes] = useState("");
+  const [filter, setFilter] = useState("pending");
+
+  function load() {
+    if (!isTauri()) return;
+    api.getSrpBoard().then(setData).catch(() => setData(null));
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  function submit() {
+    if (!isTauri() || !pilot.trim() || !ship.trim()) return;
+    api
+      .submitSrpClaim({
+        pilot: pilot.trim(),
+        ship: ship.trim(),
+        loss_value: (parseFloat(loss) || 0) * 1_000_000,
+        location: location.trim(),
+        killmail_url: km.trim(),
+        notes: notes.trim(),
+      })
+      .then(() => { setPilot(""); setShip(""); setLoss(""); setLocation(""); setKm(""); setNotes(""); load(); })
+      .catch(() => undefined);
+  }
+
+  function approve(c: SrpBoardView["claims"][number]) {
+    const v = window.prompt("Payout (millions of ISK):", (c.loss_value / 1_000_000).toFixed(0));
+    if (v === null) return;
+    const note = window.prompt("Reviewer note (optional):", "") ?? "";
+    api.decideSrpClaim(c.id, "approved", (parseFloat(v) || 0) * 1_000_000, note).then(load);
+  }
+  function reject(c: SrpBoardView["claims"][number]) {
+    const note = window.prompt("Reason for rejection:", "") ?? "";
+    api.decideSrpClaim(c.id, "rejected", 0, note).then(load);
+  }
+
+  if (!isTauri()) {
+    return <div className="card"><p style={{ color: "var(--text-dim)" }}>The SRP board runs in the desktop shell.</p></div>;
+  }
+
+  const s = data?.summary;
+  const claims = (data?.claims ?? []).filter((c) => filter === "all" || c.status === filter);
+
+  return (
+    <>
+      <div className="card">
+        <h3>SRP · Submit a claim</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.8fr 1fr", gap: 6, alignItems: "end" }}>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Pilot
+            <input value={pilot} onChange={(e) => setPilot(e.target.value)} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Ship
+            <input value={ship} onChange={(e) => setShip(e.target.value)} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Loss (M)
+            <input value={loss} onChange={(e) => setLoss(e.target.value)} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Location
+            <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="J123456 / system" />
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <input value={km} onChange={(e) => setKm(e.target.value)} placeholder="killmail URL (optional)" style={{ flex: 1 }} />
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="notes" style={{ flex: 1 }} />
+          <button onClick={submit}>Submit</button>
+        </div>
+      </div>
+
+      {s && (
+        <div className="card">
+          <h3>Board</h3>
+          <div className="cashflow-totals">
+            <span>{s.pending} pending</span>
+            <span className="neg">{ISK.format(s.outstanding)} owed</span>
+            <span className="pos">{ISK.format(s.total_paid)} paid</span>
+            <span style={{ color: "var(--text-dim)" }}>{s.rejected} rejected</span>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+              Show{" "}
+              <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved (unpaid)</option>
+                <option value="paid">Paid</option>
+                <option value="rejected">Rejected</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
+          {claims.length > 0 ? (
+            <table className="holdings" style={{ marginTop: 8 }}>
+              <tbody>
+                {claims.map((c) => (
+                  <tr key={c.id}>
+                    <td>
+                      <strong>{c.pilot}</strong> · {c.ship}
+                      <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                        {c.location}{c.notes ? ` · ${c.notes}` : ""}
+                        {c.reviewer_note ? ` · review: ${c.reviewer_note}` : ""}
+                      </div>
+                    </td>
+                    <td className="mono num">{ISK.format(c.loss_value)}</td>
+                    <td className="mono num pos">{c.payout > 0 ? ISK.format(c.payout) : ""}</td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      {c.status === "pending" && (
+                        <>
+                          <button style={{ fontSize: 11 }} onClick={() => approve(c)}>Approve</button>{" "}
+                          <button style={{ fontSize: 11 }} onClick={() => reject(c)}>Reject</button>
+                        </>
+                      )}
+                      {c.status === "approved" && (
+                        <button style={{ fontSize: 11 }} onClick={() => api.markSrpPaid(c.id).then(load)}>Mark paid</button>
+                      )}
+                      {(c.status === "paid" || c.status === "rejected") && (
+                        <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{c.status}</span>
+                      )}{" "}
+                      <button style={{ fontSize: 11 }} onClick={() => api.deleteSrpClaim(c.id).then(load)}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 8 }}>No {filter} claims.</p>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 function CorpHub({ character }: { character: Character | null }): ReactNode {
   const [groups, setGroups] = useState<CharacterGroup[]>([]);
   const [roster, setRoster] = useState<Character[]>([]);
@@ -2032,10 +2176,12 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
           { id: "structures", label: "Structures" },
           { id: "members", label: "Members" },
           { id: "fleet", label: "Fleet" },
+          { id: "srp", label: "SRP" },
         ]}
         active={sub}
         onSelect={setSub}
       />
+      {sub === "srp" && <SrpBoard />}
       {sub === "groups" && (
         <>
           <div className="card" style={{ maxWidth: 560 }}>

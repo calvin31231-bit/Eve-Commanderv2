@@ -933,3 +933,34 @@ export interface RollPlan {
   collapse_latest: number;
   warning: string | null;
 }
+
+export interface SrpClaim {
+  id: number;
+  submitted_at: number;
+  pilot: string;
+  ship: string;
+  loss_value: number;
+  location: string;
+  killmail_url: string;
+  notes: string;
+  status: string;
+  payout: number;
+  reviewer_note: string;
+  decided_at: number | null;
+}
+
+export interface SrpSummary {
+  total: number;
+  pending: number;
+  approved_unpaid: number;
+  paid: number;
+  rejected: number;
+  total_loss: number;
+  outstanding: number;
+  total_paid: number;
+}
+
+export interface SrpBoardView {
+  claims: SrpClaim[];
+  summary: SrpSummary;
+}

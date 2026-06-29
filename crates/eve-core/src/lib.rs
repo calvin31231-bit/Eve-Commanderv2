@@ -67,6 +67,7 @@ pub mod research;
 pub mod sde;
 pub mod skillplan;
 pub mod skillplan_import;
+pub mod srp;
 pub mod universe;
 pub mod wallet;
 pub mod wormhole;

@@ -153,6 +153,29 @@ impl Database {
         })
         .collect::<Vec<_>>();
 
+        let srp_claims = sqlx::query(
+            "SELECT submitted_at, pilot, ship, loss_value, location, killmail_url, notes, status, payout, reviewer_note, decided_at FROM srp_claims",
+        )
+        .fetch_all(&self.app)
+        .await?
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "submitted_at": r.get::<i64, _>("submitted_at"),
+                "pilot": r.get::<String, _>("pilot"),
+                "ship": r.get::<String, _>("ship"),
+                "loss_value": r.get::<f64, _>("loss_value"),
+                "location": r.get::<String, _>("location"),
+                "killmail_url": r.get::<String, _>("killmail_url"),
+                "notes": r.get::<String, _>("notes"),
+                "status": r.get::<String, _>("status"),
+                "payout": r.get::<f64, _>("payout"),
+                "reviewer_note": r.get::<String, _>("reviewer_note"),
+                "decided_at": r.get::<Option<i64>, _>("decided_at"),
+            })
+        })
+        .collect::<Vec<_>>();
+
         Ok(serde_json::json!({
             "format": "eve-commander-export",
             "version": 1,
@@ -166,6 +189,7 @@ impl Database {
             "saved_fits": saved_fits,
             "implant_loadouts": implant_loadouts,
             "abyss_runs": abyss_runs,
+            "srp_claims": srp_claims,
         }))
     }
 
@@ -181,6 +205,7 @@ impl Database {
             "saved_fits",
             "implant_loadouts",
             "abyss_runs",
+            "srp_claims",
             "names",
             "settings",
             "characters",
