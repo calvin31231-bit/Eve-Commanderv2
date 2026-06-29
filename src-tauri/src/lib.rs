@@ -367,6 +367,7 @@ pub fn run() {
             commands::reprocess_item,
             commands::plan_build,
             commands::parse_fit,
+            commands::fit_stats,
             commands::can_fly_fit,
             commands::fit_gatekeeper,
             commands::doctrine_check,

@@ -376,6 +376,22 @@ impl Converter {
         const REQ_PAIRS: [(i64, i64); 6] =
             [(182, 277), (183, 278), (184, 279), (1285, 1286), (1289, 1287), (1290, 1288)];
 
+        // Fitting-relevant dogma attribute ids to persist (see eve_core::dogma):
+        // buffer HP, shield/armor/hull resonances, capacitor, weapon damage +
+        // rate of fire + multiplier, and slot/hardpoint/drone layout.
+        const FIT_ATTRS: &[i64] = &[
+            9, 263, 265, // hull/shield/armor HP
+            113, 110, 109, 111, // hull resonances em/th/kin/exp
+            271, 274, 273, 272, // shield resonances
+            267, 270, 269, 268, // armor resonances
+            482, 55, // capacitor capacity, recharge time (ms)
+            114, 118, 117, 116, // em/th/kin/exp damage (charges, drones)
+            64, 51, // damage multiplier, rate-of-fire/activation time (ms)
+            4, 70, 37, 38, // mass, agility, max velocity, cargo capacity
+            14, 13, 12, 102, 101, 1137, // hi/med/low slots, turret/launcher hardpoints, rig slots
+            1271, 283, // drone bandwidth, drone bay
+        ];
+
         let raw: BTreeMap<i64, RawTypeDogma> =
             serde_yaml::from_str(yaml).context("parsing typeDogma YAML")?;
 
@@ -390,12 +406,24 @@ impl Converter {
                 "INSERT OR REPLACE INTO type_required_skills (type_id, skill_type_id, level)
                  VALUES (?1, ?2, ?3)",
             )?;
+            let mut attr_stmt = tx.prepare(
+                "INSERT OR REPLACE INTO type_attributes (type_id, attribute_id, value)
+                 VALUES (?1, ?2, ?3)",
+            )?;
             for (type_id, td) in raw {
                 let attrs: HashMap<i64, f64> = td
                     .dogma_attributes
                     .iter()
                     .map(|a| (a.attribute_id, a.value))
                     .collect();
+
+                // Persist the curated fitting-relevant attributes.
+                for &attr_id in FIT_ATTRS {
+                    if let Some(&value) = attrs.get(&attr_id) {
+                        attr_stmt.execute(params![type_id, attr_id, value])?;
+                        written += 1;
+                    }
+                }
 
                 // Skill training metadata: present iff the type has a rank (275).
                 if let Some(&rank) = attrs.get(&275) {

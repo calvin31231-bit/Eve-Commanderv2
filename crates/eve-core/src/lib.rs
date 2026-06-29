@@ -34,6 +34,7 @@ pub mod corp;
 pub mod courier;
 pub mod db;
 pub mod discord;
+pub mod dogma;
 pub mod dscan;
 pub mod error;
 pub mod esi;

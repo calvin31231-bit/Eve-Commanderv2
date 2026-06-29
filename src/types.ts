@@ -823,3 +823,17 @@ export interface RealizedIncome {
   active_days: number;
   isk_per_day: number;
 }
+
+export interface FitStatsView {
+  found: boolean;
+  ship: string;
+  shield_ehp: number;
+  armor_ehp: number;
+  hull_ehp: number;
+  total_ehp: number;
+  dps: number;
+  volley: number;
+  cap_capacity: number;
+  cap_peak_recharge: number;
+  note: string;
+}

@@ -175,6 +175,16 @@ CREATE TABLE IF NOT EXISTS type_required_skills (
     level         INTEGER NOT NULL,
     PRIMARY KEY (type_id, skill_type_id)
 );
+
+-- A curated set of dogma attributes per type (HP, resonances, capacitor, damage,
+-- rate of fire, slots) that feed the fitting-stats engine. Only fitting-relevant
+-- attribute ids are stored (see sde-tools FIT_ATTRS) so the table stays small.
+CREATE TABLE IF NOT EXISTS type_attributes (
+    type_id      INTEGER NOT NULL,
+    attribute_id INTEGER NOT NULL,
+    value        REAL    NOT NULL,
+    PRIMARY KEY (type_id, attribute_id)
+);
 "#;
 
 impl Sde {
@@ -229,6 +239,20 @@ impl Sde {
             .fetch_optional(&self.pool)
             .await?;
         Ok(row.and_then(|r| r.get::<Option<f64>, _>("volume")))
+    }
+
+    /// The curated dogma attributes stored for a type, as an `attribute_id →
+    /// value` map (empty when the SDE predates the fitting-stats ingestion or the
+    /// type has none). Feeds `eve_core::dogma`.
+    pub async fn type_attributes(&self, type_id: i64) -> Result<std::collections::HashMap<i64, f64>> {
+        let rows = sqlx::query("SELECT attribute_id, value FROM type_attributes WHERE type_id = ?1")
+            .bind(type_id)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows
+            .iter()
+            .map(|r| (r.get::<i64, _>("attribute_id"), r.get::<f64, _>("value")))
+            .collect())
     }
 
     /// Resolve a solar system id to a [`SolarSystem`].

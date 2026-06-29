@@ -45,6 +45,7 @@ import type {
   RealizedIncome,
   CanFlyView,
   FitGatekeeperView,
+  FitStatsView,
   DoctrineView,
   DscanResult,
   ThreatScanView,
@@ -2615,8 +2616,15 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
   const [canFly, setCanFly] = useState<CanFlyView | null>(null);
   const [doctrine, setDoctrine] = useState<DoctrineView | null>(null);
   const [gate, setGate] = useState<FitGatekeeperView | null>(null);
+  const [stats, setStats] = useState<FitStatsView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<SavedFitView[] | null>(null);
+
+  function checkStats() {
+    if (!isTauri() || !eft.trim()) return;
+    setStats(null);
+    api.fitStats(eft).then(setStats).catch((e) => setError(String(e)));
+  }
 
   function loadLibrary() {
     if (!isTauri()) return;
@@ -2692,6 +2700,7 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
         <button onClick={checkDoctrine} disabled={!eft.trim()}>
           Check all pilots
         </button>
+        <button onClick={checkStats} disabled={!eft.trim()}>Stats (EHP/DPS)</button>
         <button onClick={saveFit} disabled={!eft.trim()}>Save fit</button>
         <button onClick={() => (saved ? setSaved(null) : loadLibrary())}>
           {saved ? "Hide library" : "Library"}
@@ -2713,6 +2722,31 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
               </button>
             </div>
           ))}
+        </div>
+      )}
+      {stats && (
+        <div style={{ marginTop: 10 }}>
+          {!stats.found ? (
+            <p style={{ color: "var(--text-dim)", fontSize: 12 }}>{stats.note}</p>
+          ) : (
+            <>
+              <div className="cashflow-totals">
+                <span className="pos">{Math.round(stats.total_ehp).toLocaleString()} EHP</span>
+                <span>{Math.round(stats.dps).toLocaleString()} DPS</span>
+                <span>{Math.round(stats.volley).toLocaleString()} volley</span>
+                <span>{Math.round(stats.cap_peak_recharge * 10) / 10} GJ/s cap</span>
+              </div>
+              <table className="holdings" style={{ marginTop: 8 }}>
+                <tbody>
+                  <tr><td>Shield</td><td className="mono num">{Math.round(stats.shield_ehp).toLocaleString()} EHP</td></tr>
+                  <tr><td>Armor</td><td className="mono num">{Math.round(stats.armor_ehp).toLocaleString()} EHP</td></tr>
+                  <tr><td>Hull</td><td className="mono num">{Math.round(stats.hull_ehp).toLocaleString()} EHP</td></tr>
+                  <tr><td>Capacitor</td><td className="mono num">{Math.round(stats.cap_capacity).toLocaleString()} GJ</td></tr>
+                </tbody>
+              </table>
+              <p style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 6 }}>{stats.note}</p>
+            </>
+          )}
         </div>
       )}
       {gate && gate.parsed && (

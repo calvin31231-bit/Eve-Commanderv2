@@ -2042,6 +2042,107 @@ pub async fn parse_fit(
     state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())
 }
 
+/// Dogma fit statistics: base-hull EHP and capacitor plus fit-accurate DPS.
+#[derive(Debug, Serialize)]
+pub struct FitStatsView {
+    /// True when the ship resolved and the SDE carries dogma attributes. False
+    /// (with a note) when the SDE predates the fitting-stats ingestion.
+    pub found: bool,
+    pub ship: String,
+    pub shield_ehp: f64,
+    pub armor_ehp: f64,
+    pub hull_ehp: f64,
+    pub total_ehp: f64,
+    pub dps: f64,
+    pub volley: f64,
+    pub cap_capacity: f64,
+    /// Peak passive cap recharge (GJ/s).
+    pub cap_peak_recharge: f64,
+    pub note: String,
+}
+
+/// Compute dogma stats for a pasted EFT fit: **base-hull** EHP and capacitor
+/// (from the ship's own attributes — module buffs are the effect layer, not yet
+/// applied) plus **fit-accurate** DPS/volley from the fitted weapons and their
+/// charges. Needs the prebuilt SDE with dogma attributes (rebuild it if `found`
+/// is false). Deterministic math lives in `eve_core::dogma`.
+#[tauri::command]
+pub async fn fit_stats(state: State<'_, AppState>, eft: String) -> CmdResult<FitStatsView> {
+    use eve_core::dogma;
+
+    let empty = |note: &str| FitStatsView {
+        found: false,
+        ship: String::new(),
+        shield_ehp: 0.0,
+        armor_ehp: 0.0,
+        hull_ehp: 0.0,
+        total_ehp: 0.0,
+        dps: 0.0,
+        volley: 0.0,
+        cap_capacity: 0.0,
+        cap_peak_recharge: 0.0,
+        note: note.to_string(),
+    };
+
+    let Some(fit) = state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())? else {
+        return Ok(empty("Not a valid EFT fit (check the [Ship, Name] header)."));
+    };
+    let Some(ship_id) = fit.ship_type_id else {
+        return Ok(empty("Ship not in SDE — rebuild the prebuilt SDE."));
+    };
+    let sde = state.names.sde();
+    let ship_attrs = sde.type_attributes(ship_id).await.map_err(|e| e.to_string())?;
+    if ship_attrs.is_empty() {
+        return Ok(empty(
+            "This SDE has no dogma attributes yet — rebuild sde.sqlite with the latest converter.",
+        ));
+    }
+
+    let (shield, armor, hull) = dogma::ship_layers(&ship_attrs);
+    let ehp = dogma::total_ehp(&shield, &armor, &hull, &dogma::DamageProfile::uniform());
+    let (cap_capacity, recharge) = dogma::ship_cap(&ship_attrs);
+    let cap = dogma::cap_stats(cap_capacity, recharge, 0.0);
+
+    // Fit-accurate damage: each weapon's charge (or the module itself, for
+    // drones) scaled by quantity.
+    let mut weapons = Vec::new();
+    for item in &fit.items {
+        let Some(type_id) = item.type_id else { continue };
+        let module = sde.type_attributes(type_id).await.unwrap_or_default();
+        if module.is_empty() {
+            continue;
+        }
+        let charge_attrs = match &item.charge {
+            Some(name) => match sde.type_id_by_name(name).await.ok().flatten() {
+                Some(cid) => sde.type_attributes(cid).await.ok(),
+                None => None,
+            },
+            None => None,
+        };
+        if let Some(w) = dogma::weapon_from(&module, charge_attrs.as_ref()) {
+            for _ in 0..item.quantity.max(1) {
+                weapons.push(w);
+            }
+        }
+    }
+    let dmg = dogma::fit_damage(&weapons);
+
+    Ok(FitStatsView {
+        found: true,
+        ship: fit.ship,
+        shield_ehp: ehp.shield,
+        armor_ehp: ehp.armor,
+        hull_ehp: ehp.hull,
+        total_ehp: ehp.total,
+        dps: dmg.dps,
+        volley: dmg.volley,
+        cap_capacity,
+        cap_peak_recharge: cap.peak_recharge,
+        note: "EHP/cap are base-hull (module buffs not yet applied); DPS reflects the fitted weapons."
+            .to_string(),
+    })
+}
+
 /// Parse pasted D-scan clipboard text into a grouped readout with danger
 /// callouts (combat probes, tackle hulls). Pure — needs no character or network.
 #[tauri::command]
