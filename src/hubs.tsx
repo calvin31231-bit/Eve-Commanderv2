@@ -64,6 +64,7 @@ import type {
   LootValueView,
   RollPlan,
   SrpBoardView,
+  RecruitBoardView,
   AiSettingsView,
   AiEndpointView,
   MemoryNoteView,
@@ -2126,6 +2127,129 @@ function SrpBoard(): ReactNode {
   );
 }
 
+// Recruitment / HR pipeline: applicants move applied → interview → trial →
+// accepted/rejected. Local — no ESI writes.
+const RECRUIT_STAGES = ["applied", "interview", "trial", "accepted", "rejected"];
+
+function RecruitBoard(): ReactNode {
+  const [data, setData] = useState<RecruitBoardView | null>(null);
+  const [name, setName] = useState("");
+  const [source, setSource] = useState("forum");
+  const [recruiter, setRecruiter] = useState("");
+  const [notes, setNotes] = useState("");
+  const [filter, setFilter] = useState("active");
+
+  function load() {
+    if (!isTauri()) return;
+    api.getRecruitBoard().then(setData).catch(() => setData(null));
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  function submit() {
+    if (!isTauri() || !name.trim()) return;
+    api.submitRecruit(name.trim(), source.trim(), notes.trim(), recruiter.trim())
+      .then(() => { setName(""); setNotes(""); load(); })
+      .catch(() => undefined);
+  }
+
+  function advance(id: number, status: string) {
+    const note = window.prompt(`Note for "${status}" (optional):`, "") ?? "";
+    api.setRecruitStatus(id, status, note).then(load);
+  }
+
+  if (!isTauri()) {
+    return <div className="card"><p style={{ color: "var(--text-dim)" }}>The recruitment board runs in the desktop shell.</p></div>;
+  }
+
+  const s = data?.summary;
+  const recruits = (data?.recruits ?? []).filter((r) =>
+    filter === "all" ? true : filter === "active" ? !["accepted", "rejected"].includes(r.status) : r.status === filter,
+  );
+
+  return (
+    <>
+      <div className="card">
+        <h3>Recruitment · New applicant</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.9fr 0.9fr", gap: 6, alignItems: "end" }}>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Name
+            <input value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Source
+            <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="forum / in-game / referral" />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Recruiter
+            <input value={recruiter} onChange={(e) => setRecruiter(e.target.value)} />
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="notes" style={{ flex: 1 }} />
+          <button onClick={submit}>Add</button>
+        </div>
+      </div>
+
+      {s && (
+        <div className="card">
+          <h3>Pipeline</h3>
+          <div className="cashflow-totals">
+            <span>{s.applied} applied</span>
+            <span>{s.interview} interview</span>
+            <span>{s.trial} trial</span>
+            <span className="pos">{s.accepted} accepted</span>
+            <span style={{ color: "var(--text-dim)" }}>{s.rejected} rejected</span>
+            {s.accepted + s.rejected > 0 && <span>{(s.acceptance_rate * 100).toFixed(0)}% accept</span>}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+              Show{" "}
+              <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+                <option value="active">In pipeline</option>
+                {RECRUIT_STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
+          {recruits.length > 0 ? (
+            <table className="holdings" style={{ marginTop: 8 }}>
+              <tbody>
+                {recruits.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <strong>{r.name}</strong>
+                      <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                        {r.source}{r.recruiter ? ` · ${r.recruiter}` : ""}{r.notes ? ` · ${r.notes}` : ""}
+                        {r.reviewer_note ? ` · ${r.reviewer_note}` : ""}
+                      </div>
+                    </td>
+                    <td style={{ fontSize: 12, textTransform: "capitalize" }}>{r.status}</td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <select
+                        style={{ fontSize: 11 }}
+                        value=""
+                        onChange={(e) => { if (e.target.value) advance(r.id, e.target.value); }}
+                      >
+                        <option value="">Move to…</option>
+                        {RECRUIT_STAGES.filter((st) => st !== r.status).map((st) => (
+                          <option key={st} value={st}>{st}</option>
+                        ))}
+                      </select>{" "}
+                      <button style={{ fontSize: 11 }} onClick={() => api.deleteRecruit(r.id).then(load)}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 8 }}>No applicants here.</p>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 function CorpHub({ character }: { character: Character | null }): ReactNode {
   const [groups, setGroups] = useState<CharacterGroup[]>([]);
   const [roster, setRoster] = useState<Character[]>([]);
@@ -2177,11 +2301,13 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
           { id: "members", label: "Members" },
           { id: "fleet", label: "Fleet" },
           { id: "srp", label: "SRP" },
+          { id: "recruit", label: "Recruitment" },
         ]}
         active={sub}
         onSelect={setSub}
       />
       {sub === "srp" && <SrpBoard />}
+      {sub === "recruit" && <RecruitBoard />}
       {sub === "groups" && (
         <>
           <div className="card" style={{ maxWidth: 560 }}>

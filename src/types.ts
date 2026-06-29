@@ -964,3 +964,31 @@ export interface SrpBoardView {
   claims: SrpClaim[];
   summary: SrpSummary;
 }
+
+export interface Recruit {
+  id: number;
+  applied_at: number;
+  name: string;
+  source: string;
+  notes: string;
+  status: string;
+  recruiter: string;
+  reviewer_note: string;
+  decided_at: number | null;
+}
+
+export interface RecruitSummary {
+  total: number;
+  applied: number;
+  interview: number;
+  trial: number;
+  accepted: number;
+  rejected: number;
+  active: number;
+  acceptance_rate: number;
+}
+
+export interface RecruitBoardView {
+  recruits: Recruit[];
+  summary: RecruitSummary;
+}

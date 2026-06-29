@@ -135,3 +135,19 @@ CREATE TABLE IF NOT EXISTS srp_claims (
 );
 
 CREATE INDEX IF NOT EXISTS idx_srp_claims_time ON srp_claims (submitted_at);
+
+-- Recruitment / HR pipeline: applicants moving through applied -> interview ->
+-- trial -> accepted/rejected.
+CREATE TABLE IF NOT EXISTS recruits (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    applied_at    INTEGER NOT NULL,
+    name          TEXT    NOT NULL DEFAULT '',
+    source        TEXT    NOT NULL DEFAULT '',
+    notes         TEXT    NOT NULL DEFAULT '',
+    status        TEXT    NOT NULL DEFAULT 'applied',
+    recruiter     TEXT    NOT NULL DEFAULT '',
+    reviewer_note TEXT    NOT NULL DEFAULT '',
+    decided_at    INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_recruits_time ON recruits (applied_at);

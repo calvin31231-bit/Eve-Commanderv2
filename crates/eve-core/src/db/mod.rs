@@ -10,6 +10,7 @@ pub mod characters;
 pub mod library;
 pub mod names;
 pub mod portability;
+pub mod recruit;
 pub mod settings;
 pub mod snapshots;
 pub mod srp;

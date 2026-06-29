@@ -4275,6 +4275,64 @@ pub async fn delete_srp_claim(state: State<'_, AppState>, id: i64) -> CmdResult<
     state.db.delete_srp_claim(id).await.map_err(|e| e.to_string())
 }
 
+/// The recruitment board: the applicant pipeline + stage summary.
+#[derive(Debug, Serialize)]
+pub struct RecruitBoardView {
+    pub recruits: Vec<eve_core::recruit::Recruit>,
+    pub summary: eve_core::recruit::RecruitSummary,
+}
+
+/// Add an applicant to the recruitment pipeline (stage applied).
+#[tauri::command]
+pub async fn submit_recruit(
+    state: State<'_, AppState>,
+    name: String,
+    source: String,
+    notes: String,
+    recruiter: String,
+) -> CmdResult<i64> {
+    if name.trim().is_empty() {
+        return Err("an applicant needs a name".into());
+    }
+    state
+        .db
+        .add_recruit(now_epoch_secs(), name.trim(), source.trim(), notes.trim(), recruiter.trim())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The recruitment pipeline plus stage counts + acceptance rate.
+#[tauri::command]
+pub async fn get_recruit_board(state: State<'_, AppState>) -> CmdResult<RecruitBoardView> {
+    let recruits = state.db.list_recruits().await.map_err(|e| e.to_string())?;
+    let summary = eve_core::recruit::summarize(&recruits);
+    Ok(RecruitBoardView { recruits, summary })
+}
+
+/// Move an applicant to a new pipeline stage with a note.
+#[tauri::command]
+pub async fn set_recruit_status(
+    state: State<'_, AppState>,
+    id: i64,
+    status: String,
+    reviewer_note: String,
+) -> CmdResult<()> {
+    if !eve_core::recruit::is_stage(&status) {
+        return Err("invalid pipeline stage".into());
+    }
+    state
+        .db
+        .set_recruit_status(id, &status, reviewer_note.trim(), now_epoch_secs())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Delete an applicant.
+#[tauri::command]
+pub async fn delete_recruit(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_recruit(id).await.map_err(|e| e.to_string())
+}
+
 /// One valued loot line.
 #[derive(Debug, Serialize)]
 pub struct LootLineView {

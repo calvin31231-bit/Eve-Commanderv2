@@ -79,6 +79,7 @@ import type {
   TheraConnection,
   RollPlan,
   SrpBoardView,
+  RecruitBoardView,
   AiSettingsView,
   AiEndpointView,
   ChatMessage,
@@ -230,6 +231,12 @@ export const api = {
     call<void>("decide_srp_claim", { id, status, payout, reviewerNote }),
   markSrpPaid: (id: number) => call<void>("mark_srp_paid", { id }),
   deleteSrpClaim: (id: number) => call<void>("delete_srp_claim", { id }),
+  submitRecruit: (name: string, source: string, notes: string, recruiter: string) =>
+    call<number>("submit_recruit", { name, source, notes, recruiter }),
+  getRecruitBoard: () => call<RecruitBoardView>("get_recruit_board"),
+  setRecruitStatus: (id: number, status: string, reviewerNote: string) =>
+    call<void>("set_recruit_status", { id, status, reviewerNote }),
+  deleteRecruit: (id: number) => call<void>("delete_recruit", { id }),
   getJumpFatigue: (characterId: number) =>
     call<JumpFatigue | null>("get_jump_fatigue", { characterId }),
   getTheraConnections: () => call<TheraConnection[]>("get_thera_connections"),

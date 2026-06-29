@@ -176,6 +176,26 @@ impl Database {
         })
         .collect::<Vec<_>>();
 
+        let recruits = sqlx::query(
+            "SELECT applied_at, name, source, notes, status, recruiter, reviewer_note, decided_at FROM recruits",
+        )
+        .fetch_all(&self.app)
+        .await?
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "applied_at": r.get::<i64, _>("applied_at"),
+                "name": r.get::<String, _>("name"),
+                "source": r.get::<String, _>("source"),
+                "notes": r.get::<String, _>("notes"),
+                "status": r.get::<String, _>("status"),
+                "recruiter": r.get::<String, _>("recruiter"),
+                "reviewer_note": r.get::<String, _>("reviewer_note"),
+                "decided_at": r.get::<Option<i64>, _>("decided_at"),
+            })
+        })
+        .collect::<Vec<_>>();
+
         Ok(serde_json::json!({
             "format": "eve-commander-export",
             "version": 1,
@@ -190,6 +210,7 @@ impl Database {
             "implant_loadouts": implant_loadouts,
             "abyss_runs": abyss_runs,
             "srp_claims": srp_claims,
+            "recruits": recruits,
         }))
     }
 
@@ -206,6 +227,7 @@ impl Database {
             "implant_loadouts",
             "abyss_runs",
             "srp_claims",
+            "recruits",
             "names",
             "settings",
             "characters",

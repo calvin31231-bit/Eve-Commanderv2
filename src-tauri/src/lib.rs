@@ -446,6 +446,10 @@ pub fn run() {
             commands::decide_srp_claim,
             commands::mark_srp_paid,
             commands::delete_srp_claim,
+            commands::submit_recruit,
+            commands::get_recruit_board,
+            commands::set_recruit_status,
+            commands::delete_recruit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");
