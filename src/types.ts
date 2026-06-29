@@ -859,3 +859,13 @@ export interface ImplantValueView {
   total: number;
   lines: [number, number][];
 }
+
+export interface PodRiskView {
+  found: boolean;
+  system_name: string;
+  security: number;
+  implant_value: number;
+  implant_count: number;
+  danger: boolean;
+  message: string;
+}

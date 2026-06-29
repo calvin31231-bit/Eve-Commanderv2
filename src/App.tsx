@@ -3,7 +3,7 @@ import { api, isTauri } from "./ipc";
 import { HUBS, renderHub, portraitUrl } from "./hubs";
 import { Starfield } from "./Starfield";
 import { AgentAvatar, type Mood } from "./AgentAvatar";
-import type { Character, CharacterStatusView, LocalIntel, Notification, ServerStatus, Severity, SystemSafetyView } from "./types";
+import type { Character, CharacterStatusView, LocalIntel, Notification, PodRiskView, ServerStatus, Severity, SystemSafetyView } from "./types";
 import "./app.css";
 
 function fmtDuration(seconds: number): string {
@@ -17,6 +17,14 @@ function fmtDuration(seconds: number): string {
 }
 
 const SEV_RANK: Record<Severity, number> = { Info: 1, Warning: 2, Critical: 3 };
+
+// Compact ISK formatter for the rail (e.g. "1.2B", "340M").
+function fmtIsk(v: number): string {
+  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(0)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
+  return `${Math.round(v)}`;
+}
 
 // Hubs are deep-linkable via the URL hash (e.g. #combat) so a view can be
 // restored on launch, linked to, or popped into its own window later.
@@ -38,6 +46,7 @@ export default function App() {
   const [alerts, setAlerts] = useState<Notification[]>([]);
   const [localIntel, setLocalIntel] = useState<LocalIntel | null>(null);
   const [safety, setSafety] = useState<SystemSafetyView | null>(null);
+  const [podRisk, setPodRisk] = useState<PodRiskView | null>(null);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -64,8 +73,10 @@ export default function App() {
   // System safety makes several zKill calls per refresh, so poll it slowly.
   useEffect(() => {
     if (!isTauri()) return;
-    const refreshSafety = () =>
+    const refreshSafety = () => {
       api.getSystemSafety().then(setSafety).catch(() => undefined);
+      api.getPodRisk().then(setPodRisk).catch(() => undefined);
+    };
     refreshSafety();
     const timer = window.setInterval(refreshSafety, 30000);
     return () => window.clearInterval(timer);
@@ -237,6 +248,22 @@ export default function App() {
             </div>
           )}
         </div>
+        {podRisk && podRisk.found && podRisk.implant_count > 0 && (
+          <div className="sa-section">
+            <h3>Pod Risk</h3>
+            <div className={`safety-block${podRisk.danger ? " sev-danger" : ""}`}>
+              <div className={`safety-headline${podRisk.danger ? " sev-danger" : ""}`}>
+                {podRisk.message}
+              </div>
+              <ul className="safety-list">
+                <li className="safety-current">
+                  <span>{podRisk.implant_count} implant(s)</span>
+                  <span className={`mono${podRisk.danger ? " neg" : ""}`}>{fmtIsk(podRisk.implant_value)}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
         <div className="sa-section">
           <h3>Local{localIntel?.system ? ` · ${localIntel.system}` : ""}</h3>
           {!localIntel || localIntel.speakers.length === 0 ? (

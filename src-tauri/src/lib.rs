@@ -370,6 +370,7 @@ pub fn run() {
             commands::fit_stats,
             commands::list_implants,
             commands::value_implants,
+            commands::get_pod_risk,
             commands::can_fly_fit,
             commands::fit_gatekeeper,
             commands::doctrine_check,

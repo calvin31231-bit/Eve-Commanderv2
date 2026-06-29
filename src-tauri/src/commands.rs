@@ -2278,6 +2278,82 @@ pub async fn list_implants(state: State<'_, AppState>) -> CmdResult<Vec<ImplantV
     Ok(out)
 }
 
+/// What's at stake if the active character is podded right now.
+#[derive(Debug, Serialize)]
+pub struct PodRiskView {
+    pub found: bool,
+    pub system_name: String,
+    pub security: f64,
+    /// Total market value of the implants currently plugged in.
+    pub implant_value: f64,
+    pub implant_count: usize,
+    /// True when there are implants at risk AND the system offers no CONCORD
+    /// protection (security < 0.45).
+    pub danger: bool,
+    pub message: String,
+}
+
+/// Pod-loss exposure for the active character: the value of plugged-in implants
+/// and whether the current system is dangerous (lowsec/null). Surfaced on the
+/// situational-awareness rail so a ratter doesn't forget a +5 set in lowsec.
+#[tauri::command]
+pub async fn get_pod_risk(state: State<'_, AppState>) -> CmdResult<PodRiskView> {
+    let empty = |msg: &str| PodRiskView {
+        found: false,
+        system_name: String::new(),
+        security: 0.0,
+        implant_value: 0.0,
+        implant_count: 0,
+        danger: false,
+        message: msg.to_string(),
+    };
+
+    let characters = state.db.list_characters().await.map_err(|e| e.to_string())?;
+    let Some(active) = characters.iter().find(|c| c.active) else {
+        return Ok(empty("No active character."));
+    };
+    let Ok(loc) = state.character.location(active.id).await else {
+        return Ok(empty("Location unavailable."));
+    };
+    let info = state.universe.system_info(loc.solar_system_id).await.map_err(|e| e.to_string())?;
+    let implants = state.clones.active_implants(active.id).await.unwrap_or_default();
+    let prices = state.prices.price_map().await.unwrap_or_default();
+    let implant_value: f64 = implants.iter().map(|id| prices.price(*id).unwrap_or(0.0)).sum();
+
+    let lowsec = info.security_status < 0.45;
+    let danger = lowsec && implant_value > 0.0;
+    let message = if implants.is_empty() {
+        "No implants plugged in — nothing to lose to a pod.".to_string()
+    } else if danger {
+        format!("{} ISK of implants at risk in {} space.", fmt_isk(implant_value), if info.security_status < 0.0 { "null" } else { "low" })
+    } else {
+        format!("{} ISK of implants — safe in {}.", fmt_isk(implant_value), info.name)
+    };
+
+    Ok(PodRiskView {
+        found: true,
+        system_name: info.name,
+        security: info.security_status,
+        implant_value,
+        implant_count: implants.len(),
+        danger,
+        message,
+    })
+}
+
+/// Compact ISK formatter for messages (e.g. "1.2B", "340M").
+fn fmt_isk(v: f64) -> String {
+    if v >= 1e9 {
+        format!("{:.1}B", v / 1e9)
+    } else if v >= 1e6 {
+        format!("{:.0}M", v / 1e6)
+    } else if v >= 1e3 {
+        format!("{:.0}K", v / 1e3)
+    } else {
+        format!("{v:.0}")
+    }
+}
+
 /// Per-implant value and the total for an implant loadout.
 #[derive(Debug, Serialize)]
 pub struct ImplantValueView {
