@@ -918,3 +918,16 @@ export interface AbyssTrackerView {
   runs: AbyssRun[];
   stats: AbyssStats;
 }
+
+export interface LootLineView {
+  name: string;
+  quantity: number;
+  unit_price: number;
+  value: number;
+}
+
+export interface LootValueView {
+  lines: LootLineView[];
+  total: number;
+  unresolved: string[];
+}

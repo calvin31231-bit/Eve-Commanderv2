@@ -3160,6 +3160,17 @@ function AbyssTracker(): ReactNode {
   const [loot, setLoot] = useState("");
   const [survived, setSurvived] = useState(true);
   const [notes, setNotes] = useState("");
+  const [lootPaste, setLootPaste] = useState("");
+  const [lootMsg, setLootMsg] = useState("");
+
+  function valueLoot() {
+    if (!isTauri() || !lootPaste.trim()) return;
+    api.valueLoot(lootPaste).then((v) => {
+      setLoot((v.total / 1_000_000).toFixed(2));
+      const unres = v.unresolved.length ? `, ${v.unresolved.length} unpriced` : "";
+      setLootMsg(`${v.lines.length} item(s) → ${ISK.format(v.total)}${unres}`);
+    }).catch(() => setLootMsg("Could not value loot."));
+  }
 
   function load() {
     if (!isTauri()) return;
@@ -3180,7 +3191,7 @@ function AbyssTracker(): ReactNode {
         survived,
         notes: notes.trim(),
       })
-      .then(() => { setShip(""); setFit(""); setMins(""); setLoot(""); setNotes(""); setSurvived(true); load(); })
+      .then(() => { setShip(""); setFit(""); setMins(""); setLoot(""); setNotes(""); setSurvived(true); setLootPaste(""); setLootMsg(""); load(); })
       .catch(() => undefined);
   }
 
@@ -3229,6 +3240,21 @@ function AbyssTracker(): ReactNode {
             <input type="checkbox" checked={survived} onChange={(e) => setSurvived(e.target.checked)} />
             Survived
           </label>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 2px" }}>
+            Loot value — type it above, or paste the loot window (select all → copy) and value it:
+          </p>
+          <textarea
+            value={lootPaste}
+            onChange={(e) => setLootPaste(e.target.value)}
+            placeholder={"Triglavian Survey Database\t3\nZero-Point Condensate\t12\n…"}
+            style={{ width: "100%", minHeight: 56, fontFamily: "monospace", fontSize: 12 }}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
+            <button onClick={valueLoot} disabled={!lootPaste.trim()}>Value loot</button>
+            {lootMsg && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{lootMsg}</span>}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="notes (optional)" style={{ flex: 1 }} />

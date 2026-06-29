@@ -445,6 +445,7 @@ pub fn run() {
             commands::log_abyss_run,
             commands::get_abyss_tracker,
             commands::delete_abyss_run,
+            commands::value_loot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

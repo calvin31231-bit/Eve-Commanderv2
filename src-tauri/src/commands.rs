@@ -4220,3 +4220,49 @@ pub async fn get_abyss_tracker(state: State<'_, AppState>) -> CmdResult<AbyssTra
 pub async fn delete_abyss_run(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
     state.db.delete_abyss_run(id).await.map_err(|e| e.to_string())
 }
+
+/// One valued loot line.
+#[derive(Debug, Serialize)]
+pub struct LootLineView {
+    pub name: String,
+    pub quantity: i64,
+    pub unit_price: f64,
+    pub value: f64,
+}
+
+/// Pasted loot valued against the market.
+#[derive(Debug, Serialize)]
+pub struct LootValueView {
+    pub lines: Vec<LootLineView>,
+    pub total: f64,
+    /// Item names the SDE/price reference didn't recognise.
+    pub unresolved: Vec<String>,
+}
+
+/// Value a pasted inventory selection (EVE's tab-separated copy) against the
+/// shared price reference — so a player can paste their abyss loot instead of
+/// typing a total. Unknown items are listed under `unresolved`.
+#[tauri::command]
+pub async fn value_loot(state: State<'_, AppState>, text: String) -> CmdResult<LootValueView> {
+    let parsed = eve_core::loot::parse_loot(&text);
+    let sde = state.names.sde();
+    let prices = state.prices.price_map().await.map_err(|e| e.to_string())?;
+
+    let mut lines = Vec::new();
+    let mut unresolved = Vec::new();
+    let mut total = 0.0;
+    for item in parsed {
+        match sde.type_id_by_name(&item.name).await.ok().flatten() {
+            Some(type_id) => {
+                let unit_price = prices.price(type_id).unwrap_or(0.0);
+                let value = unit_price * item.quantity as f64;
+                total += value;
+                lines.push(LootLineView { name: item.name, quantity: item.quantity, unit_price, value });
+            }
+            None => unresolved.push(item.name),
+        }
+    }
+    // Most valuable first.
+    lines.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(LootValueView { lines, total, unresolved })
+}

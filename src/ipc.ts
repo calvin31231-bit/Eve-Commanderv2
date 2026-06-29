@@ -69,6 +69,7 @@ import type {
   FleetAarView,
   IncursionView,
   AbyssTrackerView,
+  LootValueView,
   FwSystemView,
   LocalIntel,
   RouteView,
@@ -242,6 +243,7 @@ export const api = {
       ranAt: null,
     }),
   deleteAbyssRun: (id: number) => call<void>("delete_abyss_run", { id }),
+  valueLoot: (text: string) => call<LootValueView>("value_loot", { text }),
   getFwSystems: () => call<FwSystemView[]>("get_fw_systems"),
   costSkillPlan: (
     characterId: number,
