@@ -2185,10 +2185,47 @@ pub struct SystemRiskView {
     pub reasons: Vec<String>,
 }
 
+/// Count hostiles in Local from the passive chatlog: read who has spoken, score
+/// each via zKillboard, and tally Danger / Caution flags. Best-effort and EULA-
+/// safe (passive log read only); returns `(0, 0)` when there's no log, no speaker
+/// resolves, or any read fails. Caps the scan so an active Local stays cheap.
+pub(crate) async fn local_hostile_counts(state: &AppState) -> (i64, i64) {
+    use eve_core::intel::{score_pilot, ThreatLevel};
+
+    let Some(intel) = (|| {
+        let path = eve_core::logs::chatlogs_dir().and_then(|d| eve_core::logs::latest_log(&d, "Local"))?;
+        let text = eve_core::logs::read_log(&path)?;
+        Some(eve_core::logs::chatlog::summarize_local(&text))
+    })() else {
+        return (0, 0);
+    };
+
+    let names: Vec<String> = intel.speakers.into_iter().take(30).collect();
+    if names.is_empty() {
+        return (0, 0);
+    }
+    let Ok(id_map) = state.names.character_ids(&names).await else {
+        return (0, 0);
+    };
+
+    let (mut danger, mut caution) = (0i64, 0i64);
+    for name in &names {
+        if let Some(&id) = id_map.get(&name.to_lowercase()) {
+            let stats = state.zkill.character_stats(id).await.unwrap_or_default();
+            match score_pilot(&stats.to_pilot_stats()).level {
+                ThreatLevel::Danger => danger += 1,
+                ThreatLevel::Caution => caution += 1,
+                _ => {}
+            }
+        }
+    }
+    (danger, caution)
+}
+
 /// One unified threat number for the active character's current system, fusing
-/// in-system + neighbour kills (zKill), security band, and a gate-camp flag from
-/// recent kill volume into a single 0–100 score. The deterministic scoring lives
-/// in `eve_core::intel::score_system_risk`.
+/// in-system + neighbour kills (zKill), hostiles in Local (passive chatlog +
+/// zKill), security band, and a gate-camp flag into a single 0–100 score. The
+/// deterministic scoring lives in `eve_core::intel::score_system_risk`.
 #[tauri::command]
 pub async fn get_system_risk(state: State<'_, AppState>) -> CmdResult<SystemRiskView> {
     let empty = |found: bool| SystemRiskView {
@@ -2224,11 +2261,12 @@ pub async fn get_system_risk(state: State<'_, AppState>) -> CmdResult<SystemRisk
         neighbour_kills += state.zkill.system_kill_count(nid, 3600).await.unwrap_or(0);
     }
 
+    let (danger_pilots, caution_pilots) = local_hostile_counts(&state).await;
     let inputs = eve_core::intel::RiskInputs {
         system_kills,
         neighbour_kills,
-        danger_pilots: 0,
-        caution_pilots: 0,
+        danger_pilots,
+        caution_pilots,
         security: info.security_status,
         // Heavy recent in-system kill volume is the gate-camp signal.
         gate_camp: system_kills > 3,

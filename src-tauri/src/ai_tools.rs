@@ -244,11 +244,12 @@ async fn system_risk_json(state: &AppState) -> String {
     for nid in neighbor_ids {
         neighbour_kills += state.zkill.system_kill_count(nid, 3600).await.unwrap_or(0);
     }
+    let (danger_pilots, caution_pilots) = crate::commands::local_hostile_counts(state).await;
     let inputs = eve_core::intel::RiskInputs {
         system_kills,
         neighbour_kills,
-        danger_pilots: 0,
-        caution_pilots: 0,
+        danger_pilots,
+        caution_pilots,
         security: info.security_status,
         gate_camp: system_kills > 3,
     };
