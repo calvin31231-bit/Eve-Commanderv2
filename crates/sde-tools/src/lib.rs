@@ -49,6 +49,30 @@ struct RawType {
     /// items).
     #[serde(default = "default_true")]
     published: bool,
+    /// Ship trait bonuses (per-skill / role / misc), when present.
+    traits: Option<RawTraits>,
+}
+
+/// CCP's `traits` block on a ship type: per-skill bonuses keyed by skill type id,
+/// plus role and misc bonus lists.
+#[derive(Debug, Deserialize, Default)]
+struct RawTraits {
+    #[serde(default)]
+    types: std::collections::BTreeMap<i64, Vec<RawBonus>>,
+    #[serde(rename = "roleBonuses", default)]
+    role_bonuses: Vec<RawBonus>,
+    #[serde(rename = "miscBonuses", default)]
+    misc_bonuses: Vec<RawBonus>,
+}
+
+/// One bonus line within a traits block.
+#[derive(Debug, Deserialize)]
+struct RawBonus {
+    bonus: Option<f64>,
+    #[serde(rename = "bonusText", default)]
+    bonus_text: Option<Localized>,
+    #[serde(rename = "unitID")]
+    unit_id: Option<i64>,
 }
 
 /// One `typeMaterials.yaml` entry: the materials a type reprocesses into.
@@ -204,15 +228,45 @@ impl Converter {
                 "INSERT OR REPLACE INTO types (type_id, name, group_id, volume, portion_size)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
             )?;
+            let mut trait_stmt = tx.prepare(
+                "INSERT INTO type_traits (type_id, skill_type_id, bonus, unit_id, text, kind, ordinal)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
             for (type_id, t) in raw {
                 if !t.published {
                     continue;
                 }
+                let traits = t.traits;
                 let Some(name) = t.name.and_then(|n| n.en) else {
                     continue;
                 };
                 stmt.execute(params![type_id, name, t.group_id, t.volume, t.portion_size])?;
                 written += 1;
+
+                // Ship trait bonuses (display-only). Skip lines with no text.
+                if let Some(tr) = traits {
+                    let mut ord = 0i64;
+                    let mut write_bonus = |skill: Option<i64>, b: &RawBonus, kind: &str, ord: &mut i64| -> Result<()> {
+                        if let Some(text) = b.bonus_text.as_ref().and_then(|l| l.en.clone()) {
+                            if !text.trim().is_empty() {
+                                trait_stmt.execute(params![type_id, skill, b.bonus, b.unit_id, text, kind, *ord])?;
+                                *ord += 1;
+                            }
+                        }
+                        Ok(())
+                    };
+                    for (skill_id, bonuses) in &tr.types {
+                        for b in bonuses {
+                            write_bonus(Some(*skill_id), b, "skill", &mut ord)?;
+                        }
+                    }
+                    for b in &tr.role_bonuses {
+                        write_bonus(None, b, "role", &mut ord)?;
+                    }
+                    for b in &tr.misc_bonuses {
+                        write_bonus(None, b, "misc", &mut ord)?;
+                    }
+                }
             }
         }
         tx.commit()?;
@@ -755,6 +809,20 @@ mod tests {
     en: Rifter
   volume: 27289.0
   published: true
+  traits:
+    types:
+      3329:
+        - bonus: 5.0
+          bonusText:
+            en: bonus to Small Projectile Turret damage
+          unitID: 105
+          importance: 1
+    roleBonuses:
+      - bonus: 100.0
+        bonusText:
+          en: bonus to Small Projectile Turret tracking speed
+        unitID: 105
+        importance: 1
 9999:
   groupID: 99
   name:
@@ -806,6 +874,24 @@ mod tests {
             .unwrap();
         assert_eq!(g, 18);
         assert!((v - 0.01).abs() < 1e-9);
+
+        // Ship traits persisted: the Rifter has a skill bonus + a role bonus.
+        let trait_count: i64 = c
+            .connection()
+            .query_row("SELECT COUNT(*) FROM type_traits WHERE type_id = 587", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(trait_count, 2);
+        let (kind, skill, text): (String, Option<i64>, String) = c
+            .connection()
+            .query_row(
+                "SELECT kind, skill_type_id, text FROM type_traits WHERE type_id = 587 ORDER BY ordinal LIMIT 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(kind, "skill");
+        assert_eq!(skill, Some(3329));
+        assert!(text.contains("Projectile Turret damage"));
     }
 
     #[test]

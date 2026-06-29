@@ -185,6 +185,21 @@ CREATE TABLE IF NOT EXISTS type_attributes (
     value        REAL    NOT NULL,
     PRIMARY KEY (type_id, attribute_id)
 );
+
+-- Ship trait bonuses (CCP's own bonus text from typeIDs `traits`): per-skill,
+-- role, and misc bonuses shown on a fit. Display-only — these are NOT auto-
+-- applied to DPS, which needs the full dogma-effect engine.
+CREATE TABLE IF NOT EXISTS type_traits (
+    type_id       INTEGER NOT NULL,
+    skill_type_id INTEGER,
+    bonus         REAL,
+    unit_id       INTEGER,
+    text          TEXT    NOT NULL,
+    kind          TEXT    NOT NULL,
+    ordinal       INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_type_traits_type ON type_traits (type_id);
 "#;
 
 impl Sde {
@@ -252,6 +267,29 @@ impl Sde {
         Ok(rows
             .iter()
             .map(|r| (r.get::<i64, _>("attribute_id"), r.get::<f64, _>("value")))
+            .collect())
+    }
+
+    /// Ship trait bonus lines (CCP's own bonus text) for a type, ordered as
+    /// shown in-game. Each is `(kind, bonus, unit_id, text)` where kind is
+    /// `skill`/`role`/`misc`. Empty for non-ship types or a pre-trait SDE.
+    pub async fn type_traits(&self, type_id: i64) -> Result<Vec<(String, Option<f64>, Option<i64>, String)>> {
+        let rows = sqlx::query(
+            "SELECT kind, bonus, unit_id, text FROM type_traits WHERE type_id = ?1 ORDER BY ordinal",
+        )
+        .bind(type_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .iter()
+            .map(|r| {
+                (
+                    r.get::<String, _>("kind"),
+                    r.get::<Option<f64>, _>("bonus"),
+                    r.get::<Option<i64>, _>("unit_id"),
+                    r.get::<String, _>("text"),
+                )
+            })
             .collect())
     }
 

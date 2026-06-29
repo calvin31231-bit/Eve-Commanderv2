@@ -837,6 +837,7 @@ export interface FitStatsView {
   armor_rps: number;
   cap_capacity: number;
   cap_peak_recharge: number;
+  hull_bonuses: string[];
   note: string;
 }
 

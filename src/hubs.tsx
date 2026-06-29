@@ -2881,6 +2881,16 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
                   <tr><td>Capacitor</td><td className="mono num">{Math.round(stats.cap_capacity).toLocaleString()} GJ</td></tr>
                 </tbody>
               </table>
+              {stats.hull_bonuses.length > 0 && (
+                <>
+                  <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 2px" }}>Hull bonuses</p>
+                  <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12 }}>
+                    {stats.hull_bonuses.map((b, i) => (
+                      <li key={i}>{b}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
               <p style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 6 }}>{stats.note}</p>
             </>
           )}

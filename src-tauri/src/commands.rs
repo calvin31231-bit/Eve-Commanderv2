@@ -2062,7 +2062,29 @@ pub struct FitStatsView {
     pub cap_capacity: f64,
     /// Peak passive cap recharge (GJ/s).
     pub cap_peak_recharge: f64,
+    /// The ship's trait bonuses (CCP's own text), display-only.
+    pub hull_bonuses: Vec<String>,
     pub note: String,
+}
+
+/// Format one ship-trait row into a display line. `unit_id` 105 is a percentage.
+fn format_trait(kind: &str, bonus: Option<f64>, unit_id: Option<i64>, text: &str) -> String {
+    let unit = if unit_id == Some(105) { "%" } else { "" };
+    let amount = match bonus {
+        Some(b) if b.fract() == 0.0 => format!("{}{}", b as i64, unit),
+        Some(b) => format!("{b}{unit}"),
+        None => String::new(),
+    };
+    let suffix = match kind {
+        "skill" => " (per level)",
+        "role" => " (role)",
+        _ => "",
+    };
+    if amount.is_empty() {
+        format!("{text}{suffix}")
+    } else {
+        format!("+{amount} {text}{suffix}")
+    }
 }
 
 /// Compute dogma stats for a pasted EFT fit: EHP (with buffer/resist modules),
@@ -2100,6 +2122,7 @@ pub(crate) async fn compute_fit_stats(
         armor_rps: 0.0,
         cap_capacity: 0.0,
         cap_peak_recharge: 0.0,
+        hull_bonuses: Vec::new(),
         note: note.to_string(),
     };
 
@@ -2181,6 +2204,16 @@ pub(crate) async fn compute_fit_stats(
     let dmg = dogma::fit_damage(&weapons);
     let reps = dogma::local_reps(&module_attrs);
 
+    // The ship's trait bonuses, shown verbatim (CCP's text). Display-only — not
+    // auto-applied to DPS, which needs the full dogma-effect engine.
+    let hull_bonuses: Vec<String> = sde
+        .type_traits(ship_id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(kind, bonus, unit, text)| format_trait(&kind, bonus, unit, &text))
+        .collect();
+
     Ok(FitStatsView {
         found: true,
         ship: fit.ship,
@@ -2194,6 +2227,7 @@ pub(crate) async fn compute_fit_stats(
         armor_rps: reps.armor_rps,
         cap_capacity,
         cap_peak_recharge: cap.peak_recharge,
+        hull_bonuses,
         note: "EHP includes buffer + resist modules (stacking-penalised). DPS reflects fitted \
                weapons + your turret/missile damage skills; ship hull bonuses and specialisations \
                not yet modelled. Cap is base-hull peak recharge."
@@ -2235,7 +2269,7 @@ pub async fn list_implants(state: State<'_, AppState>) -> CmdResult<Vec<ImplantV
             Some(ImplantView {
                 type_id,
                 slot: slot as i64,
-                category: eve_core::implants::classify(&name).as_str().to_string(),
+                category: eve_core::implants::classify(&name).to_string(),
                 name,
             })
         })
