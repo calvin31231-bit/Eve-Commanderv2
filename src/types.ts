@@ -854,3 +854,8 @@ export interface SavedLoadoutView {
   implant_ids: number[];
   updated_at: number;
 }
+
+export interface ImplantValueView {
+  total: number;
+  lines: [number, number][];
+}

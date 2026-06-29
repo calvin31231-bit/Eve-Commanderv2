@@ -2278,6 +2278,30 @@ pub async fn list_implants(state: State<'_, AppState>) -> CmdResult<Vec<ImplantV
     Ok(out)
 }
 
+/// Per-implant value and the total for an implant loadout.
+#[derive(Debug, Serialize)]
+pub struct ImplantValueView {
+    pub total: f64,
+    /// (type_id, market value) per implant the price reference knows.
+    pub lines: Vec<(i64, f64)>,
+}
+
+/// Reference market value of a set of implants (a clone loadout) — implants are a
+/// big loss when podded, so the fitter shows what's at risk. Uses the shared
+/// price reference; unknown types contribute zero.
+#[tauri::command]
+pub async fn value_implants(state: State<'_, AppState>, type_ids: Vec<i64>) -> CmdResult<ImplantValueView> {
+    let prices = state.prices.price_map().await.map_err(|e| e.to_string())?;
+    let mut total = 0.0;
+    let mut lines = Vec::new();
+    for id in type_ids {
+        let v = prices.price(id).unwrap_or(0.0);
+        total += v;
+        lines.push((id, v));
+    }
+    Ok(ImplantValueView { total, lines })
+}
+
 /// Parse pasted D-scan clipboard text into a grouped readout with danger
 /// callouts (combat probes, tackle hulls). Pure — needs no character or network.
 #[tauri::command]

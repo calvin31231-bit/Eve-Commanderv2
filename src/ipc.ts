@@ -46,6 +46,7 @@ import type {
   ResolvedFit,
   FitStatsView,
   ImplantView,
+  ImplantValueView,
   SavedLoadoutView,
   SkillPlanView,
   SkillImportView,
@@ -158,6 +159,8 @@ export const api = {
   fitStats: (eft: string, characterId: number | null) =>
     call<FitStatsView>("fit_stats", { eft, characterId }),
   listImplants: () => call<ImplantView[]>("list_implants"),
+  valueImplants: (typeIds: number[]) =>
+    call<ImplantValueView>("value_implants", { typeIds }),
   saveImplantLoadout: (name: string, implantIds: number[]) =>
     call<number>("save_implant_loadout", { name, implantIds }),
   listImplantLoadouts: () => call<SavedLoadoutView[]>("list_implant_loadouts"),

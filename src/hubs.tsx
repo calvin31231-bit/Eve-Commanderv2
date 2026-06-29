@@ -706,12 +706,31 @@ function ImplantFitter(): ReactNode {
   const [catFilter, setCatFilter] = useState("Any");
   const [q, setQ] = useState("");
   const [loadouts, setLoadouts] = useState<SavedLoadoutView[] | null>(null);
+  const [rackValue, setRackValue] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isTauri()) return;
     api.listImplants().then(setAll).catch(() => setAll([]));
     api.listImplantLoadouts().then(setLoadouts).catch(() => setLoadouts([]));
   }, []);
+
+  const equipped = useMemo(() => Object.values(rack), [rack]);
+
+  // Price the rack whenever it changes.
+  useEffect(() => {
+    if (!isTauri() || equipped.length === 0) {
+      setRackValue(null);
+      return;
+    }
+    api.valueImplants(equipped.map((i) => i.type_id)).then((v) => setRackValue(v.total)).catch(() => setRackValue(null));
+  }, [equipped]);
+
+  // Count equipped implants per boost category for the summary.
+  const rackCategories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    equipped.forEach((i) => { counts[i.category] = (counts[i.category] ?? 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [equipped]);
 
   function refreshLoadouts() {
     api.listImplantLoadouts().then(setLoadouts).catch(() => undefined);
@@ -798,6 +817,15 @@ function ImplantFitter(): ReactNode {
         <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
           Build a clone loadout: pick an implant from the catalogue to slot it. One implant per slot.
         </p>
+        {equipped.length > 0 && (
+          <div className="cashflow-totals" style={{ marginBottom: 8 }}>
+            <span>{equipped.length}/10 slots</span>
+            {rackValue !== null && <span className="neg">{ISK.format(rackValue)} at risk</span>}
+            {rackCategories.map(([cat, n]) => (
+              <span key={cat} style={{ color: "var(--text-dim)" }}>{cat} ×{n}</span>
+            ))}
+          </div>
+        )}
         {loadouts && loadouts.length > 0 && (
           <div style={{ marginBottom: 8 }}>
             <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 4px" }}>Saved loadouts</p>
