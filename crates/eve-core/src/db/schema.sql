@@ -99,3 +99,20 @@ CREATE TABLE IF NOT EXISTS implant_loadouts (
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
 );
+
+-- Abyssal Deadspace run log: tier/weather/ship/fit, time, loot, survival — the
+-- raw material for the abyss tracker's ISK/hr and survival stats.
+CREATE TABLE IF NOT EXISTS abyss_runs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    ran_at           INTEGER NOT NULL,
+    tier             INTEGER NOT NULL DEFAULT 0,
+    weather          TEXT    NOT NULL DEFAULT '',
+    ship             TEXT    NOT NULL DEFAULT '',
+    fit              TEXT    NOT NULL DEFAULT '',
+    duration_seconds INTEGER NOT NULL DEFAULT 0,
+    loot_value       REAL    NOT NULL DEFAULT 0,
+    survived         INTEGER NOT NULL DEFAULT 1,
+    notes            TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_abyss_runs_time ON abyss_runs (ran_at);

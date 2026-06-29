@@ -132,6 +132,27 @@ impl Database {
             })
             .collect::<Vec<_>>();
 
+        let abyss_runs = sqlx::query(
+            "SELECT ran_at, tier, weather, ship, fit, duration_seconds, loot_value, survived, notes FROM abyss_runs",
+        )
+        .fetch_all(&self.app)
+        .await?
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "ran_at": r.get::<i64, _>("ran_at"),
+                "tier": r.get::<i64, _>("tier"),
+                "weather": r.get::<String, _>("weather"),
+                "ship": r.get::<String, _>("ship"),
+                "fit": r.get::<String, _>("fit"),
+                "duration_seconds": r.get::<i64, _>("duration_seconds"),
+                "loot_value": r.get::<f64, _>("loot_value"),
+                "survived": r.get::<i64, _>("survived"),
+                "notes": r.get::<String, _>("notes"),
+            })
+        })
+        .collect::<Vec<_>>();
+
         Ok(serde_json::json!({
             "format": "eve-commander-export",
             "version": 1,
@@ -144,6 +165,7 @@ impl Database {
             "skill_plans": skill_plans,
             "saved_fits": saved_fits,
             "implant_loadouts": implant_loadouts,
+            "abyss_runs": abyss_runs,
         }))
     }
 
@@ -158,6 +180,7 @@ impl Database {
             "skill_plans",
             "saved_fits",
             "implant_loadouts",
+            "abyss_runs",
             "names",
             "settings",
             "characters",

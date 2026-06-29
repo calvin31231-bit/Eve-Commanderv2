@@ -442,6 +442,9 @@ pub fn run() {
             commands::save_implant_loadout,
             commands::list_implant_loadouts,
             commands::delete_implant_loadout,
+            commands::log_abyss_run,
+            commands::get_abyss_tracker,
+            commands::delete_abyss_run,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

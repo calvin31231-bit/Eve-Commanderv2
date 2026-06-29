@@ -4,6 +4,7 @@
 //! builds with no `DATABASE_URL` or offline metadata. WAL mode is enabled for
 //! concurrent reads during writes.
 
+pub mod abyss;
 pub mod ai_memory;
 pub mod characters;
 pub mod library;

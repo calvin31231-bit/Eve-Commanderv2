@@ -19,6 +19,7 @@
 //! ESI API. There is no input automation, no game-memory reading, and no
 //! disallowed cache scraping. See `docs/EULA-notes.md`.
 
+pub mod abyss;
 pub mod account;
 pub mod ai;
 pub mod ai_memory;

@@ -60,6 +60,7 @@ import type {
   SystemRiskView,
   CombatLogView,
   FleetAarView,
+  AbyssTrackerView,
   AiSettingsView,
   AiEndpointView,
   MemoryNoteView,
@@ -3147,6 +3148,155 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
   );
 }
 
+// Abyssal Deadspace run tracker: log each run (tier/weather/ship/fit, time,
+// loot, survival) and see ISK/hr, survival rate, and a per-tier breakdown.
+function AbyssTracker(): ReactNode {
+  const [data, setData] = useState<AbyssTrackerView | null>(null);
+  const [tier, setTier] = useState("4");
+  const [weather, setWeather] = useState("Dark");
+  const [ship, setShip] = useState("");
+  const [fit, setFit] = useState("");
+  const [mins, setMins] = useState("");
+  const [loot, setLoot] = useState("");
+  const [survived, setSurvived] = useState(true);
+  const [notes, setNotes] = useState("");
+
+  function load() {
+    if (!isTauri()) return;
+    api.getAbyssTracker().then(setData).catch(() => setData(null));
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  function logRun() {
+    if (!isTauri()) return;
+    api
+      .logAbyssRun({
+        tier: Number(tier) || 0,
+        weather,
+        ship: ship.trim(),
+        fit: fit.trim(),
+        duration_seconds: Math.round((parseFloat(mins) || 0) * 60),
+        loot_value: (parseFloat(loot) || 0) * 1_000_000,
+        survived,
+        notes: notes.trim(),
+      })
+      .then(() => { setShip(""); setFit(""); setMins(""); setLoot(""); setNotes(""); setSurvived(true); load(); })
+      .catch(() => undefined);
+  }
+
+  if (!isTauri()) {
+    return <div className="card"><p style={{ color: "var(--text-dim)" }}>The abyss tracker runs in the desktop shell.</p></div>;
+  }
+
+  const s = data?.stats;
+  return (
+    <>
+      <div className="card">
+        <h3>Abyss Tracker <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· log a run</span></h3>
+        <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+          Record each abyssal run. Loot in millions of ISK, time in minutes.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "auto auto 1.3fr 1.3fr auto auto auto", gap: 6, alignItems: "end" }}>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Tier
+            <select value={tier} onChange={(e) => setTier(e.target.value)}>
+              {[1, 2, 3, 4, 5, 6].map((t) => <option key={t} value={String(t)}>T{t}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Weather
+            <select value={weather} onChange={(e) => setWeather(e.target.value)}>
+              {["Dark", "Gamma", "Electrical", "Exotic", "Firestorm"].map((w) => <option key={w} value={w}>{w}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Ship
+            <input value={ship} onChange={(e) => setShip(e.target.value)} placeholder="Gila" />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Fit
+            <input value={fit} onChange={(e) => setFit(e.target.value)} placeholder="T4 Gila" />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Min
+            <input value={mins} onChange={(e) => setMins(e.target.value)} style={{ width: 50 }} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Loot M
+            <input value={loot} onChange={(e) => setLoot(e.target.value)} style={{ width: 60 }} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)", display: "flex", gap: 4, alignItems: "center" }}>
+            <input type="checkbox" checked={survived} onChange={(e) => setSurvived(e.target.checked)} />
+            Survived
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="notes (optional)" style={{ flex: 1 }} />
+          <button onClick={logRun}>Log run</button>
+        </div>
+      </div>
+
+      {s && s.runs > 0 && (
+        <div className="card">
+          <h3>Stats</h3>
+          <div className="cashflow-totals">
+            <span>{s.runs} runs</span>
+            <span className="pos">{ISK.format(s.isk_per_hour)}/hr</span>
+            <span>{ISK.format(s.avg_loot)} avg</span>
+            <span>{formatDuration(s.avg_seconds)} avg</span>
+            <span className={s.deaths > 0 ? "neg" : "pos"}>{(s.survival_rate * 100).toFixed(0)}% survived</span>
+          </div>
+          {s.by_tier.length > 0 && (
+            <table className="holdings" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Tier</th>
+                  <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Runs</th>
+                  <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Avg loot</th>
+                  <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Avg time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {s.by_tier.map((t) => (
+                  <tr key={t.tier}>
+                    <td>T{t.tier}</td>
+                    <td className="mono num">{t.runs}</td>
+                    <td className="mono num pos">{ISK.format(t.avg_loot)}</td>
+                    <td className="mono num">{formatDuration(t.avg_seconds)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {data && data.runs.length > 0 && (
+        <div className="card">
+          <h3>Recent runs</h3>
+          <table className="holdings">
+            <tbody>
+              {data.runs.slice(0, 30).map((r) => (
+                <tr key={r.id} style={{ opacity: r.survived ? 1 : 0.6 }}>
+                  <td>T{r.tier} {r.weather}</td>
+                  <td>{r.ship}{r.fit ? ` · ${r.fit}` : ""}</td>
+                  <td className="mono num">{formatDuration(r.duration_seconds)}</td>
+                  <td className={"mono num" + (r.survived ? " pos" : " neg")}>
+                    {r.survived ? ISK.format(r.loot_value) : "lost"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <button style={{ fontSize: 11 }} onClick={() => api.deleteAbyssRun(r.id).then(load)}>✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
 function CombatHub({ character }: { character: Character | null }): ReactNode {
   const [sub, setSub] = useState("fitting");
   return (
@@ -3161,12 +3311,14 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
           { id: "threat", label: "Threat Scanner" },
           { id: "aar", label: "Combat Log" },
           { id: "pve", label: "PvE" },
+          { id: "abyss", label: "Abyss" },
         ]}
         active={sub}
         onSelect={setSub}
       />
       {sub === "fitting" && <FitImporter character={character} />}
       {sub === "dscan" && <DscanPanel />}
+      {sub === "abyss" && <AbyssTracker />}
       {sub === "pve" && (
         <>
           <IncursionsPanel />

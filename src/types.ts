@@ -880,3 +880,41 @@ export interface PodRiskView {
   danger: boolean;
   message: string;
 }
+
+export interface AbyssRun {
+  id: number;
+  ran_at: number;
+  tier: number;
+  weather: string;
+  ship: string;
+  fit: string;
+  duration_seconds: number;
+  loot_value: number;
+  survived: boolean;
+  notes: string;
+}
+
+export interface TierStat {
+  tier: number;
+  runs: number;
+  avg_loot: number;
+  avg_seconds: number;
+}
+
+export interface AbyssStats {
+  runs: number;
+  deaths: number;
+  survival_rate: number;
+  total_loot: number;
+  avg_loot: number;
+  total_seconds: number;
+  avg_seconds: number;
+  isk_per_hour: number;
+  best_loot: number;
+  by_tier: TierStat[];
+}
+
+export interface AbyssTrackerView {
+  runs: AbyssRun[];
+  stats: AbyssStats;
+}

@@ -68,6 +68,7 @@ import type {
   CombatLogView,
   FleetAarView,
   IncursionView,
+  AbyssTrackerView,
   FwSystemView,
   LocalIntel,
   RouteView,
@@ -218,6 +219,29 @@ export const api = {
     call<FleetAarView>("get_fleet_aar", { maxPilots }),
   getLocalIntel: () => call<LocalIntel | null>("get_local_intel"),
   getIncursions: () => call<IncursionView[]>("get_incursions"),
+  getAbyssTracker: () => call<AbyssTrackerView>("get_abyss_tracker"),
+  logAbyssRun: (run: {
+    tier: number;
+    weather: string;
+    ship: string;
+    fit: string;
+    duration_seconds: number;
+    loot_value: number;
+    survived: boolean;
+    notes: string;
+  }) =>
+    call<number>("log_abyss_run", {
+      tier: run.tier,
+      weather: run.weather,
+      ship: run.ship,
+      fit: run.fit,
+      durationSeconds: run.duration_seconds,
+      lootValue: run.loot_value,
+      survived: run.survived,
+      notes: run.notes,
+      ranAt: null,
+    }),
+  deleteAbyssRun: (id: number) => call<void>("delete_abyss_run", { id }),
   getFwSystems: () => call<FwSystemView[]>("get_fw_systems"),
   costSkillPlan: (
     characterId: number,

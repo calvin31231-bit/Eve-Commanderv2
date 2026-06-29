@@ -4166,3 +4166,57 @@ pub async fn list_implant_loadouts(state: State<'_, AppState>) -> CmdResult<Vec<
 pub async fn delete_implant_loadout(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
     state.db.delete_loadout(id).await.map_err(|e| e.to_string())
 }
+
+/// The abyss tracker payload: the run history + aggregate stats.
+#[derive(Debug, Serialize)]
+pub struct AbyssTrackerView {
+    pub runs: Vec<eve_core::abyss::AbyssRun>,
+    pub stats: eve_core::abyss::AbyssStats,
+}
+
+/// Log an abyssal run. `ranAt` defaults to now when omitted.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn log_abyss_run(
+    state: State<'_, AppState>,
+    tier: i64,
+    weather: String,
+    ship: String,
+    fit: String,
+    duration_seconds: i64,
+    loot_value: f64,
+    survived: bool,
+    notes: String,
+    ran_at: Option<i64>,
+) -> CmdResult<i64> {
+    let when = ran_at.unwrap_or_else(now_epoch_secs);
+    state
+        .db
+        .add_abyss_run(
+            when,
+            tier.clamp(0, 6),
+            weather.trim(),
+            ship.trim(),
+            fit.trim(),
+            duration_seconds.max(0),
+            loot_value.max(0.0),
+            survived,
+            notes.trim(),
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The abyssal run history plus aggregate stats (ISK/hr, survival, per-tier).
+#[tauri::command]
+pub async fn get_abyss_tracker(state: State<'_, AppState>) -> CmdResult<AbyssTrackerView> {
+    let runs = state.db.list_abyss_runs().await.map_err(|e| e.to_string())?;
+    let stats = eve_core::abyss::summarize(&runs);
+    Ok(AbyssTrackerView { runs, stats })
+}
+
+/// Delete a logged abyssal run.
+#[tauri::command]
+pub async fn delete_abyss_run(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_abyss_run(id).await.map_err(|e| e.to_string())
+}
