@@ -32,7 +32,9 @@ const BASE_SCOPES: &[&str] = &[
     "esi-planets.manage_planets.v1",
     "esi-characters.read_fatigue.v1",
     "esi-characters.read_agents_research.v1",
-    "esi-bookmarks.read_character_bookmarks.v1",
+    // NOTE: esi-bookmarks.* was retired by CCP (endpoints disabled since 2019,
+    // scope removed) — requesting it returns invalid_scope and fails the whole
+    // login, so it must NOT be in this list.
     "esi-calendar.read_calendar_events.v1",
     "esi-fleets.read_fleet.v1",
     "esi-mail.read_mail.v1",
