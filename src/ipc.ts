@@ -50,6 +50,7 @@ import type {
   SavedLoadoutView,
   SkillPlanView,
   SkillImportView,
+  RemapView,
   RoiPlan,
   RoiResult,
   IncomeActivity,
@@ -222,6 +223,10 @@ export const api = {
     characterId: number,
     targets: { skill_type_id: number; target_level: number }[],
   ) => call<SkillPlanView>("cost_skill_plan", { characterId, targets }),
+  optimizeRemap: (
+    characterId: number,
+    targets: { skill_type_id: number; target_level: number }[],
+  ) => call<RemapView>("optimize_remap", { characterId, targets }),
   importSkillPlan: (text: string) =>
     call<SkillImportView>("import_skill_plan", { text }),
   rankSkillRoi: (plans: RoiPlan[]) => call<RoiResult[]>("rank_skill_roi", { plans }),

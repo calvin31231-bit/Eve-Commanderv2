@@ -38,6 +38,7 @@ import type {
   BuildPlanView,
   ResolvedFit,
   SkillPlanView,
+  RemapView,
   RoiPlan,
   RoiResult,
   IncomeActivity,
@@ -916,6 +917,7 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
     { skill_type_id: number; name: string; target_level: number }[]
   >([]);
   const [plan, setPlan] = useState<SkillPlanView | null>(null);
+  const [remap, setRemap] = useState<RemapView | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [importMsg, setImportMsg] = useState("");
@@ -1075,10 +1077,42 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
         </table>
       )}
       {plan && plan.total_seconds > 0 && (
-        <div className="cashflow-totals" style={{ marginTop: 8 }}>
-          <span>{(plan.total_sp / 1000).toFixed(0)}k SP</span>
-          <span className="pos">{formatDuration(plan.total_seconds)} total</span>
-        </div>
+        <>
+          <div className="cashflow-totals" style={{ marginTop: 8 }}>
+            <span>{(plan.total_sp / 1000).toFixed(0)}k SP</span>
+            <span className="pos">{formatDuration(plan.total_seconds)} total</span>
+            <button
+              style={{ fontSize: 11 }}
+              onClick={() =>
+                api
+                  .optimizeRemap(
+                    character.id,
+                    targets.map((t) => ({ skill_type_id: t.skill_type_id, target_level: t.target_level })),
+                  )
+                  .then(setRemap)
+                  .catch(() => setRemap(null))
+              }
+            >
+              Suggest remap
+            </button>
+          </div>
+          {remap && (
+            <div style={{ marginTop: 8, fontSize: 12 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <span>Int {remap.intelligence}</span>
+                <span>Mem {remap.memory}</span>
+                <span>Per {remap.perception}</span>
+                <span>Wil {remap.willpower}</span>
+                <span>Cha {remap.charisma}</span>
+              </div>
+              <div style={{ color: "var(--accent)", marginTop: 4 }}>
+                {remap.saved_seconds > 0
+                  ? `Saves ${formatDuration(remap.saved_seconds)} vs a balanced map.`
+                  : "Already near-optimal for this plan."}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

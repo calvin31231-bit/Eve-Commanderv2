@@ -1591,6 +1591,73 @@ pub async fn cost_skill_plan(
     Ok(SkillPlanView { steps, total_sp, total_seconds })
 }
 
+/// A recommended neural remap for a skill plan + the time it saves.
+#[derive(Debug, Serialize)]
+pub struct RemapView {
+    pub intelligence: i64,
+    pub memory: i64,
+    pub perception: i64,
+    pub willpower: i64,
+    pub charisma: i64,
+    /// Plan training time (seconds) under the optimal remap.
+    pub optimal_seconds: i64,
+    /// Plan training time (seconds) under a balanced (20/20/20/20/19) map.
+    pub balanced_seconds: i64,
+    /// Seconds saved vs the balanced map.
+    pub saved_seconds: i64,
+}
+
+/// Recommend the optimal neural remap to train a skill plan fastest, and how much
+/// time it saves over a balanced map. Uses the plan's per-skill SP (current
+/// levels + SDE ranks) and each skill's training attributes. Deterministic math
+/// lives in `eve_core::remap`.
+#[tauri::command]
+pub async fn optimize_remap(
+    state: State<'_, AppState>,
+    character_id: i64,
+    targets: Vec<SkillTarget>,
+) -> CmdResult<RemapView> {
+    use eve_core::remap::{optimal_remap, plan_train_seconds, Attr, RemapSkill};
+    use eve_core::skillplan::sp_for_level;
+
+    let sheet = state.character.skills(character_id).await.map_err(|e| e.to_string())?;
+    let current: std::collections::HashMap<i64, i64> =
+        sheet.skills.iter().map(|s| (s.skill_id, s.trained_skill_level)).collect();
+
+    let mut skills = Vec::new();
+    for t in &targets {
+        let current_level = current.get(&t.skill_type_id).copied().unwrap_or(0);
+        let Some(meta) = state.names.sde().skill_meta(t.skill_type_id).await.map_err(|e| e.to_string())? else {
+            continue;
+        };
+        let sp = (sp_for_level(meta.rank, t.target_level) - sp_for_level(meta.rank, current_level)).max(0);
+        let (Some(primary), Some(secondary)) =
+            (Attr::from_attribute_id(meta.primary_attr), Attr::from_attribute_id(meta.secondary_attr))
+        else {
+            continue;
+        };
+        if sp > 0 {
+            skills.push(RemapSkill { sp, primary, secondary });
+        }
+    }
+    if skills.is_empty() {
+        return Err("Plan has no trainable skills the SDE knows attributes for.".into());
+    }
+
+    let opt = optimal_remap(&skills);
+    let balanced = plan_train_seconds(&skills, [20, 20, 20, 20, 19]);
+    Ok(RemapView {
+        intelligence: opt.intelligence,
+        memory: opt.memory,
+        perception: opt.perception,
+        willpower: opt.willpower,
+        charisma: opt.charisma,
+        optimal_seconds: opt.train_seconds,
+        balanced_seconds: balanced,
+        saved_seconds: (balanced - opt.train_seconds).max(0),
+    })
+}
+
 /// Rank income activities by risk-adjusted ISK return over the time available.
 /// Each activity is described in ISK terms (gross ISK/hr, risk, setup cost,
 /// eligibility); ranking lives in `eve_core::income::rank_income`.

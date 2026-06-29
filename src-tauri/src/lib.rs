@@ -401,6 +401,7 @@ pub fn run() {
             commands::get_fleet_aar,
             commands::get_local_intel,
             commands::cost_skill_plan,
+            commands::optimize_remap,
             commands::import_skill_plan,
             commands::rank_skill_roi,
             commands::rank_income,

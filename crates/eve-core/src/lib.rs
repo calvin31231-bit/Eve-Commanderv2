@@ -60,6 +60,7 @@ pub mod notify;
 pub mod planets;
 pub mod prices;
 pub mod pve;
+pub mod remap;
 pub mod reprocess;
 pub mod research;
 pub mod sde;

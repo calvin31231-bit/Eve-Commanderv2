@@ -401,6 +401,17 @@ export interface RoiResult {
   roi_score: number;
 }
 
+export interface RemapView {
+  intelligence: number;
+  memory: number;
+  perception: number;
+  willpower: number;
+  charisma: number;
+  optimal_seconds: number;
+  balanced_seconds: number;
+  saved_seconds: number;
+}
+
 export interface IncomeActivity {
   name: string;
   isk_per_hour: number;
