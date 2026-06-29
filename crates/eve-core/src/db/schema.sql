@@ -89,3 +89,13 @@ CREATE TABLE IF NOT EXISTS saved_fits (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
+
+-- Saved implant loadouts: a named clone's implant set (implant type ids stored
+-- comma-separated), character-independent so it travels with the user.
+CREATE TABLE IF NOT EXISTS implant_loadouts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,
+    implant_ids TEXT    NOT NULL,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);

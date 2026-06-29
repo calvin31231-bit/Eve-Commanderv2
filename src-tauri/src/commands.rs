@@ -3951,3 +3951,51 @@ pub async fn list_fits(state: State<'_, AppState>) -> CmdResult<Vec<SavedFitView
 pub async fn delete_fit(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
     state.db.delete_fit(id).await.map_err(|e| e.to_string())
 }
+
+/// A saved implant loadout in the library.
+#[derive(Debug, Serialize)]
+pub struct SavedLoadoutView {
+    pub id: i64,
+    pub name: String,
+    pub implant_ids: Vec<i64>,
+    pub updated_at: i64,
+}
+
+/// Save the current implant rack as a named, reusable loadout.
+#[tauri::command]
+pub async fn save_implant_loadout(
+    state: State<'_, AppState>,
+    name: String,
+    implant_ids: Vec<i64>,
+) -> CmdResult<i64> {
+    let name = name.trim();
+    if name.is_empty() || implant_ids.is_empty() {
+        return Err("a loadout needs a name and at least one implant".into());
+    }
+    state
+        .db
+        .save_loadout(name, &implant_ids, now_epoch_secs())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List saved implant loadouts (most recent first).
+#[tauri::command]
+pub async fn list_implant_loadouts(state: State<'_, AppState>) -> CmdResult<Vec<SavedLoadoutView>> {
+    let loadouts = state.db.list_loadouts().await.map_err(|e| e.to_string())?;
+    Ok(loadouts
+        .into_iter()
+        .map(|l| SavedLoadoutView {
+            id: l.id,
+            name: l.name,
+            implant_ids: l.implant_ids,
+            updated_at: l.updated_at,
+        })
+        .collect())
+}
+
+/// Delete a saved implant loadout.
+#[tauri::command]
+pub async fn delete_implant_loadout(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_loadout(id).await.map_err(|e| e.to_string())
+}

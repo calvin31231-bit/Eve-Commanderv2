@@ -847,3 +847,10 @@ export interface ImplantView {
   slot: number;
   category: string;
 }
+
+export interface SavedLoadoutView {
+  id: number;
+  name: string;
+  implant_ids: number[];
+  updated_at: number;
+}

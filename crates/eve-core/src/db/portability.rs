@@ -118,6 +118,20 @@ impl Database {
             })
             .collect::<Vec<_>>();
 
+        let implant_loadouts = sqlx::query("SELECT name, implant_ids, created_at, updated_at FROM implant_loadouts")
+            .fetch_all(&self.app)
+            .await?
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "name": r.get::<String, _>("name"),
+                    "implant_ids": r.get::<String, _>("implant_ids"),
+                    "created_at": r.get::<i64, _>("created_at"),
+                    "updated_at": r.get::<i64, _>("updated_at"),
+                })
+            })
+            .collect::<Vec<_>>();
+
         Ok(serde_json::json!({
             "format": "eve-commander-export",
             "version": 1,
@@ -129,6 +143,7 @@ impl Database {
             "ai_memory": ai_memory,
             "skill_plans": skill_plans,
             "saved_fits": saved_fits,
+            "implant_loadouts": implant_loadouts,
         }))
     }
 
@@ -142,6 +157,7 @@ impl Database {
             "ai_memory",
             "skill_plans",
             "saved_fits",
+            "implant_loadouts",
             "names",
             "settings",
             "characters",

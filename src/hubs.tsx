@@ -47,6 +47,7 @@ import type {
   FitGatekeeperView,
   FitStatsView,
   ImplantView,
+  SavedLoadoutView,
   DoctrineView,
   DscanResult,
   ThreatScanView,
@@ -704,11 +705,36 @@ function ImplantFitter(): ReactNode {
   const [slotFilter, setSlotFilter] = useState("0"); // 0 = any
   const [catFilter, setCatFilter] = useState("Any");
   const [q, setQ] = useState("");
+  const [loadouts, setLoadouts] = useState<SavedLoadoutView[] | null>(null);
 
   useEffect(() => {
     if (!isTauri()) return;
     api.listImplants().then(setAll).catch(() => setAll([]));
+    api.listImplantLoadouts().then(setLoadouts).catch(() => setLoadouts([]));
   }, []);
+
+  function refreshLoadouts() {
+    api.listImplantLoadouts().then(setLoadouts).catch(() => undefined);
+  }
+
+  function saveLoadout() {
+    const ids = Object.values(rack).map((i) => i.type_id);
+    if (ids.length === 0) return;
+    const name = window.prompt("Save implant loadout as:");
+    if (!name) return;
+    api.saveImplantLoadout(name, ids).then(refreshLoadouts).catch(() => undefined);
+  }
+
+  function loadLoadout(l: SavedLoadoutView) {
+    if (!all) return;
+    const byId = new Map(all.map((i) => [i.type_id, i]));
+    const next: Record<number, ImplantView> = {};
+    for (const id of l.implant_ids) {
+      const imp = byId.get(id);
+      if (imp) next[imp.slot] = imp;
+    }
+    setRack(next);
+  }
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -754,10 +780,42 @@ function ImplantFitter(): ReactNode {
   return (
     <>
       <div className="card">
-        <h3>Implant Rack <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· slots 1–10</span></h3>
+        <h3>
+          Implant Rack <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· slots 1–10</span>
+          <button
+            style={{ float: "right", fontSize: 11 }}
+            onClick={saveLoadout}
+            disabled={Object.keys(rack).length === 0}
+          >
+            Save loadout
+          </button>
+          {Object.keys(rack).length > 0 && (
+            <button style={{ float: "right", fontSize: 11, marginRight: 6 }} onClick={() => setRack({})}>
+              Clear
+            </button>
+          )}
+        </h3>
         <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
           Build a clone loadout: pick an implant from the catalogue to slot it. One implant per slot.
         </p>
+        {loadouts && loadouts.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 4px" }}>Saved loadouts</p>
+            {loadouts.map((l) => (
+              <div key={l.id} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 3 }}>
+                <button style={{ fontSize: 11 }} onClick={() => loadLoadout(l)}>Load</button>
+                <span style={{ fontSize: 13 }}>{l.name}</span>
+                <span style={{ fontSize: 11, color: "var(--text-dim)" }}>· {l.implant_ids.length} implant(s)</span>
+                <button
+                  style={{ fontSize: 11, marginLeft: "auto" }}
+                  onClick={() => api.deleteImplantLoadout(l.id).then(refreshLoadouts)}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <table className="holdings">
           <tbody>
             {Array.from({ length: 10 }, (_, k) => k + 1).map((slot) => {

@@ -28,6 +28,16 @@ pub struct SavedFit {
     pub updated_at: i64,
 }
 
+/// A saved implant loadout: a named clone's implant set, stored as the implant
+/// type ids (comma-separated on disk).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SavedLoadout {
+    pub id: i64,
+    pub name: String,
+    pub implant_ids: Vec<i64>,
+    pub updated_at: i64,
+}
+
 impl Database {
     // ---- skill plans -------------------------------------------------------
 
@@ -110,6 +120,55 @@ impl Database {
         sqlx::query("DELETE FROM saved_fits WHERE id = ?1").bind(id).execute(&self.app).await?;
         Ok(())
     }
+
+    // ---- implant loadouts --------------------------------------------------
+
+    /// Save an implant loadout (the equipped implant type ids); returns its id.
+    pub async fn save_loadout(&self, name: &str, implant_ids: &[i64], now: i64) -> Result<i64> {
+        let csv = implant_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let id = sqlx::query(
+            "INSERT INTO implant_loadouts (name, implant_ids, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?3)",
+        )
+        .bind(name)
+        .bind(csv)
+        .bind(now)
+        .execute(&self.app)
+        .await?
+        .last_insert_rowid();
+        Ok(id)
+    }
+
+    /// All saved implant loadouts, most recently updated first.
+    pub async fn list_loadouts(&self) -> Result<Vec<SavedLoadout>> {
+        let rows = sqlx::query(
+            "SELECT id, name, implant_ids, updated_at FROM implant_loadouts ORDER BY updated_at DESC",
+        )
+        .fetch_all(&self.app)
+        .await?;
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let csv = r.get::<String, _>("implant_ids");
+                let implant_ids = csv
+                    .split(',')
+                    .filter_map(|s| s.trim().parse::<i64>().ok())
+                    .collect();
+                SavedLoadout {
+                    id: r.get::<i64, _>("id"),
+                    name: r.get::<String, _>("name"),
+                    implant_ids,
+                    updated_at: r.get::<i64, _>("updated_at"),
+                }
+            })
+            .collect())
+    }
+
+    /// Delete a saved implant loadout.
+    pub async fn delete_loadout(&self, id: i64) -> Result<()> {
+        sqlx::query("DELETE FROM implant_loadouts WHERE id = ?1").bind(id).execute(&self.app).await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -138,5 +197,17 @@ mod tests {
         assert!(fits[0].eft.starts_with("[Rifter"));
         db.delete_fit(id).await.unwrap();
         assert!(db.list_fits().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn implant_loadout_roundtrip() {
+        let db = Database::open_in_memory().await.unwrap();
+        let id = db.save_loadout("PvP clone", &[10228, 10229, 13256], 100).await.unwrap();
+        let loadouts = db.list_loadouts().await.unwrap();
+        assert_eq!(loadouts.len(), 1);
+        assert_eq!(loadouts[0].name, "PvP clone");
+        assert_eq!(loadouts[0].implant_ids, vec![10228, 10229, 13256]);
+        db.delete_loadout(id).await.unwrap();
+        assert!(db.list_loadouts().await.unwrap().is_empty());
     }
 }

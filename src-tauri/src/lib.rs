@@ -436,6 +436,9 @@ pub fn run() {
             commands::save_fit,
             commands::list_fits,
             commands::delete_fit,
+            commands::save_implant_loadout,
+            commands::list_implant_loadouts,
+            commands::delete_implant_loadout,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");
