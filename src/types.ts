@@ -923,3 +923,13 @@ export interface LootValueView {
   total: number;
   unresolved: string[];
 }
+
+export interface RollPlan {
+  per_pass_mass: number;
+  passes_to_reduced: number;
+  passes_to_critical: number;
+  safe_passes: number;
+  collapse_earliest: number;
+  collapse_latest: number;
+  warning: string | null;
+}

@@ -2922,6 +2922,18 @@ pub struct CourierView {
     pub message: String,
 }
 
+/// Plan a wormhole roll: how many passes of a ship reach each mass stage and how
+/// many are guaranteed safe. Masses in kilograms. Pure — see
+/// `eve_core::wormhole::roll_plan`.
+#[tauri::command]
+pub fn roll_wormhole(
+    total_mass: f64,
+    max_jump_mass: f64,
+    ship_pass_mass: f64,
+) -> eve_core::wormhole::RollPlan {
+    eve_core::wormhole::roll_plan(total_mass, max_jump_mass, ship_pass_mass)
+}
+
 /// Estimate a courier/hauling job: solve the route, overlay the kill heatmap,
 /// and compute reward/collateral economics + a risk verdict.
 #[tauri::command]

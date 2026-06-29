@@ -77,6 +77,7 @@ import type {
   RegionMapView,
   JumpFatigue,
   TheraConnection,
+  RollPlan,
   AiSettingsView,
   AiEndpointView,
   ChatMessage,
@@ -205,6 +206,8 @@ export const api = {
       reward,
       flag,
     }),
+  rollWormhole: (totalMass: number, maxJumpMass: number, shipPassMass: number) =>
+    call<RollPlan>("roll_wormhole", { totalMass, maxJumpMass, shipPassMass }),
   getJumpFatigue: (characterId: number) =>
     call<JumpFatigue | null>("get_jump_fatigue", { characterId }),
   getTheraConnections: () => call<TheraConnection[]>("get_thera_connections"),

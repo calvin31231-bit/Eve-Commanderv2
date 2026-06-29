@@ -379,6 +379,7 @@ pub fn run() {
             commands::list_map_regions,
             commands::plan_route,
             commands::courier_estimate,
+            commands::roll_wormhole,
             commands::get_jump_fatigue,
             commands::set_route_waypoint,
             commands::open_market_window,

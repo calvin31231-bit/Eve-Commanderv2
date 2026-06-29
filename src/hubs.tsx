@@ -62,6 +62,7 @@ import type {
   FleetAarView,
   AbyssTrackerView,
   LootValueView,
+  RollPlan,
   AiSettingsView,
   AiEndpointView,
   MemoryNoteView,
@@ -4306,9 +4307,69 @@ function NavigationHub({ character }: { character: Character | null }): ReactNod
         )}
       </div>
       <CourierCalc />
+      <WormholeRoller />
       <TheraCard />
       {character && <JumpFatigueCard character={character} />}
     </>
+  );
+}
+
+// Wormhole rolling calculator: how many ship passes to walk a hole through its
+// mass stages and collapse it, with the ±10% variance danger zone.
+function WormholeRoller(): ReactNode {
+  const [total, setTotal] = useState("2000");
+  const [jump, setJump] = useState("300");
+  const [pass, setPass] = useState("200");
+  const [plan, setPlan] = useState<RollPlan | null>(null);
+
+  function compute() {
+    if (!isTauri()) return;
+    api
+      .rollWormhole((parseFloat(total) || 0) * 1e6, (parseFloat(jump) || 0) * 1e6, (parseFloat(pass) || 0) * 1e6)
+      .then(setPlan)
+      .catch(() => setPlan(null));
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3>Wormhole Roller <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· mass planning</span></h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Plan a roll. Masses in millions of kg (Mkg). Nominal hole mass carries ±10% variance.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Hole total
+          <input value={total} onChange={(e) => setTotal(e.target.value)} style={{ width: 80 }} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Jump limit
+          <input value={jump} onChange={(e) => setJump(e.target.value)} style={{ width: 80 }} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Ship/pass
+          <input value={pass} onChange={(e) => setPass(e.target.value)} style={{ width: 80 }} />
+        </label>
+        <button onClick={compute}>Plan roll</button>
+      </div>
+      {plan && plan.warning && (
+        <p style={{ color: "var(--danger, #f87171)", fontSize: 12, marginTop: 8 }}>{plan.warning}</p>
+      )}
+      {plan && !plan.warning && (
+        <div style={{ marginTop: 10 }}>
+          <div className="cashflow-totals">
+            <span className="pos">{plan.safe_passes} safe passes</span>
+            <span>reduced at {plan.passes_to_reduced}</span>
+            <span className="neg">critical at {plan.passes_to_critical}</span>
+          </div>
+          <p style={{ fontSize: 12, marginTop: 8 }}>
+            Roll freely for <strong>{plan.safe_passes}</strong> pass(es). From pass{" "}
+            <strong>{plan.collapse_earliest}</strong> the hole may collapse; by pass{" "}
+            <strong>{plan.collapse_latest}</strong> it definitely will. Split your last heavy ship and
+            check the hole between passes inside that window so you don&apos;t get stranded.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
