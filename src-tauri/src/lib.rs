@@ -357,6 +357,7 @@ pub fn run() {
             commands::get_assets_by_location,
             commands::get_clones,
             commands::get_cashflow,
+            commands::get_realized_income,
             commands::get_industry_jobs,
             commands::get_market_orders,
             commands::search_items,

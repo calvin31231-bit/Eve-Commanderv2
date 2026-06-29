@@ -11,6 +11,7 @@ import type {
   AppSettings,
   CalendarEvent,
   CashflowSummary,
+  RealizedIncome,
   Character,
   CharacterGroup,
   ColonyView,
@@ -124,6 +125,8 @@ export const api = {
     call<CalendarEvent[]>("get_calendar", { characterId }),
   getCashflow: (characterId: number) =>
     call<CashflowSummary>("get_cashflow", { characterId }),
+  getRealizedIncome: (characterId: number | null) =>
+    call<RealizedIncome>("get_realized_income", { characterId }),
   getIndustryJobs: (characterId: number) =>
     call<IndustryJobView[]>("get_industry_jobs", { characterId }),
   getMarketOrders: (characterId: number) =>

@@ -116,6 +116,33 @@ pub fn summarize_journal(entries: &[JournalEntry]) -> CashflowSummary {
     }
 }
 
+/// The player's realized earning rate: net ISK across the distinct calendar days
+/// the journal covers. This is the honest "status quo" benchmark the income
+/// optimizer compares hypothetical activities against — a real number from the
+/// wallet, not an estimate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RealizedIncome {
+    /// Net ISK (income − expenses) across the journal window.
+    pub net: f64,
+    /// Distinct calendar days with wallet activity in the window.
+    pub active_days: i64,
+    /// net / active_days.
+    pub isk_per_day: f64,
+}
+
+/// Compute the realized net ISK/day from a wallet journal. Counts distinct
+/// `YYYY-MM-DD` dates as "active days" so the rate reflects days actually played
+/// rather than a fixed window. Pure.
+pub fn realized_rate(entries: &[JournalEntry]) -> RealizedIncome {
+    let net: f64 = entries.iter().map(|e| e.amount).sum();
+    let days: std::collections::HashSet<&str> = entries
+        .iter()
+        .map(|e| e.date.get(..10).unwrap_or(e.date.as_str()))
+        .collect();
+    let active_days = days.len().max(1) as i64;
+    RealizedIncome { net, active_days, isk_per_day: net / active_days as f64 }
+}
+
 /// Typed, authenticated wallet-journal reads over the cache-first ESI client.
 #[derive(Clone)]
 pub struct WalletClient {
@@ -213,6 +240,33 @@ mod tests {
         // market_transaction (2M) before brokers_fee (0.1M).
         assert_eq!(s.by_ref_type[1].ref_type, "market_transaction");
         assert_eq!(s.by_ref_type[2].ref_type, "brokers_fee");
+    }
+
+    #[test]
+    fn realized_rate_is_net_over_active_days() {
+        let dated = |date: &str, amount: f64| JournalEntry {
+            id: 0,
+            date: date.into(),
+            ref_type: "bounty_prizes".into(),
+            amount,
+            balance: None,
+            description: String::new(),
+            first_party_id: None,
+            second_party_id: None,
+            reason: None,
+        };
+        let entries = vec![
+            dated("2026-06-20T01:00:00Z", 10_000_000.0),
+            dated("2026-06-20T05:00:00Z", 5_000_000.0),
+            dated("2026-06-21T02:00:00Z", -3_000_000.0),
+        ];
+        let r = realized_rate(&entries);
+        // Two distinct calendar days, net = 12M → 6M/day.
+        assert_eq!(r.active_days, 2);
+        assert_eq!(r.net, 12_000_000.0);
+        assert_eq!(r.isk_per_day, 6_000_000.0);
+        // Empty journal never divides by zero.
+        assert_eq!(realized_rate(&[]).active_days, 1);
     }
 
     #[test]

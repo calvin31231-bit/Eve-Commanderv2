@@ -222,6 +222,15 @@ impl Sde {
         Ok(row.map(|r| r.get::<String, _>("name")))
     }
 
+    /// Packaged volume (m³) of a type, when known. Powers ISK/m³ hauling math.
+    pub async fn type_volume(&self, type_id: i64) -> Result<Option<f64>> {
+        let row = sqlx::query("SELECT volume FROM types WHERE type_id = ?1")
+            .bind(type_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.and_then(|r| r.get::<Option<f64>, _>("volume")))
+    }
+
     /// Resolve a solar system id to a [`SolarSystem`].
     pub async fn solar_system(&self, system_id: i64) -> Result<Option<SolarSystem>> {
         let row = sqlx::query("SELECT system_id, name, security FROM solar_systems WHERE system_id = ?1")

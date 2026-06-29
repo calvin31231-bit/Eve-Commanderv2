@@ -312,6 +312,8 @@ export interface ArbitrageView {
   sell_price: number;
   profit_per_unit: number;
   margin_pct: number;
+  volume: number;
+  profit_per_m3: number;
 }
 
 export interface RefineYieldView {
@@ -814,4 +816,10 @@ export interface SavedFitView {
   ship: string;
   eft: string;
   updated_at: number;
+}
+
+export interface RealizedIncome {
+  net: number;
+  active_days: number;
+  isk_per_day: number;
 }

@@ -42,6 +42,7 @@ import type {
   RoiResult,
   IncomeActivity,
   IncomeRanking,
+  RealizedIncome,
   CanFlyView,
   FitGatekeeperView,
   DoctrineView,
@@ -1169,7 +1170,8 @@ function ArbitrageScanner(): ReactNode {
         <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· hauling</span>
       </h3>
       <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
-        Best buy-low / sell-high haul across the five major hubs, net of 4.5% tax.
+        Best buy-low / sell-high haul across the five major hubs, net of 4.5% tax. Ranked by
+        ISK per m³ of cargo — what actually fills a hauler.
       </p>
       <button onClick={scan} disabled={loading}>
         {loading ? "Scanning…" : rows ? "Rescan" : "Scan"}
@@ -1180,8 +1182,8 @@ function ArbitrageScanner(): ReactNode {
             <tr>
               <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Item</th>
               <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Route</th>
-              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Margin</th>
               <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Profit/u</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>ISK/m³</th>
             </tr>
           </thead>
           <tbody>
@@ -1191,8 +1193,8 @@ function ArbitrageScanner(): ReactNode {
                 <td style={{ fontSize: 12 }}>
                   {o.buy_hub} → {o.sell_hub}
                 </td>
-                <td className="mono num">{(o.margin_pct * 100).toFixed(1)}%</td>
-                <td className="mono num pos">{ISK.format(o.profit_per_unit)}</td>
+                <td className="mono num">{ISK.format(o.profit_per_unit)}</td>
+                <td className="mono num pos">{o.profit_per_m3 > 0 ? ISK.format(o.profit_per_m3) : "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -1978,6 +1980,34 @@ function IncomeOptimizer(): ReactNode {
   const [risk, setRisk] = useState("0");
   const [setup, setSetup] = useState("0");
   const [eligible, setEligible] = useState(true);
+  const [actual, setActual] = useState<RealizedIncome | null>(null);
+  const [actualMsg, setActualMsg] = useState("");
+
+  function loadActual() {
+    if (!isTauri()) return;
+    setActualMsg("Reading wallet…");
+    api
+      .getRealizedIncome(null)
+      .then((r) => {
+        setActual(r);
+        setActualMsg("");
+        // Add the realized rate as a benchmark activity so it ranks alongside
+        // the hypotheticals. Spread the day's net across the hours entered.
+        const hrs = parseFloat(hours) || 1;
+        setActs((a) => [
+          ...a.filter((x) => x.name !== "My current (actual)"),
+          {
+            name: "My current (actual)",
+            isk_per_hour: r.isk_per_day / Math.max(hrs, 1),
+            risk: 0,
+            setup_cost: 0,
+            eligible: true,
+          },
+        ]);
+        setResults(null);
+      })
+      .catch((e) => setActualMsg(String(e)));
+  }
 
   function add() {
     if (!name.trim()) return;
@@ -2010,6 +2040,15 @@ function IncomeOptimizer(): ReactNode {
         Rank activities by risk-adjusted ISK/hr over your available time. ISK in millions, risk in %.
         Untick "can do" for things you're not yet set up for.
       </p>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <button onClick={loadActual}>Benchmark my actual income</button>
+        {actual && (
+          <span style={{ fontSize: 12, color: "var(--accent)" }}>
+            Your recent rate: {ISK.format(actual.isk_per_day)} ISK/day over {actual.active_days} active day(s)
+          </span>
+        )}
+        {actualMsg && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{actualMsg}</span>}
+      </div>
       <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
         Hours available{" "}
         <input value={hours} onChange={(e) => setHours(e.target.value)} style={{ width: 60 }} />

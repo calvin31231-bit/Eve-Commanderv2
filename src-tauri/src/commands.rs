@@ -616,6 +616,29 @@ pub async fn get_cashflow(
         .map_err(|e| e.to_string())
 }
 
+/// The character's realized net ISK/day from the wallet journal — the real
+/// "status quo" earning rate the income optimizer benchmarks against. Uses the
+/// active character when `characterId` is omitted.
+#[tauri::command]
+pub async fn get_realized_income(
+    state: State<'_, AppState>,
+    character_id: Option<i64>,
+) -> CmdResult<eve_core::wallet::RealizedIncome> {
+    let id = match character_id {
+        Some(id) => id,
+        None => {
+            let characters = state.db.list_characters().await.map_err(|e| e.to_string())?;
+            characters
+                .iter()
+                .find(|c| c.active)
+                .map(|c| c.id)
+                .ok_or("no active character")?
+        }
+    };
+    let entries = state.wallet.journal(id).await.map_err(|e| e.to_string())?;
+    Ok(eve_core::wallet::realized_rate(&entries))
+}
+
 /// An active industry job with its SDE-resolved item name.
 #[derive(Debug, Serialize)]
 pub struct IndustryJobView {
@@ -1248,6 +1271,11 @@ pub struct ArbitrageView {
     pub sell_price: f64,
     pub profit_per_unit: f64,
     pub margin_pct: f64,
+    /// Packaged volume per unit (m³); 0 when the SDE doesn't know it.
+    pub volume: f64,
+    /// Profit per m³ of cargo — the figure a hauler optimizes. 0 when volume
+    /// is unknown.
+    pub profit_per_m3: f64,
 }
 
 /// Scan a list of item types for the best cross-hub flip per item (buy at the
@@ -1271,9 +1299,14 @@ pub async fn scan_arbitrage(
         .await
         .map_err(|e| e.to_string())?;
     let names = names_for(&state, &opps.iter().map(|o| o.type_id).collect::<Vec<_>>()).await;
-    Ok(opps
-        .into_iter()
-        .map(|o| ArbitrageView {
+    let sde = state.names.sde();
+    let mut out = Vec::with_capacity(opps.len());
+    for o in opps {
+        // A hauler cares about ISK per m³ of cargo, so weight per-unit profit by
+        // the item's packaged volume when the SDE knows it.
+        let volume = sde.type_volume(o.type_id).await.ok().flatten().unwrap_or(0.0);
+        let profit_per_m3 = if volume > 0.0 { o.flip.profit_per_unit / volume } else { 0.0 };
+        out.push(ArbitrageView {
             type_id: o.type_id,
             name: named(&names, o.type_id),
             buy_hub: o.flip.buy_hub,
@@ -1282,8 +1315,18 @@ pub async fn scan_arbitrage(
             sell_price: o.flip.sell_price,
             profit_per_unit: o.flip.profit_per_unit,
             margin_pct: o.flip.margin_pct,
-        })
-        .collect())
+            volume,
+            profit_per_m3,
+        });
+    }
+    // Rank by ISK/m³ (hauling value), falling back to per-unit profit when no
+    // volume is known so items without SDE volume still sort sensibly.
+    out.sort_by(|a, b| {
+        let ka = if a.profit_per_m3 > 0.0 { a.profit_per_m3 } else { a.profit_per_unit };
+        let kb = if b.profit_per_m3 > 0.0 { b.profit_per_m3 } else { b.profit_per_unit };
+        kb.partial_cmp(&ka).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    Ok(out)
 }
 
 /// A small curated set of liquid, commonly-flipped items for the default scan
