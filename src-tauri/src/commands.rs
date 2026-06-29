@@ -2068,6 +2068,11 @@ pub struct FitStatsView {
 /// is false). Deterministic math lives in `eve_core::dogma`.
 #[tauri::command]
 pub async fn fit_stats(state: State<'_, AppState>, eft: String) -> CmdResult<FitStatsView> {
+    compute_fit_stats(&state, &eft).await
+}
+
+/// Core of [`fit_stats`], callable from the AI tool registry too.
+pub(crate) async fn compute_fit_stats(state: &AppState, eft: &str) -> CmdResult<FitStatsView> {
     use eve_core::dogma;
 
     let empty = |note: &str| FitStatsView {
@@ -2084,7 +2089,7 @@ pub async fn fit_stats(state: State<'_, AppState>, eft: String) -> CmdResult<Fit
         note: note.to_string(),
     };
 
-    let Some(fit) = state.fitting.resolve_eft(&eft).await.map_err(|e| e.to_string())? else {
+    let Some(fit) = state.fitting.resolve_eft(eft).await.map_err(|e| e.to_string())? else {
         return Ok(empty("Not a valid EFT fit (check the [Ship, Name] header)."));
     };
     let Some(ship_id) = fit.ship_type_id else {
@@ -2098,13 +2103,13 @@ pub async fn fit_stats(state: State<'_, AppState>, eft: String) -> CmdResult<Fit
         ));
     }
 
-    let (shield, armor, hull) = dogma::ship_layers(&ship_attrs);
-    let ehp = dogma::total_ehp(&shield, &armor, &hull, &dogma::DamageProfile::uniform());
+    let (base_shield, base_armor, base_hull) = dogma::ship_layers(&ship_attrs);
     let (cap_capacity, recharge) = dogma::ship_cap(&ship_attrs);
     let cap = dogma::cap_stats(cap_capacity, recharge, 0.0);
 
-    // Fit-accurate damage: each weapon's charge (or the module itself, for
-    // drones) scaled by quantity.
+    // Fetch each fitted module's attributes once; reuse for both the buffer/
+    // resist pass and weapon damage.
+    let mut module_attrs = Vec::new();
     let mut weapons = Vec::new();
     for item in &fit.items {
         let Some(type_id) = item.type_id else { continue };
@@ -2112,6 +2117,8 @@ pub async fn fit_stats(state: State<'_, AppState>, eft: String) -> CmdResult<Fit
         if module.is_empty() {
             continue;
         }
+        // Fit-accurate damage: weapon's charge (or the module itself, for drones)
+        // scaled by quantity.
         let charge_attrs = match &item.charge {
             Some(name) => match sde.type_id_by_name(name).await.ok().flatten() {
                 Some(cid) => sde.type_attributes(cid).await.ok(),
@@ -2124,7 +2131,16 @@ pub async fn fit_stats(state: State<'_, AppState>, eft: String) -> CmdResult<Fit
                 weapons.push(w);
             }
         }
+        for _ in 0..item.quantity.max(1) {
+            module_attrs.push(module.clone());
+        }
     }
+
+    // Apply buffer/resist modules (flat HP + stacking-penalized resists) to the
+    // bare hull, then compute EHP.
+    let (shield, armor, hull) =
+        dogma::apply_buffer_modules(base_shield, base_armor, base_hull, &module_attrs);
+    let ehp = dogma::total_ehp(&shield, &armor, &hull, &dogma::DamageProfile::uniform());
     let dmg = dogma::fit_damage(&weapons);
 
     Ok(FitStatsView {
@@ -2138,7 +2154,8 @@ pub async fn fit_stats(state: State<'_, AppState>, eft: String) -> CmdResult<Fit
         volley: dmg.volley,
         cap_capacity,
         cap_peak_recharge: cap.peak_recharge,
-        note: "EHP/cap are base-hull (module buffs not yet applied); DPS reflects the fitted weapons."
+        note: "EHP includes buffer + resist modules (stacking-penalised); cap is base-hull; DPS \
+               reflects the fitted weapons. Active reps and skill bonuses not yet modelled."
             .to_string(),
     })
 }

@@ -51,6 +51,17 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             parameters: json!({ "type": "object", "properties": {} }),
         },
         ToolSpec {
+            name: "fit_stats".into(),
+            description: "Dogma stats for an EFT fit: EHP (with buffer/resist modules), DPS, \
+                          volley, and capacitor. Use to critique or compare fits."
+                .into(),
+            parameters: json!({
+                "type": "object",
+                "properties": { "eft": { "type": "string", "description": "EFT fit text" } },
+                "required": ["eft"]
+            }),
+        },
+        ToolSpec {
             name: "account_overview".into(),
             description: "The player's total net worth, wallet, and skill points aggregated across \
                           all their characters, with a per-character breakdown."
@@ -182,6 +193,13 @@ pub async fn execute_tool(state: &AppState, name: &str, arguments: &str) -> Stri
             }
         }
         "system_risk" => system_risk_json(state).await,
+        "fit_stats" => {
+            let eft = args.get("eft").and_then(|v| v.as_str()).unwrap_or("");
+            match crate::commands::compute_fit_stats(state, eft).await {
+                Ok(s) => serde_json::to_string(&s).unwrap_or_else(|e| err(&e.to_string())),
+                Err(e) => err(&e),
+            }
+        }
         "account_overview" => account_overview_json(state).await,
         "portfolio_trend" => {
             let days = args.get("days").and_then(|v| v.as_i64()).unwrap_or(30).max(1);

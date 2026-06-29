@@ -280,12 +280,84 @@ pub fn weapon_from(module: &Attrs, charge: Option<&Attrs>) -> Option<Weapon> {
     Some(Weapon { em, thermal, kinetic, explosive, multiplier, rof_seconds })
 }
 
+/// Apply a layer's resist modules to a base resonance. Each module carries a
+/// resonance value (`< 1.0` = it grants resist); the strongest is unpenalized and
+/// the rest fall off by the stacking penalty, matching the game. Pure.
+fn apply_resonance_modules(base: f64, module_resonances: &[f64]) -> f64 {
+    // Strongest resist (furthest below 1.0) first.
+    let mut mods: Vec<f64> = module_resonances.iter().copied().filter(|r| *r < 1.0).collect();
+    mods.sort_by(|a, b| (1.0 - b).partial_cmp(&(1.0 - a)).unwrap_or(std::cmp::Ordering::Equal));
+    let mut eff = base;
+    for (i, r) in mods.iter().enumerate() {
+        eff *= 1.0 - (1.0 - r) * stacking_multiplier(i);
+    }
+    eff
+}
+
+/// Apply fitted buffer/resist modules to the bare-hull layers: flat HP from
+/// shield extenders (attr 72) / armor plates (attr 1159), added unpenalized, and
+/// resistance modules multiplying each layer's resonance with stacking penalties.
+/// `modules` are the attribute maps of the fitted modules; non-buffer modules
+/// (no relevant attributes) contribute nothing, so passing the whole fit is safe.
+/// Pure.
+pub fn apply_buffer_modules(
+    shield: Layer,
+    armor: Layer,
+    hull: Layer,
+    modules: &[Attrs],
+) -> (Layer, Layer, Layer) {
+    // Flat HP bonuses (not stacking-penalized in EVE).
+    let shield_hp_bonus: f64 = modules.iter().map(|m| get(m, 72)).sum();
+    let armor_hp_bonus: f64 = modules.iter().map(|m| get(m, 1159)).sum();
+
+    // Collect per-layer, per-damage-type resist multipliers from modules that
+    // carry resonance attributes below 1.0.
+    let collect = |id: i64| -> Vec<f64> {
+        modules.iter().filter_map(|m| m.get(&id).copied()).filter(|r| *r < 1.0).collect()
+    };
+
+    let new_shield = Layer {
+        hp: shield.hp + shield_hp_bonus,
+        em: apply_resonance_modules(shield.em, &collect(attr::SH_EM)),
+        thermal: apply_resonance_modules(shield.thermal, &collect(attr::SH_TH)),
+        kinetic: apply_resonance_modules(shield.kinetic, &collect(attr::SH_KIN)),
+        explosive: apply_resonance_modules(shield.explosive, &collect(attr::SH_EXP)),
+    };
+    let new_armor = Layer {
+        hp: armor.hp + armor_hp_bonus,
+        em: apply_resonance_modules(armor.em, &collect(attr::AR_EM)),
+        thermal: apply_resonance_modules(armor.thermal, &collect(attr::AR_TH)),
+        kinetic: apply_resonance_modules(armor.kinetic, &collect(attr::AR_KIN)),
+        explosive: apply_resonance_modules(armor.explosive, &collect(attr::AR_EXP)),
+    };
+    // Hull resists are rarely modified; pass through.
+    (new_shield, new_armor, hull)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn map(pairs: &[(i64, f64)]) -> Attrs {
         pairs.iter().copied().collect()
+    }
+
+    #[test]
+    fn buffer_modules_add_hp_and_stack_resists() {
+        let base = |hp: f64| Layer { hp, em: 1.0, thermal: 1.0, kinetic: 1.0, explosive: 1.0 };
+        // Shield extender: +2000 shield HP (attr 72).
+        let extender = map(&[(72, 2000.0)]);
+        // Two armor EM hardeners at resonance 0.7 (30% resist) each.
+        let hardener = map(&[(attr::AR_EM, 0.7)]);
+        let (shield, armor, _hull) =
+            apply_buffer_modules(base(1000.0), base(1000.0), base(500.0), &[extender, hardener.clone(), hardener]);
+        // Flat HP added, unpenalized.
+        assert!((shield.hp - 3000.0).abs() < 1e-6);
+        // First hardener full (0.7), second penalized: 1-(0.3*0.8691)=0.7393.
+        let expected = 1.0 * 0.7 * (1.0 - 0.3 * stacking_multiplier(1));
+        assert!((armor.em - expected).abs() < 1e-6);
+        // Other damage types untouched.
+        assert!((armor.thermal - 1.0).abs() < 1e-9);
     }
 
     #[test]
