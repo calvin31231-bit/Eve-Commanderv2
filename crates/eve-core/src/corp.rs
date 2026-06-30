@@ -72,6 +72,64 @@ pub fn summarize_structures(structures: &[CorpStructure], now: OffsetDateTime) -
     out
 }
 
+/// One moon-mining extraction (ESI
+/// `GET /corporation/{id}/mining/extractions/`). The chunk arrives at a known
+/// time, so — like structure fuel — we count down locally from one fetch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MoonExtraction {
+    pub structure_id: i64,
+    #[serde(default)]
+    pub moon_id: i64,
+    #[serde(default)]
+    pub extraction_start_time: Option<String>,
+    #[serde(default)]
+    pub chunk_arrival_time: Option<String>,
+    #[serde(default)]
+    pub natural_decay_time: Option<String>,
+}
+
+/// An extraction with its chunk-arrival countdown derived client-side.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtractionStatus {
+    pub structure_id: i64,
+    pub moon_id: i64,
+    pub chunk_arrival_time: Option<String>,
+    pub natural_decay_time: Option<String>,
+    /// Seconds until the chunk arrives (0 if already arrived/unknown).
+    pub arrival_seconds_remaining: i64,
+    /// True once the chunk has arrived (ready to fracture).
+    pub ready: bool,
+}
+
+/// Reduce moon extractions to chunk-arrival countdowns, soonest first. Pure
+/// (time injected) → unit-tested.
+pub fn summarize_extractions(
+    extractions: &[MoonExtraction],
+    now: OffsetDateTime,
+) -> Vec<ExtractionStatus> {
+    let mut out: Vec<ExtractionStatus> = extractions
+        .iter()
+        .map(|e| {
+            let secs = e
+                .chunk_arrival_time
+                .as_deref()
+                .and_then(|t| OffsetDateTime::parse(t, &Rfc3339).ok())
+                .map(|t| (t - now).whole_seconds())
+                .unwrap_or(0);
+            ExtractionStatus {
+                structure_id: e.structure_id,
+                moon_id: e.moon_id,
+                chunk_arrival_time: e.chunk_arrival_time.clone(),
+                natural_decay_time: e.natural_decay_time.clone(),
+                arrival_seconds_remaining: secs.max(0),
+                ready: e.chunk_arrival_time.is_some() && secs <= 0,
+            }
+        })
+        .collect();
+    out.sort_by_key(|e| e.arrival_seconds_remaining);
+    out
+}
+
 /// One member-tracking row (ESI `GET /corporations/{id}/membertracking/`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MemberTrack {
@@ -219,6 +277,32 @@ impl CorpClient {
         Ok(members)
     }
 
+    /// Corp moon-mining extractions. Requires a Structure_Manager role +
+    /// `esi-industry.read_corporation_mining.v1`; 403s otherwise.
+    pub async fn extractions(
+        &self,
+        character_id: i64,
+        corp_id: i64,
+    ) -> Result<Vec<MoonExtraction>> {
+        let token = self.tokens.access_token(character_id).await?;
+        let path = format!("/latest/corporation/{corp_id}/mining/extractions/");
+        self.esi
+            .get_auth_json_paged::<MoonExtraction>(&path, &token)
+            .await
+            .map_err(|e| Error::other(format!("moon extractions: {e}")))
+    }
+
+    /// Fetch + summarize extractions with chunk-arrival countdowns (now injected
+    /// here so the shell needn't depend on `time`).
+    pub async fn extraction_status(
+        &self,
+        character_id: i64,
+        corp_id: i64,
+    ) -> Result<Vec<ExtractionStatus>> {
+        let extractions = self.extractions(character_id, corp_id).await?;
+        Ok(summarize_extractions(&extractions, OffsetDateTime::now_utc()))
+    }
+
     /// Corp container audit logs (theft-detection source). Requires a director
     /// role + `esi-corporations.read_container_logs.v1`; 403s otherwise.
     pub async fn container_logs(
@@ -273,6 +357,30 @@ mod tests {
         let now = ts("2026-06-22T00:00:00Z");
         let out = summarize_structures(&[st(1, Some("2026-06-21T00:00:00Z"))], now);
         assert_eq!(out[0].fuel_seconds_remaining, 0);
+    }
+
+    #[test]
+    fn extraction_countdown_orders_soonest_first_and_marks_ready() {
+        let now = ts("2026-06-22T00:00:00Z");
+        let ex = |sid: i64, arrival: &str| MoonExtraction {
+            structure_id: sid,
+            moon_id: 40000001,
+            extraction_start_time: Some("2026-06-20T00:00:00Z".into()),
+            chunk_arrival_time: Some(arrival.into()),
+            natural_decay_time: Some("2026-06-25T00:00:00Z".into()),
+        };
+        let out = summarize_extractions(
+            &[
+                ex(1, "2026-06-24T00:00:00Z"), // 2 days out
+                ex(2, "2026-06-21T00:00:00Z"), // already arrived → ready
+            ],
+            now,
+        );
+        assert_eq!(out[0].structure_id, 2);
+        assert!(out[0].ready);
+        assert_eq!(out[0].arrival_seconds_remaining, 0);
+        assert!(!out[1].ready);
+        assert_eq!(out[1].arrival_seconds_remaining, 2 * 86_400);
     }
 
     fn log(action: &str, qty: Option<i64>) -> ContainerLog {

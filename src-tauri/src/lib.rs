@@ -386,6 +386,7 @@ pub fn run() {
             commands::get_corp_structures,
             commands::get_corp_members,
             commands::get_container_thefts,
+            commands::get_moon_extractions,
             commands::lp_store,
             commands::get_incursions,
             commands::get_fw_systems,

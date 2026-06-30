@@ -742,6 +742,15 @@ export interface ContainerTheftView {
   reason: string;
 }
 
+export interface ExtractionView {
+  structure_name: string;
+  moon_name: string;
+  chunk_arrival_time: string | null;
+  natural_decay_time: string | null;
+  arrival_seconds_remaining: number;
+  ready: boolean;
+}
+
 export interface CorpStructureView {
   structure_id: number;
   name: string;

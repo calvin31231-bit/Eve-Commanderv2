@@ -48,6 +48,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-corporations.read_structures.v1",
     "esi-corporations.track_members.v1",
     "esi-corporations.read_container_logs.v1",
+    "esi-industry.read_corporation_mining.v1",
     "esi-location.read_location.v1",
     "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
@@ -2205,6 +2206,54 @@ pub async fn get_container_thefts(
             logged_at: f.logged_at,
             severity: f.severity,
             reason: f.reason,
+        })
+        .collect())
+}
+
+/// One moon-mining extraction (names resolved) for the Corp scheduling view.
+#[derive(Debug, Serialize)]
+pub struct ExtractionView {
+    pub structure_name: String,
+    pub moon_name: String,
+    pub chunk_arrival_time: Option<String>,
+    pub natural_decay_time: Option<String>,
+    pub arrival_seconds_remaining: i64,
+    pub ready: bool,
+}
+
+/// Corp moon-mining extractions with chunk-arrival countdowns, soonest first.
+/// Empty when the active character lacks the Structure_Manager role /
+/// `esi-industry.read_corporation_mining.v1` scope.
+#[tauri::command]
+pub async fn get_moon_extractions(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<ExtractionView>> {
+    let Ok(public) = state.character.public_info(character_id).await else {
+        return Ok(Vec::new());
+    };
+    let rows = match state.corp.extraction_status(character_id, public.corporation_id).await {
+        Ok(r) => r,
+        Err(_) => return Ok(Vec::new()),
+    };
+    // Structures resolve via the structure-name path; moons via the SDE/name map.
+    let struct_ids: Vec<i64> = rows.iter().map(|e| e.structure_id).collect();
+    let moon_ids: Vec<i64> = rows.iter().map(|e| e.moon_id).collect();
+    let struct_names = names_with_structures(&state, character_id, &struct_ids).await;
+    let moon_names = names_for(&state, &moon_ids).await;
+
+    Ok(rows
+        .into_iter()
+        .map(|e| ExtractionView {
+            structure_name: struct_names
+                .get(&e.structure_id)
+                .cloned()
+                .unwrap_or_else(|| format!("Structure {}", e.structure_id)),
+            moon_name: named(&moon_names, e.moon_id),
+            chunk_arrival_time: e.chunk_arrival_time,
+            natural_decay_time: e.natural_decay_time,
+            arrival_seconds_remaining: e.arrival_seconds_remaining,
+            ready: e.ready,
         })
         .collect())
 }

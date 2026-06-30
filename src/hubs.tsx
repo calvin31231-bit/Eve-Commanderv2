@@ -81,6 +81,7 @@ import type {
   CorpStructureView,
   CorpMemberView,
   ContainerTheftView,
+  ExtractionView,
   FleetView,
   FleetWingView,
   LpStoreView,
@@ -2423,6 +2424,7 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
         tabs={[
           { id: "groups", label: "Groups" },
           { id: "structures", label: "Structures" },
+          { id: "moons", label: "Moons" },
           { id: "members", label: "Members" },
           { id: "fleet", label: "Fleet" },
           { id: "srp", label: "SRP" },
@@ -2478,6 +2480,7 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
         </>
       )}
       {sub === "structures" && <CorpStructures character={character} />}
+      {sub === "moons" && <MoonExtractions character={character} />}
       {sub === "members" && <CorpMembers character={character} />}
       {sub === "fleet" && <FleetView_ character={character} />}
     </>
@@ -2729,6 +2732,67 @@ function CorpStructures({ character }: { character: Character | null }): ReactNo
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Moon-mining schedule: each extraction's chunk arrives at a known time, so we
+// fetch once and count down locally (like structure fuel).
+function MoonExtractions({ character }: { character: Character | null }): ReactNode {
+  const [rows, setRows] = useState<ExtractionView[] | null>(null);
+  const [, forceTick] = useState(0);
+  const [loadedAt, setLoadedAt] = useState(0);
+
+  useEffect(() => {
+    setRows(null);
+    if (!character || !isTauri()) return;
+    setLoadedAt(Date.now());
+    api.getMoonExtractions(character.id).then(setRows).catch(() => setRows([]));
+  }, [character]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  if (!character) return <div className="sub">Select a character with a corp role.</div>;
+  if (!rows) return <div className="sub">Loading…</div>;
+  if (rows.length === 0) {
+    return (
+      <div className="card" style={{ maxWidth: 640 }}>
+        <p style={{ color: "var(--text-dim)" }}>
+          No extractions — needs a Structure Manager role and the corporation-mining scope.
+        </p>
+      </div>
+    );
+  }
+  const elapsed = loadedAt ? Math.floor((Date.now() - loadedAt) / 1000) : 0;
+  return (
+    <div className="card" style={{ maxWidth: 640 }}>
+      <h3>Moon extractions <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {rows.length}</span></h3>
+      <table className="holdings">
+        <tbody>
+          {rows.map((e, i) => {
+            const remaining = Math.max(0, e.arrival_seconds_remaining - elapsed);
+            const ready = e.ready || remaining === 0;
+            const soon = !ready && remaining < 86400;
+            return (
+              <tr key={i}>
+                <td>
+                  {e.moon_name || e.structure_name}
+                  <div style={{ color: "var(--text-dim)", fontSize: 11 }}>{e.structure_name}</div>
+                </td>
+                <td className={`mono num ${ready ? "neg" : soon ? "neg" : ""}`}>
+                  {ready ? "READY TO FRACTURE" : formatDuration(remaining)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "6px 0 0" }}>
+        Chunk-arrival countdown; fracture on arrival before natural decay scatters the ore.
+      </p>
     </div>
   );
 }
