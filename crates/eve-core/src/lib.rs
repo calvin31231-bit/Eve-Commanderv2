@@ -53,6 +53,7 @@ pub mod lp;
 pub mod mail;
 pub mod market;
 pub mod marketdata;
+pub mod mcp;
 pub mod mining;
 pub mod model;
 pub mod names;

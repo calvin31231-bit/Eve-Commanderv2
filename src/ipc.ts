@@ -367,6 +367,9 @@ export const api = {
   aiChat: (messages: ChatMessage[], agentId: string) =>
     call<AiChatView>("ai_chat", { messages, agentId }),
   listAiAgents: () => call<AiAgentView[]>("list_ai_agents"),
+  // MCP (Model Context Protocol) server core: dispatch one JSON-RPC request
+  // against EVE Commander's read-only tools. For a local agent bridge.
+  mcpRequest: (request: unknown) => call<unknown>("mcp_request", { request }),
   aiBriefing: () => call<AiChatView>("ai_briefing"),
   addMemory: (kind: string, title: string, body: string) =>
     call<number | null>("add_memory", { kind, title, body }),

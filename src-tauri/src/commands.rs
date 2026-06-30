@@ -3863,6 +3863,27 @@ pub async fn ai_chat(
     ai_run_conversation(&state, &client, &agent, convo).await
 }
 
+/// Handle one MCP (Model Context Protocol) JSON-RPC request against EVE
+/// Commander's read-only tool registry, returning the JSON-RPC response (or null
+/// for a notification). This is the in-process MCP server core; a thin stdio/HTTP
+/// bridge can forward an external agent's requests here so the player's own
+/// agents can drive the app's tools. Advisory/read-only — same guardrails as the
+/// in-app assistant.
+#[tauri::command]
+pub async fn mcp_request(state: State<'_, AppState>, request: serde_json::Value) -> CmdResult<serde_json::Value> {
+    use eve_core::mcp::{handle, tool_result, McpAction};
+    let tools = crate::ai_tools::tool_specs();
+    match handle(&request, &tools, "eve-commander", env!("CARGO_PKG_VERSION")) {
+        McpAction::Reply(v) => Ok(v),
+        McpAction::None => Ok(serde_json::Value::Null),
+        McpAction::CallTool { id, name, arguments } => {
+            let result = crate::ai_tools::execute_tool(&state, &name, &arguments).await;
+            let is_error = result.contains("\"error\"");
+            Ok(tool_result(id, &result, is_error))
+        }
+    }
+}
+
 /// One specialist agent's metadata for the UI agent picker.
 #[derive(Debug, Serialize)]
 pub struct AiAgentView {

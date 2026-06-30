@@ -423,6 +423,7 @@ pub fn run() {
             commands::ai_detect_endpoints,
             commands::ai_chat,
             commands::list_ai_agents,
+            commands::mcp_request,
             commands::ai_briefing,
             commands::add_memory,
             commands::list_memory,
