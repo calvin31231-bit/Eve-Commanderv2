@@ -392,6 +392,7 @@ pub fn run() {
             commands::get_calendar,
             commands::get_thera_connections,
             commands::get_fleet,
+            commands::set_fleet_settings,
             commands::get_combat_summary,
             commands::get_fleet_aar,
             commands::get_local_intel,

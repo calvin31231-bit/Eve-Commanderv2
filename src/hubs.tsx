@@ -2475,11 +2475,22 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
 function FleetView_({ character }: { character: Character | null }): ReactNode {
   const [fleet, setFleet] = useState<FleetView | null>(null);
   const [loading, setLoading] = useState(false);
+  const [motd, setMotd] = useState("");
+  const [freeMove, setFreeMove] = useState(false);
+  const [motdMsg, setMotdMsg] = useState("");
 
   function load() {
     if (!character || !isTauri()) return;
     setLoading(true);
     api.getFleet(character.id).then(setFleet).catch(() => setFleet(null)).finally(() => setLoading(false));
+  }
+
+  function saveMotd() {
+    if (!character || !isTauri()) return;
+    setMotdMsg("Saving…");
+    api.setFleetSettings(character.id, motd, freeMove)
+      .then(() => setMotdMsg("Fleet MOTD updated."))
+      .catch((e) => setMotdMsg(String(e)));
   }
 
   useEffect(() => {
@@ -2499,17 +2510,38 @@ function FleetView_({ character }: { character: Character | null }): ReactNode {
         <p style={{ color: "var(--text-dim)", fontSize: 12 }}>Not currently in a fleet.</p>
       )}
       {fleet && fleet.in_fleet && (
-        <table className="holdings" style={{ marginTop: 10 }}>
-          <tbody>
-            {fleet.members.map((m, i) => (
-              <tr key={i}>
-                <td>{m.name}</td>
-                <td className="loc">{m.ship}{m.system ? ` · ${m.system}` : ""}</td>
-                <td className="mono num">{m.role}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <table className="holdings" style={{ marginTop: 10 }}>
+            <tbody>
+              {fleet.members.map((m, i) => (
+                <tr key={i}>
+                  <td>{m.name}</td>
+                  <td className="loc">{m.ship}{m.system ? ` · ${m.system}` : ""}</td>
+                  <td className="mono num">{m.role}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+            <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 4px" }}>
+              Fleet settings (boss only — ESI write):
+            </p>
+            <textarea
+              value={motd}
+              onChange={(e) => setMotd(e.target.value)}
+              placeholder="Fleet MOTD…"
+              style={{ width: "100%", minHeight: 48, fontSize: 12 }}
+            />
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
+              <label style={{ fontSize: 12, display: "flex", gap: 4, alignItems: "center" }}>
+                <input type="checkbox" checked={freeMove} onChange={(e) => setFreeMove(e.target.checked)} />
+                Free-move
+              </label>
+              <button onClick={saveMotd}>Update fleet</button>
+              {motdMsg && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{motdMsg}</span>}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

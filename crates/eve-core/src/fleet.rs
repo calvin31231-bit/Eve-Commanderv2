@@ -58,4 +58,20 @@ impl FleetClient {
         let path = format!("/latest/fleets/{fleet_id}/members/");
         self.esi.get_auth_json::<Vec<FleetMember>>(&path, &token).await
     }
+
+    /// Update the fleet's MOTD and free-move flag (the requesting character must
+    /// be the fleet boss). The one ESI-sanctioned fleet write — not input
+    /// automation. Requires the `esi-fleets.write_fleet.v1` scope.
+    pub async fn set_settings(
+        &self,
+        character_id: i64,
+        fleet_id: i64,
+        motd: &str,
+        is_free_move: bool,
+    ) -> Result<()> {
+        let token = self.tokens.access_token(character_id).await?;
+        let path = format!("/latest/fleets/{fleet_id}/");
+        let body = serde_json::json!({ "motd": motd, "is_free_move": is_free_move });
+        self.esi.put_auth_empty(&path, &body, &token).await
+    }
 }

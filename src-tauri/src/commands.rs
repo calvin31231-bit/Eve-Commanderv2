@@ -37,6 +37,7 @@ const BASE_SCOPES: &[&str] = &[
     // login, so it must NOT be in this list.
     "esi-calendar.read_calendar_events.v1",
     "esi-fleets.read_fleet.v1",
+    "esi-fleets.write_fleet.v1",
     "esi-mail.read_mail.v1",
     "esi-mail.organize_mail.v1",
     "esi-clones.read_clones.v1",
@@ -1768,6 +1769,24 @@ pub async fn get_fleet(state: State<'_, AppState>, character_id: i64) -> CmdResu
             })
             .collect(),
     })
+}
+
+/// Update the active fleet's MOTD and free-move flag (the character must be the
+/// fleet boss). The one EULA-sanctioned fleet write-op — ESI, not input
+/// automation. Requires `esi-fleets.write_fleet.v1`.
+#[tauri::command]
+pub async fn set_fleet_settings(
+    state: State<'_, AppState>,
+    character_id: i64,
+    motd: String,
+    is_free_move: bool,
+) -> CmdResult<()> {
+    let info = state.fleet.current(character_id).await.map_err(|_| "not in a fleet".to_string())?;
+    state
+        .fleet
+        .set_settings(character_id, info.fleet_id, &motd, is_free_move)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Current EVE-Scout Thera/Turnur wormhole connections (public 3P), soonest to
