@@ -807,6 +807,7 @@ export interface AiSettingsView {
   enabled: boolean;
   base_url: string;
   model: string;
+  embed_model: string;
   has_api_key: boolean;
 }
 

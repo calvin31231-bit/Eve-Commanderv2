@@ -69,6 +69,16 @@ CREATE TABLE IF NOT EXISTS ai_memory (
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_updated ON ai_memory (updated_at);
 
+-- Vector index for durable memory (the vector half of hybrid recall). Kept in a
+-- side table — not the note row — so embeddings (large, derivable BLOBs) never
+-- bloat note reads or the portability export. `vec` is little-endian f32 bytes;
+-- a row is removed with its note (cleaned up explicitly on delete).
+CREATE TABLE IF NOT EXISTS ai_memory_vectors (
+    note_id INTEGER PRIMARY KEY,
+    dim     INTEGER NOT NULL,
+    vec     BLOB    NOT NULL
+);
+
 -- Reusable skill-plan library: named plans stored independent of any character
 -- (body is the importable text form) so they can be loaded onto a new alt.
 CREATE TABLE IF NOT EXISTS skill_plans (

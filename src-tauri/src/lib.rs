@@ -8,6 +8,7 @@
 
 mod ai_tools;
 mod commands;
+mod mcp_stdio;
 mod poller;
 mod snapshot;
 mod tray;
@@ -300,9 +301,24 @@ fn build_state() -> AppState {
 
 /// Entry point invoked by `main.rs`.
 pub fn run() {
-    tracing_subscriber::fmt().with_env_filter("info").init();
+    // In stdio MCP mode stdout carries the JSON-RPC stream, so logs must go to
+    // stderr or they'd corrupt it.
+    let mcp_stdio_mode = std::env::args().any(|a| a == "--mcp-stdio");
+    if mcp_stdio_mode {
+        tracing_subscriber::fmt().with_env_filter("warn").with_writer(std::io::stderr).init();
+    } else {
+        tracing_subscriber::fmt().with_env_filter("info").init();
+    }
 
     let state = build_state();
+
+    // Headless MCP server mode: when launched with `--mcp-stdio`, serve the
+    // tool registry over stdio (for the player's own agents) instead of opening
+    // the GUI. The same in-process state + tools as the in-app assistant.
+    if mcp_stdio_mode {
+        mcp_stdio::serve(state);
+        return;
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -435,6 +451,7 @@ pub fn run() {
             commands::list_memory,
             commands::forget_memory,
             commands::pin_memory,
+            commands::reindex_memory,
             commands::export_data,
             commands::wipe_data,
             commands::save_skill_plan,

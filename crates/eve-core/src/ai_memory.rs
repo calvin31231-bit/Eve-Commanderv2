@@ -101,6 +101,38 @@ pub fn relevance(query: &str, haystack: &str, salience: f64, updated_at: i64, no
     0.5 * overlap + 0.3 * salience.clamp(0.0, 1.0) + 0.2 * recency
 }
 
+/// Cosine similarity of two equal-length vectors, in `-1..=1` (0 when either is
+/// empty, length-mismatched, or zero-norm). Pure — the vector half of recall.
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
+    if a.is_empty() || a.len() != b.len() {
+        return 0.0;
+    }
+    let mut dot = 0.0f64;
+    let mut na = 0.0f64;
+    let mut nb = 0.0f64;
+    for (x, y) in a.iter().zip(b.iter()) {
+        dot += (*x as f64) * (*y as f64);
+        na += (*x as f64) * (*x as f64);
+        nb += (*y as f64) * (*y as f64);
+    }
+    if na == 0.0 || nb == 0.0 {
+        return 0.0;
+    }
+    dot / (na.sqrt() * nb.sqrt())
+}
+
+/// Blend the keyword/recency [`relevance`] score with vector cosine similarity
+/// into one hybrid recall score — the plan's "vector similarity + structured +
+/// recency×importance" retrieval. `cosine` is expected in `0..=1` (negative
+/// similarities are clamped to 0). When no embedding is available pass
+/// `cosine = None` and the score falls back to the keyword half. Pure.
+pub fn hybrid_relevance(keyword: f64, cosine: Option<f64>) -> f64 {
+    match cosine {
+        Some(c) => 0.5 * keyword + 0.5 * c.clamp(0.0, 1.0),
+        None => keyword,
+    }
+}
+
 /// The minimal note shape the eviction policy needs. (The DB row carries more.)
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemoryRef {
@@ -170,6 +202,22 @@ mod tests {
         // Empty query falls back to salience + recency (no panic, finite).
         let base = relevance("", "anything", 0.5, now, now);
         assert!(base > 0.0 && base.is_finite());
+    }
+
+    #[test]
+    fn cosine_and_hybrid_blend() {
+        // Identical direction → 1.0; orthogonal → 0.0; mismatched/empty → 0.0.
+        assert!((cosine_similarity(&[1.0, 0.0], &[2.0, 0.0]) - 1.0).abs() < 1e-9);
+        assert!(cosine_similarity(&[1.0, 0.0], &[0.0, 1.0]).abs() < 1e-9);
+        assert_eq!(cosine_similarity(&[1.0], &[1.0, 2.0]), 0.0);
+        assert_eq!(cosine_similarity(&[], &[]), 0.0);
+
+        // Hybrid: with a strong cosine the blended score beats keyword alone;
+        // without an embedding it falls back to the keyword score exactly.
+        assert!(hybrid_relevance(0.2, Some(1.0)) > 0.2);
+        assert_eq!(hybrid_relevance(0.42, None), 0.42);
+        // Negative similarity is clamped, never dragging the score below half-keyword.
+        assert!((hybrid_relevance(0.4, Some(-0.9)) - 0.2).abs() < 1e-9);
     }
 
     #[test]

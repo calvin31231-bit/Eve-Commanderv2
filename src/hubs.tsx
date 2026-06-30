@@ -2952,7 +2952,9 @@ function AiAssistant(): ReactNode {
   const [settings, setSettings] = useState<AiSettingsView | null>(null);
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
+  const [embedModel, setEmbedModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [reindexMsg, setReindexMsg] = useState("");
   const [endpoints, setEndpoints] = useState<AiEndpointView[] | null>(null);
   const [saved, setSaved] = useState(false);
   const [history, setHistory] = useState<{ role: "user" | "assistant"; content: string; tools?: string[] }[]>([]);
@@ -2968,6 +2970,7 @@ function AiAssistant(): ReactNode {
       setSettings(s);
       setBaseUrl(s.base_url);
       setModel(s.model);
+      setEmbedModel(s.embed_model);
     }).catch(() => undefined);
     api.listAiAgents().then(setAgents).catch(() => undefined);
   }, []);
@@ -2976,14 +2979,22 @@ function AiAssistant(): ReactNode {
     if (!settings) return;
     const enabled = next?.enabled ?? settings.enabled;
     api
-      .setAiSettings(enabled, baseUrl, model, apiKey === "" ? null : apiKey)
+      .setAiSettings(enabled, baseUrl, model, embedModel, apiKey === "" ? null : apiKey)
       .then(() => {
-        setSettings({ ...settings, enabled, base_url: baseUrl, model, has_api_key: settings.has_api_key || apiKey !== "" });
+        setSettings({ ...settings, enabled, base_url: baseUrl, model, embed_model: embedModel, has_api_key: settings.has_api_key || apiKey !== "" });
         setApiKey("");
         setSaved(true);
         window.setTimeout(() => setSaved(false), 1500);
       })
       .catch((e) => setErr(String(e)));
+  }
+
+  function reindex() {
+    setReindexMsg("Indexing…");
+    api
+      .reindexMemory()
+      .then((n) => setReindexMsg(n === 0 ? "Set an embeddings model first." : `Indexed ${n} note(s).`))
+      .catch((e) => setReindexMsg(String(e)));
   }
 
   function detect() {
@@ -3050,14 +3061,20 @@ function AiAssistant(): ReactNode {
             <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. llama3.1" />
           </label>
           <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Embeddings model (optional — vector memory recall)
+            <input value={embedModel} onChange={(e) => setEmbedModel(e.target.value)} placeholder="e.g. nomic-embed-text (blank = keyword recall)" />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
             API key {settings?.has_api_key ? "(stored)" : "(optional, for cloud)"}
             <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="leave blank for local" />
           </label>
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={() => save()}>Save</button>
           <button onClick={detect}>Detect local</button>
-          {saved && <span style={{ color: "var(--accent)", fontSize: 12, alignSelf: "center" }}>Saved</span>}
+          <button onClick={reindex} title="Embed existing memory notes for vector recall">Reindex memory</button>
+          {saved && <span style={{ color: "var(--accent)", fontSize: 12 }}>Saved</span>}
+          {reindexMsg && <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{reindexMsg}</span>}
         </div>
         {endpoints && (
           <div style={{ marginTop: 8, fontSize: 12 }}>

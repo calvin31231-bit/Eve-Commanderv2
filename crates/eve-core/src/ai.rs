@@ -182,6 +182,34 @@ pub fn parse_chat_response(v: &Value) -> Result<ChatResponse> {
     Ok(ChatResponse { content, tool_calls })
 }
 
+/// Build the `/v1/embeddings` request body for one or more inputs. Pure.
+pub fn build_embeddings_body(model: &str, inputs: &[String]) -> Value {
+    json!({ "model": model, "input": inputs })
+}
+
+/// Parse a `/v1/embeddings` response into one vector per input, preserving order
+/// (sorts by the `index` field when present, as some servers reorder). Pure.
+pub fn parse_embeddings_response(v: &Value) -> Result<Vec<Vec<f32>>> {
+    let data = v
+        .get("data")
+        .and_then(|d| d.as_array())
+        .ok_or_else(|| Error::other("embeddings response missing data[]"))?;
+    let mut indexed: Vec<(usize, Vec<f32>)> = Vec::with_capacity(data.len());
+    for (i, item) in data.iter().enumerate() {
+        let idx = item.get("index").and_then(|x| x.as_u64()).map(|x| x as usize).unwrap_or(i);
+        let vec = item
+            .get("embedding")
+            .and_then(|e| e.as_array())
+            .ok_or_else(|| Error::other("embeddings item missing embedding[]"))?
+            .iter()
+            .filter_map(|n| n.as_f64().map(|f| f as f32))
+            .collect();
+        indexed.push((idx, vec));
+    }
+    indexed.sort_by_key(|(i, _)| *i);
+    Ok(indexed.into_iter().map(|(_, v)| v).collect())
+}
+
 /// Common local OpenAI-compatible endpoints, for auto-detect: (label, base_url).
 pub const LOCAL_ENDPOINTS: &[(&str, &str)] = &[
     ("Ollama", "http://127.0.0.1:11434/v1"),
@@ -233,6 +261,25 @@ impl AiClient {
         }
         let v: Value = resp.json().await?;
         parse_chat_response(&v)
+    }
+
+    /// Embed `inputs` with `model` (the embeddings model, which may differ from
+    /// the chat model) via `/v1/embeddings`. Returns one vector per input. Used
+    /// for the durable-memory vector recall (the vector half of hybrid RAG).
+    pub async fn embed(&self, model: &str, inputs: &[String]) -> Result<Vec<Vec<f32>>> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let body = build_embeddings_body(model, inputs);
+        let url = format!("{}/embeddings", self.base_url);
+        let resp = self.auth(self.http.post(&url).json(&body)).send().await?;
+        if !resp.status().is_success() {
+            let code = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(Error::other(format!("embeddings endpoint {code}: {text}")));
+        }
+        let v: Value = resp.json().await?;
+        parse_embeddings_response(&v)
     }
 
     /// List the model ids the endpoint advertises (`/v1/models`).
@@ -325,5 +372,30 @@ mod tests {
     #[test]
     fn missing_choices_is_an_error() {
         assert!(parse_chat_response(&json!({})).is_err());
+    }
+
+    #[test]
+    fn builds_embeddings_body() {
+        let body = build_embeddings_body("nomic-embed", &["hello".into(), "world".into()]);
+        assert_eq!(body["model"], "nomic-embed");
+        assert_eq!(body["input"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn parses_embeddings_and_reorders_by_index() {
+        // Server returns the second input first; we restore input order.
+        let v = json!({ "data": [
+            { "index": 1, "embedding": [0.0, 1.0] },
+            { "index": 0, "embedding": [1.0, 0.0] },
+        ] });
+        let vecs = parse_embeddings_response(&v).unwrap();
+        assert_eq!(vecs.len(), 2);
+        assert_eq!(vecs[0], vec![1.0, 0.0]);
+        assert_eq!(vecs[1], vec![0.0, 1.0]);
+    }
+
+    #[test]
+    fn embeddings_missing_data_is_an_error() {
+        assert!(parse_embeddings_response(&json!({})).is_err());
     }
 }

@@ -382,8 +382,9 @@ export const api = {
     enabled: boolean,
     baseUrl: string,
     model: string,
+    embedModel: string | null,
     apiKey: string | null,
-  ) => call<void>("set_ai_settings", { enabled, baseUrl, model, apiKey }),
+  ) => call<void>("set_ai_settings", { enabled, baseUrl, model, embedModel, apiKey }),
   aiDetectEndpoints: () => call<AiEndpointView[]>("ai_detect_endpoints"),
   aiChat: (messages: ChatMessage[], agentId: string) =>
     call<AiChatView>("ai_chat", { messages, agentId }),
@@ -398,6 +399,7 @@ export const api = {
   forgetMemory: (id: number) => call<void>("forget_memory", { id }),
   pinMemory: (id: number, pinned: boolean) =>
     call<void>("pin_memory", { id, pinned }),
+  reindexMemory: () => call<number>("reindex_memory"),
   exportData: () => call<string>("export_data"),
   wipeData: () => call<void>("wipe_data"),
   saveSkillPlan: (name: string, body: string) =>

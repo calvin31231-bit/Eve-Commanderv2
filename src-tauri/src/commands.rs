@@ -3933,6 +3933,8 @@ pub struct AiSettingsView {
     pub enabled: bool,
     pub base_url: String,
     pub model: String,
+    /// Embeddings model for vector recall ("" = vector recall off).
+    pub embed_model: String,
     pub has_api_key: bool,
 }
 
@@ -3946,12 +3948,13 @@ pub async fn get_ai_settings(state: State<'_, AppState>) -> CmdResult<AiSettings
         .await
         .map_err(|e| e.to_string())?;
     let model = state.db.get_setting_or("ai_model", "").await.map_err(|e| e.to_string())?;
+    let embed_model = state.db.get_setting_or("ai_embed_model", "").await.map_err(|e| e.to_string())?;
     let has_api_key = state
         .tokens
         .load_refresh_token(AI_KEY_ID)
         .map(|k| matches!(k, Some(s) if !s.is_empty()))
         .unwrap_or(false);
-    Ok(AiSettingsView { enabled, base_url, model, has_api_key })
+    Ok(AiSettingsView { enabled, base_url, model, embed_model, has_api_key })
 }
 
 /// Persist AI configuration. `api_key` is optional: `None` leaves the stored key
@@ -3962,6 +3965,7 @@ pub async fn set_ai_settings(
     enabled: bool,
     base_url: String,
     model: String,
+    embed_model: Option<String>,
     api_key: Option<String>,
 ) -> CmdResult<()> {
     state
@@ -3971,6 +3975,9 @@ pub async fn set_ai_settings(
         .map_err(|e| e.to_string())?;
     state.db.set_setting("ai_base_url", base_url.trim()).await.map_err(|e| e.to_string())?;
     state.db.set_setting("ai_model", model.trim()).await.map_err(|e| e.to_string())?;
+    if let Some(em) = embed_model {
+        state.db.set_setting("ai_embed_model", em.trim()).await.map_err(|e| e.to_string())?;
+    }
     match api_key {
         Some(k) if k.is_empty() => {
             state.tokens.delete_refresh_token(AI_KEY_ID).map_err(|e| e.to_string())?;
@@ -4034,21 +4041,59 @@ async fn ai_client_from_settings(state: &AppState) -> CmdResult<eve_core::ai::Ai
     Ok(eve_core::ai::AiClient::new(base_url, model, api_key))
 }
 
+/// The configured embeddings model for vector recall, or `None` when the player
+/// hasn't set one (recall then falls back to keyword/recency only).
+async fn ai_embed_model(state: &AppState) -> Option<String> {
+    state
+        .db
+        .get_setting_or("ai_embed_model", "")
+        .await
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+}
+
+/// Embed one text best-effort, returning `None` on any failure so embeddings are
+/// never load-bearing.
+async fn embed_text(state: &AppState, model: &str, text: &str) -> Option<Vec<f32>> {
+    let client = ai_client_from_settings(state).await.ok()?;
+    let mut vecs = client.embed(model, &[text.to_string()]).await.ok()?;
+    vecs.pop()
+}
+
 /// Seed a conversation with the system prompt and, when present, a recall
 /// message built from the player's durable memory notes. Shared by `ai_chat`
-/// and `ai_briefing` so the assistant is personalized in both.
+/// and `ai_briefing` so the assistant is personalized in both. When an
+/// embeddings model is configured, recall is hybrid (vector cosine blended with
+/// keyword/recency); otherwise it falls back to the keyword half.
 async fn ai_seed_messages(state: &AppState, agent_id: &str, query: &str) -> Vec<eve_core::ai::ChatMessage> {
     let mut convo =
         vec![eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt_for(agent_id))];
     if let Ok(mut notes) = state.db.list_memory().await {
-        // Retrieval-augmented recall: rank notes by relevance to the query
-        // (keyword overlap + salience + recency) and inject the most relevant.
         let now = now_epoch_secs();
-        notes.sort_by(|a, b| {
-            let sa = eve_core::ai_memory::relevance(query, &format!("{} {}", a.title, a.body), a.salience, a.updated_at, now);
-            let sb = eve_core::ai_memory::relevance(query, &format!("{} {}", b.title, b.body), b.salience, b.updated_at, now);
-            sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        // Optional vector half: embed the query and pull stored note vectors.
+        let query_vec = match ai_embed_model(state).await {
+            Some(model) => embed_text(state, &model, query).await,
+            None => None,
+        };
+        let embeddings: std::collections::HashMap<i64, Vec<f32>> = match &query_vec {
+            Some(_) => state.db.memory_embeddings().await.unwrap_or_default().into_iter().collect(),
+            None => std::collections::HashMap::new(),
+        };
+        let score = |n: &eve_core::db::ai_memory::MemoryNote| {
+            let keyword = eve_core::ai_memory::relevance(
+                query,
+                &format!("{} {}", n.title, n.body),
+                n.salience,
+                n.updated_at,
+                now,
+            );
+            let cosine = query_vec
+                .as_ref()
+                .zip(embeddings.get(&n.id))
+                .map(|(q, v)| eve_core::ai_memory::cosine_similarity(q, v));
+            eve_core::ai_memory::hybrid_relevance(keyword, cosine)
+        };
+        notes.sort_by(|a, b| score(b).partial_cmp(&score(a)).unwrap_or(std::cmp::Ordering::Equal));
         let formatted: Vec<(String, String, String)> =
             notes.into_iter().map(|n| (n.kind, n.title, n.body)).collect();
         if let Some(ctx) = crate::ai_tools::memory_context(&formatted) {
@@ -4213,7 +4258,37 @@ pub async fn add_memory(
         .await
         .map_err(|e| e.to_string())?;
     state.db.enforce_memory_cap(AI_MEMORY_CAP, now).await.map_err(|e| e.to_string())?;
+    // Index the note for vector recall, best-effort (no embeddings model → skip).
+    if let Some(model) = ai_embed_model(&state).await {
+        let text = format!("{} {}", title.trim(), body.trim());
+        if let Some(vec) = embed_text(&state, &model, &text).await {
+            let _ = state.db.set_memory_embedding(id, &vec).await;
+        }
+    }
     Ok(Some(id))
+}
+
+/// Backfill embeddings for memory notes that don't have one yet (e.g. notes
+/// written before an embeddings model was configured, or after switching
+/// models). Returns how many were indexed. No-op when no embeddings model is set.
+#[tauri::command]
+pub async fn reindex_memory(state: State<'_, AppState>) -> CmdResult<usize> {
+    let Some(model) = ai_embed_model(&state).await else {
+        return Ok(0);
+    };
+    let ids = state.db.memory_ids_without_embedding().await.map_err(|e| e.to_string())?;
+    let notes = state.db.list_memory().await.map_err(|e| e.to_string())?;
+    let mut indexed = 0usize;
+    for id in ids {
+        let Some(note) = notes.iter().find(|n| n.id == id) else { continue };
+        let text = format!("{} {}", note.title, note.body);
+        if let Some(vec) = embed_text(&state, &model, &text).await {
+            if state.db.set_memory_embedding(id, &vec).await.is_ok() {
+                indexed += 1;
+            }
+        }
+    }
+    Ok(indexed)
 }
 
 /// List all durable memory notes (most salient first).

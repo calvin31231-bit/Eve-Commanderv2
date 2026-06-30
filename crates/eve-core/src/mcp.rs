@@ -46,6 +46,16 @@ pub fn tool_result(id: Value, result_text: &str, is_error: bool) -> Value {
     )
 }
 
+/// Parse one line of newline-delimited JSON-RPC from a transport (stdio). On
+/// success returns the request value; on malformed JSON returns a ready
+/// JSON-RPC parse-error response (code -32700) for the transport to emit. Pure.
+pub fn parse_request_line(line: &str) -> std::result::Result<Value, Value> {
+    match serde_json::from_str::<Value>(line) {
+        Ok(v) => Ok(v),
+        Err(e) => Err(error(Value::Null, -32700, &format!("parse error: {e}"))),
+    }
+}
+
 /// Handle one parsed JSON-RPC request. Pure. `tools` is the offered registry;
 /// `server_name`/`version` identify this server in `initialize`.
 pub fn handle(request: &Value, tools: &[ToolSpec], server_name: &str, version: &str) -> McpAction {
@@ -152,5 +162,15 @@ mod tests {
     fn notification_has_no_reply() {
         let note = json!({ "method": "notifications/initialized" });
         assert!(matches!(handle(&note, &tools(), "s", "v"), McpAction::None));
+    }
+
+    #[test]
+    fn parse_request_line_ok_and_error() {
+        let ok = parse_request_line("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}").unwrap();
+        assert_eq!(ok["method"], "ping");
+        // Malformed JSON yields a -32700 parse-error reply, not a panic.
+        let err = parse_request_line("{not json").unwrap_err();
+        assert_eq!(err["error"]["code"], -32700);
+        assert_eq!(err["id"], Value::Null);
     }
 }

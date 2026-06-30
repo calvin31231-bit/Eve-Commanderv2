@@ -265,6 +265,7 @@ impl Database {
             "character_group_members",
             "character_groups",
             "snapshots",
+            "ai_memory_vectors",
             "ai_memory",
             "skill_plans",
             "saved_fits",
