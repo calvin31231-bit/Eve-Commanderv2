@@ -2724,6 +2724,8 @@ pub struct MapNode {
     /// Sovereignty-holding alliance id (0 = unclaimed/high-sec).
     pub sov_alliance_id: i64,
     pub sov_owner: String,
+    /// Activity Defense Multiplier (0.0 = no sov structure / unknown).
+    pub adm: f64,
 }
 
 /// A Dotlan-style region map: positioned systems + intra-region jumps + a kill
@@ -2807,6 +2809,12 @@ pub async fn get_region_map(
                 .collect()
         })
         .unwrap_or_default();
+    let adm: std::collections::HashMap<i64, f64> = state
+        .universe
+        .sovereignty_structures()
+        .await
+        .map(|v| eve_core::universe::adm_by_system(&v))
+        .unwrap_or_default();
 
     // Resolve sov-holding alliance names for systems in this region.
     let alliance_ids: Vec<i64> = systems
@@ -2827,6 +2835,7 @@ pub async fn get_region_map(
                     String::new()
                 },
                 sov_alliance_id,
+                adm: adm.get(&s.system_id).copied().unwrap_or(0.0),
                 system_id: s.system_id,
                 name: s.name,
                 security: s.security,

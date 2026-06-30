@@ -309,6 +309,15 @@ function secColor(sec: number): string {
   return "var(--danger)";
 }
 
+// Sovereignty ring colour by Activity Defense Multiplier: dim purple when no
+// structure data, green at the 6.0 cap (well-defended), amber when weak.
+function admColor(adm: number): string {
+  if (adm <= 0) return "#a78bfa";
+  if (adm >= 5) return "#4ade80";
+  if (adm >= 3) return "#facc15";
+  return "#fb923c";
+}
+
 function shortDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -4225,10 +4234,10 @@ function RegionMap(): ReactNode {
             const hot = n.kills > 0;
             return (
               <g key={n.system_id}>
-                <title>{`${n.name} · sec ${n.security.toFixed(1)}${n.sov_owner ? ` · ${n.sov_owner}` : ""}${hot ? ` · ${n.kills} kills/hr` : ""}`}</title>
+                <title>{`${n.name} · sec ${n.security.toFixed(1)}${n.sov_owner ? ` · ${n.sov_owner}` : ""}${n.adm > 0 ? ` · ADM ${n.adm.toFixed(1)}` : ""}${hot ? ` · ${n.kills} kills/hr` : ""}`}</title>
                 {hot && <circle cx={p.x} cy={p.y} r={6 + Math.min(n.kills, 12)} fill="#f87171" fillOpacity={0.25} />}
                 {n.sov_alliance_id !== 0 && (
-                  <circle cx={p.x} cy={p.y} r={7} fill="none" stroke="#a78bfa" strokeWidth="1" strokeOpacity={0.7} />
+                  <circle cx={p.x} cy={p.y} r={7} fill="none" stroke={admColor(n.adm)} strokeWidth={n.adm > 0 ? 1.5 : 1} strokeOpacity={0.8} />
                 )}
                 <circle cx={p.x} cy={p.y} r={4} fill={secColor(n.security)} stroke={hot ? "#f87171" : "none"} strokeWidth="1.5" />
                 {hot && (
@@ -4242,7 +4251,7 @@ function RegionMap(): ReactNode {
         </svg>
       )}
       <p style={{ color: "var(--text-dim)", fontSize: 11, marginBottom: 0 }}>
-        Node colour = security; red halo = ship kills/hr; purple ring = held sovereignty (hover for owner).
+        Node colour = security; red halo = ship kills/hr; sov ring = held sovereignty, coloured by ADM (green=strong, amber=weak; hover for owner/ADM).
       </p>
     </div>
   );

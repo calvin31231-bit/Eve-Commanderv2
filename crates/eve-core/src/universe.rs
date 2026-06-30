@@ -56,6 +56,30 @@ pub struct SovEntry {
     pub faction_id: Option<i64>,
 }
 
+/// A sovereignty structure with its Activity Defense Multiplier (ESI
+/// `GET /sovereignty/structures/`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct SovStructure {
+    pub system_id: i64,
+    #[serde(default, rename = "vulnerability_occupancy_level")]
+    pub adm: Option<f64>,
+}
+
+/// Reduce sovereignty structures to the highest ADM per system. Multiple
+/// structures share a system; the strongest defense is what matters. Pure.
+pub fn adm_by_system(structures: &[SovStructure]) -> std::collections::HashMap<i64, f64> {
+    let mut out: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
+    for s in structures {
+        if let Some(adm) = s.adm {
+            let e = out.entry(s.system_id).or_insert(0.0);
+            if adm > *e {
+                *e = adm;
+            }
+        }
+    }
+    out
+}
+
 /// Reads universe topology over the cache-first ESI client.
 #[derive(Clone)]
 pub struct UniverseClient {
@@ -87,6 +111,14 @@ impl UniverseClient {
             .await
     }
 
+    /// Sovereignty structures (TCU/IHub) with their Activity Defense Multiplier
+    /// (`vulnerability_occupancy_level`). One public call.
+    pub async fn sovereignty_structures(&self) -> Result<Vec<SovStructure>> {
+        self.esi
+            .get_public_json::<Vec<SovStructure>>("/latest/sovereignty/structures/")
+            .await
+    }
+
     /// The systems one jump from `system_id` (via its stargates). Best-effort:
     /// a stargate that fails to resolve is skipped rather than failing the set.
     pub async fn neighbors(&self, system_id: i64) -> Result<Vec<i64>> {
@@ -99,5 +131,24 @@ impl UniverseClient {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adm_takes_max_per_system() {
+        let s = |system_id: i64, adm: Option<f64>| SovStructure { system_id, adm };
+        let structures = vec![
+            s(30000142, Some(3.0)),
+            s(30000142, Some(6.0)), // IHub ADM higher → wins
+            s(30000142, None),      // missing ADM ignored
+            s(30002187, Some(1.0)),
+        ];
+        let map = adm_by_system(&structures);
+        assert_eq!(map.get(&30000142), Some(&6.0));
+        assert_eq!(map.get(&30002187), Some(&1.0));
     }
 }
