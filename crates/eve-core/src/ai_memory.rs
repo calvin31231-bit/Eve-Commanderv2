@@ -82,6 +82,25 @@ pub fn should_persist(salience: f64) -> bool {
     salience >= PERSIST_THRESHOLD
 }
 
+/// Relevance of a memory note to a query, for retrieval-augmented recall. Blends
+/// keyword overlap with the query, the note's salience, and its recency — the
+/// structured + recency×importance half of the plan's hybrid retrieval (the
+/// vector-similarity half needs an embeddings model). Range ~0..=1. Pure.
+pub fn relevance(query: &str, haystack: &str, salience: f64, updated_at: i64, now: i64) -> f64 {
+    let q = query.to_lowercase();
+    let tokens: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|t| t.len() >= 3).collect();
+    let hay = haystack.to_lowercase();
+    let overlap = if tokens.is_empty() {
+        0.0
+    } else {
+        let hits = tokens.iter().filter(|t| hay.contains(**t)).count();
+        hits as f64 / tokens.len() as f64
+    };
+    let age_days = ((now - updated_at).max(0) as f64) / 86_400.0;
+    let recency = 1.0 / (1.0 + age_days / 30.0);
+    0.5 * overlap + 0.3 * salience.clamp(0.0, 1.0) + 0.2 * recency
+}
+
 /// The minimal note shape the eviction policy needs. (The DB row carries more.)
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemoryRef {
@@ -139,6 +158,18 @@ mod tests {
     fn empty_body_scores_zero() {
         assert_eq!(salience_score(MemoryKind::Goal, "   "), 0.0);
         assert!(!should_persist(0.0));
+    }
+
+    #[test]
+    fn relevance_rewards_query_overlap() {
+        let now = 100 * 86_400;
+        // A note matching the query outranks an unrelated one of equal salience.
+        let hit = relevance("training toward a carrier", "Goal: train toward a Nyx carrier", 0.8, now, now);
+        let miss = relevance("training toward a carrier", "Prefers buy orders in Jita", 0.8, now, now);
+        assert!(hit > miss);
+        // Empty query falls back to salience + recency (no panic, finite).
+        let base = relevance("", "anything", 0.5, now, now);
+        assert!(base > 0.0 && base.is_finite());
     }
 
     #[test]

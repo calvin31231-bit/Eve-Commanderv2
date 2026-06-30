@@ -3801,10 +3801,18 @@ async fn ai_client_from_settings(state: &AppState) -> CmdResult<eve_core::ai::Ai
 /// Seed a conversation with the system prompt and, when present, a recall
 /// message built from the player's durable memory notes. Shared by `ai_chat`
 /// and `ai_briefing` so the assistant is personalized in both.
-async fn ai_seed_messages(state: &AppState, agent_id: &str) -> Vec<eve_core::ai::ChatMessage> {
+async fn ai_seed_messages(state: &AppState, agent_id: &str, query: &str) -> Vec<eve_core::ai::ChatMessage> {
     let mut convo =
         vec![eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt_for(agent_id))];
-    if let Ok(notes) = state.db.list_memory().await {
+    if let Ok(mut notes) = state.db.list_memory().await {
+        // Retrieval-augmented recall: rank notes by relevance to the query
+        // (keyword overlap + salience + recency) and inject the most relevant.
+        let now = now_epoch_secs();
+        notes.sort_by(|a, b| {
+            let sa = eve_core::ai_memory::relevance(query, &format!("{} {}", a.title, a.body), a.salience, a.updated_at, now);
+            let sb = eve_core::ai_memory::relevance(query, &format!("{} {}", b.title, b.body), b.salience, b.updated_at, now);
+            sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+        });
         let formatted: Vec<(String, String, String)> =
             notes.into_iter().map(|n| (n.kind, n.title, n.body)).collect();
         if let Some(ctx) = crate::ai_tools::memory_context(&formatted) {
@@ -3858,7 +3866,9 @@ pub async fn ai_chat(
 ) -> CmdResult<AiChatView> {
     let agent = agent_id.unwrap_or_else(|| "commander".to_string());
     let client = ai_client_from_settings(&state).await?;
-    let mut convo = ai_seed_messages(&state, &agent).await;
+    // The latest user message drives memory retrieval.
+    let query = messages.iter().rev().find(|m| m.role == eve_core::ai::Role::User).map(|m| m.content.clone()).unwrap_or_default();
+    let mut convo = ai_seed_messages(&state, &agent, &query).await;
     convo.extend(messages);
     ai_run_conversation(&state, &client, &agent, convo).await
 }
@@ -3907,7 +3917,7 @@ pub fn list_ai_agents() -> Vec<AiAgentView> {
 #[tauri::command]
 pub async fn ai_briefing(state: State<'_, AppState>) -> CmdResult<AiChatView> {
     let client = ai_client_from_settings(&state).await?;
-    let mut convo = ai_seed_messages(&state, "commander").await;
+    let mut convo = ai_seed_messages(&state, "commander", "net worth income wealth risk goals").await;
     convo.push(eve_core::ai::ChatMessage::user(
         "Give me a brief 'state of my empire' summary. Check my account overview, my net-worth \
          trend over the last 30 days, and my current system's risk. Keep it to a few sentences \
