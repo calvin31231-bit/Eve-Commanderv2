@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, isTauri } from "./ipc";
 import { HUBS, renderHub, portraitUrl } from "./hubs";
+import { t, useLang } from "./i18n";
 import { Starfield } from "./Starfield";
 import { AgentAvatar, type Mood } from "./AgentAvatar";
 import type { Character, CharacterStatusView, LocalIntel, Notification, PodRiskView, ServerStatus, Severity, SystemSafetyView } from "./types";
@@ -34,6 +35,7 @@ function initialHub(): string {
 }
 
 export default function App() {
+  useLang(); // re-render the chrome when the UI language changes
   const [activeHub, setActiveHub] = useState(initialHub);
 
   function selectHub(id: string) {
@@ -93,8 +95,8 @@ export default function App() {
     const load = () =>
       api.getCharacterStatus(activeCharacter.id).then(setCharStatus).catch(() => undefined);
     load();
-    const t = window.setInterval(load, 30000);
-    return () => window.clearInterval(t);
+    const timer = window.setInterval(load, 30000);
+    return () => window.clearInterval(timer);
   }, [activeCharacter?.id]);
 
   // Aura's mood reflects the app state: unread alert severity, connection, roster.
@@ -165,7 +167,7 @@ export default function App() {
           <button
             key={h.id}
             className={h.id === activeHub ? "active" : ""}
-            title={h.label}
+            title={t(`hub.${h.id}`)}
             onClick={() => selectHub(h.id)}
           >
             {h.icon}

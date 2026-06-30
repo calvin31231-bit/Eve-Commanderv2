@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, isTauri } from "./ipc";
+import { t, useLang, setLang, getLang, LANGUAGES } from "./i18n";
 import type {
   AccountOverview,
   PortfolioHistory,
@@ -174,6 +175,7 @@ const HOME_WIDGETS: { id: string; label: string }[] = [
 ];
 
 function Home({ status, statusError, characters, onLogin, onSelectCharacter }: HomeProps): ReactNode {
+  useLang();
   const [account, setAccount] = useState<AccountOverview | null>(null);
   const [history, setHistory] = useState<PortfolioHistory | null>(null);
   const [layout, setLayout] = useState<WidgetSlot[]>(
@@ -329,11 +331,11 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter }: H
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <div>
-          <h1>Welcome, Capsuleer</h1>
-          <div className="sub">Your at-a-glance command center.</div>
+          <h1>{t("home.welcome")}</h1>
+          <div className="sub">{t("home.subtitle")}</div>
         </div>
         <button onClick={() => setEditing((e) => !e)} title="Show, hide, and reorder dashboard widgets">
-          {editing ? "Done" : "Customize"}
+          {editing ? t("home.done") : t("home.customize")}
         </button>
       </div>
 
@@ -3413,6 +3415,7 @@ function AppraisalTool(): ReactNode {
 }
 
 function ToolsHub(): ReactNode {
+  useLang();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState(false);
   const [sub, setSub] = useState("settings");
@@ -3460,6 +3463,17 @@ function ToolsHub(): ReactNode {
         <div className="card"><p style={{ color: "var(--text-dim)" }}>Loading…</p></div>
       ) : (
         <div className="card settings-card">
+          <label className="setting-row">
+            <div>
+              <div className="setting-name">{t("common.language")}</div>
+              <div className="setting-help">UI language. Untranslated text falls back to English.</div>
+            </div>
+            <select value={getLang()} onChange={(e) => setLang(e.target.value as "en" | "de")}>
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </label>
           <label className="setting-row">
             <div>
               <div className="setting-name">Data freshness</div>
