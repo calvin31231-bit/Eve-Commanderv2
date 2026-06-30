@@ -44,6 +44,9 @@ struct Args {
     regions_csv: Option<PathBuf>,
     universe: Option<PathBuf>,
     names: Option<PathBuf>,
+    stations_csv: Option<PathBuf>,
+    divisions: Option<PathBuf>,
+    agents: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args> {
@@ -60,6 +63,9 @@ fn parse_args() -> Result<Args> {
     let mut regions_csv = None;
     let mut universe = None;
     let mut names = None;
+    let mut stations_csv = None;
+    let mut divisions = None;
+    let mut agents = None;
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -81,6 +87,9 @@ fn parse_args() -> Result<Args> {
             "--regions-csv" => regions_csv = Some(PathBuf::from(next_value(&mut it, &arg)?)),
             "--universe" => universe = Some(PathBuf::from(next_value(&mut it, &arg)?)),
             "--names" => names = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--stations-csv" => stations_csv = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--divisions" => divisions = Some(PathBuf::from(next_value(&mut it, &arg)?)),
+            "--agents" => agents = Some(PathBuf::from(next_value(&mut it, &arg)?)),
             "-h" | "--help" => {
                 print_usage();
                 std::process::exit(0);
@@ -101,8 +110,11 @@ fn parse_args() -> Result<Args> {
         && jumps_csv.is_none()
         && regions_csv.is_none()
         && universe.is_none()
+        && stations_csv.is_none()
+        && divisions.is_none()
+        && agents.is_none()
     {
-        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints/--skills/--required-skills/--type-dogma/--systems-csv/--jumps-csv/--regions-csv/--universe)");
+        bail!("nothing to do: pass at least one input (--types/--systems/--type-materials/--blueprints/--skills/--required-skills/--type-dogma/--systems-csv/--jumps-csv/--regions-csv/--universe/--stations-csv/--divisions/--agents)");
     }
     Ok(Args {
         out,
@@ -118,6 +130,9 @@ fn parse_args() -> Result<Args> {
         regions_csv,
         universe,
         names,
+        stations_csv,
+        divisions,
+        agents,
     })
 }
 
@@ -194,6 +209,22 @@ fn run() -> Result<()> {
     if let Some(p) = &args.regions_csv {
         let n = conv.ingest_regions_csv(&read_text(p)?)?;
         eprintln!("regions_csv: {n} rows from {}", p.display());
+    }
+    if let Some(p) = &args.stations_csv {
+        let n = conv.ingest_stations_csv(&read_text(p)?)?;
+        eprintln!("stations_csv: {n} rows from {}", p.display());
+    }
+    if let Some(p) = &args.divisions {
+        let yaml = std::fs::read_to_string(p)
+            .with_context(|| format!("reading {}", p.display()))?;
+        let n = conv.ingest_divisions(&yaml)?;
+        eprintln!("divisions: {n} rows from {}", p.display());
+    }
+    if let Some(p) = &args.agents {
+        let yaml = std::fs::read_to_string(p)
+            .with_context(|| format!("reading {}", p.display()))?;
+        let n = conv.ingest_agents(&yaml)?;
+        eprintln!("agents: {n} rows from {}", p.display());
     }
     if let Some(dir) = &args.universe {
         let names_yaml = match &args.names {

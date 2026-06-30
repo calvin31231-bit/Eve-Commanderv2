@@ -76,6 +76,7 @@ import type {
   RouteView,
   CourierView,
   RegionMapView,
+  AgentFinderView,
   JumpFatigue,
   TheraConnection,
   CorpStructureView,
@@ -3999,6 +4000,7 @@ function CombatHub({ character }: { character: Character | null }): ReactNode {
       {sub === "abyss" && <AbyssTracker />}
       {sub === "pve" && (
         <>
+          <AgentFinder />
           <IncursionsPanel />
           <FactionWarfarePanel />
         </>
@@ -4398,6 +4400,93 @@ function RegionMap(): ReactNode {
       <p style={{ color: "var(--text-dim)", fontSize: 11, marginBottom: 0 }}>
         Node colour = security; red halo = ship kills/hr; sov ring = held sovereignty, coloured by ADM (green=strong, amber=weak; hover for owner/ADM).
       </p>
+    </div>
+  );
+}
+
+// Agent / mission finder: filter the SDE's mission agents by level, security
+// band, and region. Needs an SDE rebuilt with agent data.
+function AgentFinder(): ReactNode {
+  const [rows, setRows] = useState<AgentFinderView[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [level, setLevel] = useState("4");
+  const [sec, setSec] = useState("0.5");
+  const [region, setRegion] = useState("");
+  const [regions, setRegions] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    api.listMapRegions().then(setRegions).catch(() => setRegions([]));
+  }, []);
+
+  function load() {
+    if (!isTauri()) return;
+    setLoading(true);
+    api
+      .findAgents(
+        level ? Number(level) : undefined,
+        sec ? Number(sec) : undefined,
+        region || undefined,
+      )
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 720 }}>
+      <h3>Agent finder</h3>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <label style={{ fontSize: 12 }}>
+          Level{" "}
+          <select value={level} onChange={(e) => setLevel(e.target.value)}>
+            <option value="">Any</option>
+            {[1, 2, 3, 4, 5].map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: 12 }}>
+          Security{" "}
+          <select value={sec} onChange={(e) => setSec(e.target.value)}>
+            <option value="">Any</option>
+            <option value="0.5">High-sec (≥0.5)</option>
+            <option value="0.0">Low/null (≥0.0)</option>
+          </select>
+        </label>
+        <select value={region} onChange={(e) => setRegion(e.target.value)} style={{ fontSize: 12 }}>
+          <option value="">Any region</option>
+          {regions.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <button onClick={load} disabled={loading}>{loading ? "Searching…" : "Find"}</button>
+      </div>
+      {rows && rows.length === 0 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No agents — rebuild the SDE with agent data (--agents/--stations-csv/--divisions).
+        </p>
+      )}
+      {rows && rows.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <tbody>
+            {rows.slice(0, 100).map((a, i) => (
+              <tr key={i}>
+                <td>
+                  {a.corporation_name}
+                  <div style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                    L{a.level} {a.division_name}{a.is_locator ? " · locator" : ""}
+                  </div>
+                </td>
+                <td className="loc">
+                  {a.system_name} <span style={{ color: secColor(a.security * 10) }}>{a.security.toFixed(1)}</span>
+                  <div style={{ color: "var(--text-dim)", fontSize: 11 }}>{a.station_name}</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

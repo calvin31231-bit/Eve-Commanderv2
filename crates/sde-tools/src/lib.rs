@@ -178,6 +178,30 @@ struct RawSkill {
     secondary_attribute: i64,
 }
 
+/// One entry from CCP's `agents.yaml`, keyed by agent id.
+#[derive(Debug, Deserialize)]
+struct RawAgent {
+    #[serde(rename = "agentTypeID", default)]
+    agent_type_id: i64,
+    #[serde(rename = "corporationID", default)]
+    corporation_id: i64,
+    #[serde(rename = "divisionID", default)]
+    division_id: i64,
+    #[serde(rename = "isLocator", default)]
+    is_locator: bool,
+    #[serde(default = "default_portion")]
+    level: i64,
+    #[serde(rename = "locationID", default)]
+    location_id: i64,
+}
+
+/// One entry from CCP's `npcCorporationDivisions.yaml`, keyed by division id.
+#[derive(Debug, Deserialize)]
+struct RawDivision {
+    #[serde(rename = "nameID")]
+    name_id: Option<Localized>,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -612,6 +636,103 @@ impl Converter {
                 }
                 let Ok(id) = f[c_id].parse::<i64>() else { continue };
                 stmt.execute(params![id, f[c_name]])?;
+                written += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest Fuzzwork's `staStations.csv` (NPC stations) so agents can resolve
+    /// to a system + region + security. Returns rows written.
+    pub fn ingest_stations_csv(&mut self, csv: &str) -> Result<usize> {
+        let mut lines = csv.lines();
+        let header = lines.next().context("empty stations CSV")?;
+        let col = csv_columns(header);
+        let idx = |name: &str| col.get(name).copied();
+        let (c_id, c_sys, c_region, c_name, c_sec) = (
+            idx("stationID").context("missing stationID")?,
+            idx("solarSystemID").context("missing solarSystemID")?,
+            idx("regionID").context("missing regionID")?,
+            idx("stationName").context("missing stationName")?,
+            idx("security").context("missing security")?,
+        );
+
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO stations (station_id, system_id, region_id, name, security)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?;
+            for line in lines {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let f: Vec<&str> = line.split(',').collect();
+                if f.len() <= c_id.max(c_sys).max(c_region).max(c_name).max(c_sec) {
+                    continue;
+                }
+                let (Ok(id), Ok(sys), Ok(region), Ok(sec)) = (
+                    f[c_id].parse::<i64>(),
+                    f[c_sys].parse::<i64>(),
+                    f[c_region].parse::<i64>(),
+                    f[c_sec].parse::<f64>(),
+                ) else {
+                    continue;
+                };
+                stmt.execute(params![id, sys, region, f[c_name], sec])?;
+                written += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest CCP's `npcCorporationDivisions.yaml` (authoritative division names
+    /// like Security / Distribution / Mining). Returns rows written.
+    pub fn ingest_divisions(&mut self, yaml: &str) -> Result<usize> {
+        let raw: BTreeMap<i64, RawDivision> =
+            serde_yaml::from_str(yaml).context("parsing npcCorporationDivisions YAML")?;
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut stmt =
+                tx.prepare("INSERT OR REPLACE INTO divisions (division_id, name) VALUES (?1, ?2)")?;
+            for (division_id, d) in raw {
+                let Some(name) = d.name_id.and_then(|n| n.en) else {
+                    continue;
+                };
+                stmt.execute(params![division_id, name])?;
+                written += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// Ingest CCP's `agents.yaml` (mission agents). Returns rows written.
+    pub fn ingest_agents(&mut self, yaml: &str) -> Result<usize> {
+        let raw: BTreeMap<i64, RawAgent> =
+            serde_yaml::from_str(yaml).context("parsing agents YAML")?;
+        let tx = self.conn.transaction()?;
+        let mut written = 0usize;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO agents
+                 (agent_id, corporation_id, division_id, level, location_id, agent_type, is_locator)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
+            for (agent_id, a) in raw {
+                stmt.execute(params![
+                    agent_id,
+                    a.corporation_id,
+                    a.division_id,
+                    a.level,
+                    a.location_id,
+                    a.agent_type_id,
+                    a.is_locator as i64
+                ])?;
                 written += 1;
             }
         }
@@ -1189,6 +1310,37 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM system_jumps", [], |r| r.get(0))
             .unwrap();
         assert_eq!(jump_count, 2); // both directions
+    }
+
+    #[test]
+    fn ingests_agents_stations_and_divisions() {
+        let mut c = Converter::in_memory().unwrap();
+
+        let stations = "stationID,solarSystemID,regionID,stationName,security\n\
+                        60003760,30000142,10000002,Jita IV - Moon 4 - Caldari Navy,0.945913";
+        assert_eq!(c.ingest_stations_csv(stations).unwrap(), 1);
+
+        let divisions = "24:\n  nameID:\n    en: Security\n23:\n  nameID:\n    en: Mining\n";
+        assert_eq!(c.ingest_divisions(divisions).unwrap(), 2);
+
+        let agents = "3018970:\n  agentTypeID: 2\n  corporationID: 1000035\n  \
+                      divisionID: 24\n  isLocator: false\n  level: 4\n  locationID: 60003760\n";
+        assert_eq!(c.ingest_agents(agents).unwrap(), 1);
+
+        let (level, div, loc): (i64, i64, i64) = c
+            .connection()
+            .query_row(
+                "SELECT level, division_id, location_id FROM agents WHERE agent_id = 3018970",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!((level, div, loc), (4, 24, 60003760));
+        let div_name: String = c
+            .connection()
+            .query_row("SELECT name FROM divisions WHERE division_id = 24", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(div_name, "Security");
     }
 
     #[test]

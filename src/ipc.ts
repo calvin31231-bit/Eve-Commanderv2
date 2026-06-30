@@ -78,6 +78,7 @@ import type {
   RouteView,
   CourierView,
   RegionMapView,
+  AgentFinderView,
   JumpFatigue,
   TheraConnection,
   RollPlan,
@@ -196,6 +197,8 @@ export const api = {
   getSystemRisk: () => call<SystemRiskView>("get_system_risk"),
   getRegionMap: (region?: string) => call<RegionMapView>("get_region_map", { region }),
   listMapRegions: () => call<string[]>("list_map_regions"),
+  findAgents: (level?: number, minSecurity?: number, region?: string) =>
+    call<AgentFinderView[]>("find_agents", { level, minSecurity, region }),
   planRoute: (origin: string, destination: string, flag: string) =>
     call<RouteView>("plan_route", { origin, destination, flag }),
   courierEstimate: (

@@ -89,6 +89,28 @@ $invNames    = Find-Yaml @("invNames.yaml")
 Write-Host "universe:      $universeDir"
 Write-Host "invNames:      $invNames"
 
+# 2c. Mission-agent finder data: agents.yaml + npcCorporationDivisions.yaml come
+#     from the SDE; station locations come from Fuzzwork's staStations.csv
+#     (the same source as the map CSVs), which carries system/region/security.
+$agents    = Find-Yaml @("agents.yaml")
+$divisions = Find-Yaml @("npcCorporationDivisions.yaml")
+$stationsCsv = Join-Path $work "staStations.csv"
+if (-not (Test-Path $stationsCsv)) {
+    try {
+        $oldProgress = $ProgressPreference
+        $ProgressPreference = "SilentlyContinue"
+        Invoke-WebRequest -Uri "https://www.fuzzwork.co.uk/dump/latest/staStations.csv" `
+            -OutFile $stationsCsv -UseBasicParsing
+        $ProgressPreference = $oldProgress
+    } catch {
+        Write-Host "staStations.csv download failed (agent finder will be empty): $_" -ForegroundColor Yellow
+        $stationsCsv = $null
+    }
+}
+Write-Host "agents:        $agents"
+Write-Host "divisions:     $divisions"
+Write-Host "stations:      $stationsCsv"
+
 # 3. Build the converter once (release for speed on the large YAML).
 Write-Host "Building sde-tools (release) ..."
 Push-Location $repoRoot
@@ -106,6 +128,9 @@ try {
     if ($typeDogma)     { $convArgs += @("--type-dogma", $typeDogma) }
     if ($universeDir)   { $convArgs += @("--universe", $universeDir) }
     if ($invNames)      { $convArgs += @("--names", $invNames) }
+    if ($stationsCsv)   { $convArgs += @("--stations-csv", $stationsCsv) }
+    if ($divisions)     { $convArgs += @("--divisions", $divisions) }
+    if ($agents)        { $convArgs += @("--agents", $agents) }
 
     Write-Host "Converting -> $out" -ForegroundColor Cyan
     & $exe @convArgs
@@ -115,4 +140,4 @@ try {
 
 Write-Host ""
 Write-Host "Done. Restart EVE Commander - it will load the prebuilt SDE and the" -ForegroundColor Green
-Write-Host "reprocessing / build-planner / skill-plan / can-I-fly / region map go live." -ForegroundColor Green
+Write-Host "reprocessing / build-planner / skill-plan / can-I-fly / region map / agent finder go live." -ForegroundColor Green

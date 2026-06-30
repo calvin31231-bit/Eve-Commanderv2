@@ -657,6 +657,16 @@ export interface RouteHop {
   security: number;
 }
 
+export interface AgentFinderView {
+  corporation_name: string;
+  division_name: string;
+  level: number;
+  is_locator: boolean;
+  station_name: string;
+  system_name: string;
+  security: number;
+}
+
 export interface CalendarEvent {
   event_id: number;
   title: string;

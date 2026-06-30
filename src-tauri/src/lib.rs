@@ -377,6 +377,7 @@ pub fn run() {
             commands::get_system_risk,
             commands::get_region_map,
             commands::list_map_regions,
+            commands::find_agents,
             commands::plan_route,
             commands::courier_estimate,
             commands::roll_wormhole,

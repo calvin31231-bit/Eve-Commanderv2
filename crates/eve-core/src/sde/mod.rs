@@ -51,6 +51,24 @@ pub struct SystemNode {
     pub z: f64,
 }
 
+/// A mission agent matched by the finder, with its location resolved.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentMatch {
+    pub agent_id: i64,
+    pub corporation_id: i64,
+    pub division_id: i64,
+    pub division_name: String,
+    pub level: i64,
+    pub agent_type: i64,
+    pub is_locator: bool,
+    pub station_id: i64,
+    pub station_name: String,
+    pub system_id: i64,
+    pub system_name: String,
+    pub region_id: i64,
+    pub security: f64,
+}
+
 /// A type id + quantity — a reprocessing yield row or a blueprint input.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Material {
@@ -200,6 +218,41 @@ CREATE TABLE IF NOT EXISTS type_traits (
 );
 
 CREATE INDEX IF NOT EXISTS idx_type_traits_type ON type_traits (type_id);
+
+-- NPC stations (Fuzzwork staStations): where agents sit. Carries the system +
+-- region + security so the agent finder can filter by location without a join
+-- back to the universe walk.
+CREATE TABLE IF NOT EXISTS stations (
+    station_id INTEGER PRIMARY KEY,
+    system_id  INTEGER NOT NULL,
+    region_id  INTEGER,
+    name       TEXT NOT NULL,
+    security   REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_stations_system ON stations(system_id);
+
+-- NPC corporation divisions (CCP npcCorporationDivisions): the authoritative
+-- division name (Security / Distribution / Mining / R&D …) keyed by id, so the
+-- agent finder never has to guess a label.
+CREATE TABLE IF NOT EXISTS divisions (
+    division_id INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL
+);
+
+-- Mission agents (CCP agents.yaml): the finder's core table. location_id is a
+-- station id; division_id resolves via `divisions`; corporation_id resolves to
+-- a name at runtime via ESI like any other id.
+CREATE TABLE IF NOT EXISTS agents (
+    agent_id       INTEGER PRIMARY KEY,
+    corporation_id INTEGER,
+    division_id    INTEGER,
+    level          INTEGER NOT NULL DEFAULT 1,
+    location_id    INTEGER,
+    agent_type     INTEGER,
+    is_locator     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_agents_level ON agents(level);
+CREATE INDEX IF NOT EXISTS idx_agents_location ON agents(location_id);
 "#;
 
 impl Sde {
@@ -382,6 +435,121 @@ impl Sde {
             .into_iter()
             .map(|r| (r.get::<i64, _>("a"), r.get::<i64, _>("b")))
             .collect())
+    }
+
+    /// Find mission agents matching optional filters, soonest-useful first
+    /// (highest level, then safest security). `level` filters exact level (1–5);
+    /// `min_security` keeps agents in systems at or above that security band
+    /// (e.g. 0.5 for hisec-only); `region_id` scopes to one region. Joins agents
+    /// to their station + system + division. Empty when the SDE lacks agent data.
+    pub async fn find_agents(
+        &self,
+        level: Option<i64>,
+        min_security: Option<f64>,
+        region_id: Option<i64>,
+        limit: i64,
+    ) -> Result<Vec<AgentMatch>> {
+        let rows = sqlx::query(
+            "SELECT a.agent_id, a.corporation_id, a.division_id, a.level, a.agent_type,
+                    a.is_locator, s.station_id, s.name AS station_name, s.system_id,
+                    s.region_id, s.security, sys.name AS system_name,
+                    COALESCE(d.name, '') AS division_name
+             FROM agents a
+             JOIN stations s ON s.station_id = a.location_id
+             LEFT JOIN solar_systems sys ON sys.system_id = s.system_id
+             LEFT JOIN divisions d ON d.division_id = a.division_id
+             WHERE (?1 IS NULL OR a.level = ?1)
+               AND (?2 IS NULL OR s.security >= ?2)
+               AND (?3 IS NULL OR s.region_id = ?3)
+             ORDER BY a.level DESC, s.security DESC
+             LIMIT ?4",
+        )
+        .bind(level)
+        .bind(min_security)
+        .bind(region_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| AgentMatch {
+                agent_id: r.get::<i64, _>("agent_id"),
+                corporation_id: r.get::<Option<i64>, _>("corporation_id").unwrap_or(0),
+                division_id: r.get::<Option<i64>, _>("division_id").unwrap_or(0),
+                division_name: r.get::<String, _>("division_name"),
+                level: r.get::<i64, _>("level"),
+                agent_type: r.get::<Option<i64>, _>("agent_type").unwrap_or(0),
+                is_locator: r.get::<i64, _>("is_locator") != 0,
+                station_id: r.get::<i64, _>("station_id"),
+                station_name: r.get::<String, _>("station_name"),
+                system_id: r.get::<i64, _>("system_id"),
+                system_name: r.get::<Option<String>, _>("system_name").unwrap_or_default(),
+                region_id: r.get::<Option<i64>, _>("region_id").unwrap_or(0),
+                security: r.get::<f64, _>("security"),
+            })
+            .collect())
+    }
+
+    /// Test/seed helper: insert an NPC station.
+    pub async fn insert_station(
+        &self,
+        station_id: i64,
+        system_id: i64,
+        region_id: i64,
+        name: &str,
+        security: f64,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO stations (station_id, system_id, region_id, name, security)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )
+        .bind(station_id)
+        .bind(system_id)
+        .bind(region_id)
+        .bind(name)
+        .bind(security)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Test/seed helper: insert a division name.
+    pub async fn insert_division(&self, division_id: i64, name: &str) -> Result<()> {
+        sqlx::query("INSERT OR REPLACE INTO divisions (division_id, name) VALUES (?1, ?2)")
+            .bind(division_id)
+            .bind(name)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Test/seed helper: insert a mission agent.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_agent(
+        &self,
+        agent_id: i64,
+        corporation_id: i64,
+        division_id: i64,
+        level: i64,
+        location_id: i64,
+        agent_type: i64,
+        is_locator: bool,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO agents
+             (agent_id, corporation_id, division_id, level, location_id, agent_type, is_locator)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )
+        .bind(agent_id)
+        .bind(corporation_id)
+        .bind(division_id)
+        .bind(level)
+        .bind(location_id)
+        .bind(agent_type)
+        .bind(is_locator as i64)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     /// Reprocessing batch size for a type (`portionSize`; ore is 100, most items
@@ -765,6 +933,36 @@ mod tests {
         assert_eq!(sde.solar_system(30000142).await.unwrap().unwrap().name, "Jita");
         // Unseeded ids still fall back gracefully.
         assert_eq!(sde.type_name(123456).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn agent_finder_filters_by_level_security_region() {
+        let sde = Sde::open_in_memory().await.unwrap();
+        sde.insert_region(10000002, "The Forge").await.unwrap();
+        sde.insert_system_full(30000142, "Jita", 10000002, 0.95, 0.0, 0.0).await.unwrap();
+        sde.insert_system_full(30002053, "Hek", 10000042, 0.5, 0.0, 0.0).await.unwrap();
+        sde.insert_division(24, "Security").await.unwrap();
+        // L4 security agent in hisec Jita (The Forge).
+        sde.insert_station(60003760, 30000142, 10000002, "Jita IV-4", 0.95).await.unwrap();
+        sde.insert_agent(3018970, 1000035, 24, 4, 60003760, 2, false).await.unwrap();
+        // L1 agent in a lowsec system, different region.
+        sde.insert_station(60005686, 30002053, 10000042, "Hek VIII", 0.5).await.unwrap();
+        sde.insert_agent(3010001, 1000040, 24, 1, 60005686, 2, false).await.unwrap();
+
+        // Level 4 only → just the Jita agent, with names + division resolved.
+        let l4 = sde.find_agents(Some(4), None, None, 50).await.unwrap();
+        assert_eq!(l4.len(), 1);
+        assert_eq!(l4[0].system_name, "Jita");
+        assert_eq!(l4[0].division_name, "Security");
+        assert_eq!(l4[0].station_name, "Jita IV-4");
+
+        // Region scope to The Forge → only the Jita agent.
+        let forge = sde.find_agents(None, None, Some(10000002), 50).await.unwrap();
+        assert_eq!(forge.len(), 1);
+
+        // Hisec-only (>=0.5 keeps both; >=0.9 keeps just Jita).
+        assert_eq!(sde.find_agents(None, Some(0.9), None, 50).await.unwrap().len(), 1);
+        assert_eq!(sde.find_agents(None, None, None, 50).await.unwrap().len(), 2);
     }
 
     #[tokio::test]

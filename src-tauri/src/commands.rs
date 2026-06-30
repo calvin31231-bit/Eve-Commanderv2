@@ -3025,6 +3025,56 @@ pub async fn get_region_map(
     Ok(RegionMapView { found: true, region_id, region_name, nodes, edges, message: String::new() })
 }
 
+/// One agent matched by the finder, with its corp name resolved.
+#[derive(Debug, Serialize)]
+pub struct AgentFinderView {
+    pub corporation_name: String,
+    pub division_name: String,
+    pub level: i64,
+    pub is_locator: bool,
+    pub station_name: String,
+    pub system_name: String,
+    pub security: f64,
+}
+
+/// Find mission agents by level / security band / region (all optional). Empty
+/// until the SDE is rebuilt with agent data (`--agents/--stations-csv/
+/// --divisions`). `min_security` of 0.5 keeps hisec only; `region` filters by
+/// region name.
+#[tauri::command]
+pub async fn find_agents(
+    state: State<'_, AppState>,
+    level: Option<i64>,
+    min_security: Option<f64>,
+    region: Option<String>,
+) -> CmdResult<Vec<AgentFinderView>> {
+    let sde = state.names.sde();
+    let region_id = match region.as_ref().filter(|s| !s.trim().is_empty()) {
+        Some(name) => sde.region_id_by_name(name.trim()).await.map_err(|e| e.to_string())?,
+        None => None,
+    };
+    let matches = sde
+        .find_agents(level, min_security, region_id, 200)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let corp_ids: Vec<i64> = matches.iter().map(|m| m.corporation_id).collect();
+    let names = names_for(&state, &corp_ids).await;
+
+    Ok(matches
+        .into_iter()
+        .map(|m| AgentFinderView {
+            corporation_name: named(&names, m.corporation_id),
+            division_name: m.division_name,
+            level: m.level,
+            is_locator: m.is_locator,
+            station_name: m.station_name,
+            system_name: m.system_name,
+            security: m.security,
+        })
+        .collect())
+}
+
 /// The list of regions (id + name) for the map picker. Empty until the SDE has
 /// universe data.
 #[tauri::command]
