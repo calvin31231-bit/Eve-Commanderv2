@@ -69,6 +69,7 @@ import type {
   RecruitBoardView,
   AiSettingsView,
   AiEndpointView,
+  AiAgentView,
   MemoryNoteView,
   SavedPlanView,
   SavedFitView,
@@ -2803,6 +2804,8 @@ function AiAssistant(): ReactNode {
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [err, setErr] = useState("");
+  const [agents, setAgents] = useState<AiAgentView[]>([]);
+  const [agent, setAgent] = useState("commander");
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -2811,6 +2814,7 @@ function AiAssistant(): ReactNode {
       setBaseUrl(s.base_url);
       setModel(s.model);
     }).catch(() => undefined);
+    api.listAiAgents().then(setAgents).catch(() => undefined);
   }, []);
 
   function save(next?: Partial<AiSettingsView>) {
@@ -2840,7 +2844,7 @@ function AiAssistant(): ReactNode {
     setThinking(true);
     setErr("");
     api
-      .aiChat(nextHistory.map((m) => ({ role: m.role, content: m.content })))
+      .aiChat(nextHistory.map((m) => ({ role: m.role, content: m.content })), agent)
       .then((r) => setHistory((h) => [...h, { role: "assistant", content: r.reply, tools: r.tools_used }]))
       .catch((e) => setErr(String(e)))
       .finally(() => setThinking(false));
@@ -2928,6 +2932,16 @@ function AiAssistant(): ReactNode {
           >
             Daily briefing
           </button>
+          {agents.length > 0 && (
+            <select
+              style={{ float: "right", fontSize: 11, marginRight: 6 }}
+              value={agent}
+              onChange={(e) => setAgent(e.target.value)}
+              title={agents.find((a) => a.id === agent)?.description}
+            >
+              {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          )}
         </h3>
         <div style={{ maxHeight: 360, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
           {history.length === 0 && (

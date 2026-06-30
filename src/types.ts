@@ -1017,3 +1017,9 @@ export interface TimerView {
   seconds_remaining: number;
   notes: string;
 }
+
+export interface AiAgentView {
+  id: string;
+  name: string;
+  description: string;
+}

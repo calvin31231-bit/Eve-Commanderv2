@@ -3801,8 +3801,9 @@ async fn ai_client_from_settings(state: &AppState) -> CmdResult<eve_core::ai::Ai
 /// Seed a conversation with the system prompt and, when present, a recall
 /// message built from the player's durable memory notes. Shared by `ai_chat`
 /// and `ai_briefing` so the assistant is personalized in both.
-async fn ai_seed_messages(state: &AppState) -> Vec<eve_core::ai::ChatMessage> {
-    let mut convo = vec![eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt())];
+async fn ai_seed_messages(state: &AppState, agent_id: &str) -> Vec<eve_core::ai::ChatMessage> {
+    let mut convo =
+        vec![eve_core::ai::ChatMessage::system(crate::ai_tools::system_prompt_for(agent_id))];
     if let Ok(notes) = state.db.list_memory().await {
         let formatted: Vec<(String, String, String)> =
             notes.into_iter().map(|n| (n.kind, n.title, n.body)).collect();
@@ -3818,9 +3819,10 @@ async fn ai_seed_messages(state: &AppState) -> Vec<eve_core::ai::ChatMessage> {
 async fn ai_run_conversation(
     state: &AppState,
     client: &eve_core::ai::AiClient,
+    agent_id: &str,
     mut convo: Vec<eve_core::ai::ChatMessage>,
 ) -> CmdResult<AiChatView> {
-    let tools = crate::ai_tools::tool_specs();
+    let tools = crate::ai_tools::tool_specs_for(agent_id);
     let mut tools_used = Vec::new();
     for _ in 0..5 {
         let resp = client.chat(&convo, &tools).await.map_err(|e| e.to_string())?;
@@ -3852,11 +3854,30 @@ async fn ai_run_conversation(
 pub async fn ai_chat(
     state: State<'_, AppState>,
     messages: Vec<eve_core::ai::ChatMessage>,
+    agent_id: Option<String>,
 ) -> CmdResult<AiChatView> {
+    let agent = agent_id.unwrap_or_else(|| "commander".to_string());
     let client = ai_client_from_settings(&state).await?;
-    let mut convo = ai_seed_messages(&state).await;
+    let mut convo = ai_seed_messages(&state, &agent).await;
     convo.extend(messages);
-    ai_run_conversation(&state, &client, convo).await
+    ai_run_conversation(&state, &client, &agent, convo).await
+}
+
+/// One specialist agent's metadata for the UI agent picker.
+#[derive(Debug, Serialize)]
+pub struct AiAgentView {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+/// The roster of AI agents the player can talk to.
+#[tauri::command]
+pub fn list_ai_agents() -> Vec<AiAgentView> {
+    crate::ai_tools::agents()
+        .iter()
+        .map(|a| AiAgentView { id: a.id.to_string(), name: a.name.to_string(), description: a.description.to_string() })
+        .collect()
 }
 
 /// Generate a proactive "state of your empire" briefing: the assistant pulls net
@@ -3865,13 +3886,13 @@ pub async fn ai_chat(
 #[tauri::command]
 pub async fn ai_briefing(state: State<'_, AppState>) -> CmdResult<AiChatView> {
     let client = ai_client_from_settings(&state).await?;
-    let mut convo = ai_seed_messages(&state).await;
+    let mut convo = ai_seed_messages(&state, "commander").await;
     convo.push(eve_core::ai::ChatMessage::user(
         "Give me a brief 'state of my empire' summary. Check my account overview, my net-worth \
          trend over the last 30 days, and my current system's risk. Keep it to a few sentences \
          and end with one or two concrete recommendations.",
     ));
-    ai_run_conversation(&state, &client, convo).await
+    ai_run_conversation(&state, &client, "commander", convo).await
 }
 
 // ---- AI durable memory ------------------------------------------------------

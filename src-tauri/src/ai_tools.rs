@@ -150,15 +150,89 @@ pub fn memory_context(notes: &[(String, String, String)]) -> Option<String> {
     Some(out)
 }
 
-/// The system prompt framing the assistant's role and guardrails.
-pub fn system_prompt() -> String {
-    "You are the EVE Commander assistant, an advisor inside an EVE Online companion app. \
-     You help the player understand their data and make decisions. Call the provided tools to \
-     fetch real numbers — never invent prices, kills, or risk figures. The tools do the math; you \
-     explain the result concisely. You cannot take in-game actions; recommend, and let the player \
-     act. Prices are in ISK."
-        .to_string()
+/// Shared guardrail clause appended to every agent's prompt.
+const GUARDRAILS: &str = " Call the provided tools to fetch real numbers — never invent prices, \
+     kills, or risk figures; the tools do the math and you explain the result concisely. You cannot \
+     take in-game actions; recommend, and let the player act. Prices are in ISK.";
+
+/// One specialist agent: a focused persona over a subset of the tool registry.
+pub struct AgentDef {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub persona: &'static str,
+    /// Tool names this agent may call; empty = all tools (the Commander).
+    pub tools: &'static [&'static str],
 }
+
+/// The agent roster. The Commander has every tool; specialists are scoped to
+/// their domain so they stay focused and cheap.
+pub fn agents() -> &'static [AgentDef] {
+    &[
+        AgentDef {
+            id: "commander",
+            name: "Commander",
+            description: "General orchestrator — routes across every domain.",
+            persona: "You are the EVE Commander, the player's all-round advisor.",
+            tools: &[],
+        },
+        AgentDef {
+            id: "market",
+            name: "Market Analyst",
+            description: "Prices, arbitrage, what-to-haul.",
+            persona: "You are a sharp EVE market analyst focused on prices, spreads, and hauling.",
+            tools: &["search_item", "compare_hubs", "scan_arbitrage"],
+        },
+        AgentDef {
+            id: "intel",
+            name: "Threat Analyst",
+            description: "Is it safe to undock / fly this route?",
+            persona: "You are a cautious EVE intel analyst; you assess danger and advise on safety.",
+            tools: &["system_risk"],
+        },
+        AgentDef {
+            id: "fitting",
+            name: "Fitting Coach",
+            description: "Critique and compare ship fits.",
+            persona: "You are an expert EVE fitting coach; you read EHP/DPS/cap and suggest improvements.",
+            tools: &["fit_stats", "search_item"],
+        },
+        AgentDef {
+            id: "wealth",
+            name: "Accounting Analyst",
+            description: "Net worth, wealth trend, income choices.",
+            persona: "You are the player's EVE accountant; you explain wealth, trend, and income options.",
+            tools: &["account_overview", "portfolio_trend", "rank_income"],
+        },
+        AgentDef {
+            id: "skills",
+            name: "Skills Mentor",
+            description: "Skill-plan ROI and training priorities.",
+            persona: "You are an EVE skills mentor; you rank training by ISK impact and goals.",
+            tools: &["skill_roi"],
+        },
+    ]
+}
+
+/// Look up an agent by id, falling back to the Commander.
+fn agent(id: &str) -> &'static AgentDef {
+    agents().iter().find(|a| a.id == id).unwrap_or(&agents()[0])
+}
+
+/// The system prompt for an agent (persona + shared guardrails).
+pub fn system_prompt_for(agent_id: &str) -> String {
+    format!("{}{GUARDRAILS}", agent(agent_id).persona)
+}
+
+/// The tool specs an agent may use (all of them for the Commander).
+pub fn tool_specs_for(agent_id: &str) -> Vec<ToolSpec> {
+    let allowed = agent(agent_id).tools;
+    if allowed.is_empty() {
+        return tool_specs();
+    }
+    tool_specs().into_iter().filter(|t| allowed.contains(&t.name.as_str())).collect()
+}
+
 
 /// Run a tool by name with JSON-string arguments. Returns a JSON string result
 /// (or a JSON `{"error": ...}` object) for feeding back to the model.
@@ -346,6 +420,24 @@ mod tests {
     #[test]
     fn memory_context_none_when_empty() {
         assert!(memory_context(&[]).is_none());
+    }
+
+    #[test]
+    fn agents_reference_only_real_tools() {
+        let names: std::collections::HashSet<String> =
+            tool_specs().into_iter().map(|t| t.name).collect();
+        for a in agents() {
+            for t in a.tools {
+                assert!(names.contains(*t), "agent '{}' references unknown tool '{}'", a.id, t);
+            }
+            // Specialists are a strict subset; Commander has all.
+            let n = tool_specs_for(a.id).len();
+            if a.tools.is_empty() {
+                assert_eq!(n, tool_specs().len());
+            } else {
+                assert_eq!(n, a.tools.len());
+            }
+        }
     }
 
     #[test]

@@ -422,6 +422,7 @@ pub fn run() {
             commands::set_ai_settings,
             commands::ai_detect_endpoints,
             commands::ai_chat,
+            commands::list_ai_agents,
             commands::ai_briefing,
             commands::add_memory,
             commands::list_memory,

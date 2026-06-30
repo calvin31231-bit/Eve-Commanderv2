@@ -86,6 +86,7 @@ import type {
   AiEndpointView,
   ChatMessage,
   AiChatView,
+  AiAgentView,
   MemoryNoteView,
   SavedPlanView,
   SavedFitView,
@@ -363,8 +364,9 @@ export const api = {
     apiKey: string | null,
   ) => call<void>("set_ai_settings", { enabled, baseUrl, model, apiKey }),
   aiDetectEndpoints: () => call<AiEndpointView[]>("ai_detect_endpoints"),
-  aiChat: (messages: ChatMessage[]) =>
-    call<AiChatView>("ai_chat", { messages }),
+  aiChat: (messages: ChatMessage[], agentId: string) =>
+    call<AiChatView>("ai_chat", { messages, agentId }),
+  listAiAgents: () => call<AiAgentView[]>("list_ai_agents"),
   aiBriefing: () => call<AiChatView>("ai_briefing"),
   addMemory: (kind: string, title: string, body: string) =>
     call<number | null>("add_memory", { kind, title, body }),
