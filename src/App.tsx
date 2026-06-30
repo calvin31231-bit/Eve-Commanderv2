@@ -4,7 +4,7 @@ import { HUBS, renderHub, portraitUrl } from "./hubs";
 import { t, useLang } from "./i18n";
 import { Starfield } from "./Starfield";
 import { AgentAvatar, type Mood } from "./AgentAvatar";
-import type { Character, CharacterStatusView, LocalIntel, Notification, PodRiskView, ServerStatus, Severity, SystemSafetyView } from "./types";
+import type { Character, CharacterStatusView, FleetView, LocalIntel, Notification, PodRiskView, ServerStatus, Severity, SystemSafetyView } from "./types";
 import "./app.css";
 
 function fmtDuration(seconds: number): string {
@@ -88,16 +88,22 @@ export default function App() {
 
   const activeCharacter = characters.find((c) => c.active) ?? null;
   const [charStatus, setCharStatus] = useState<CharacterStatusView | null>(null);
+  const [fleet, setFleet] = useState<FleetView | null>(null);
 
   useEffect(() => {
     if (!isTauri() || !activeCharacter) {
       setCharStatus(null);
+      setFleet(null);
       return;
     }
-    const load = () =>
+    const load = () => {
       api.getCharacterStatus(activeCharacter.id).then(setCharStatus).catch(() => undefined);
+      // Fleet membership changes often; the read is cache-served (~5s) so a
+      // 15s poll keeps the proximity panel live without hammering ESI.
+      api.getFleet(activeCharacter.id).then(setFleet).catch(() => setFleet(null));
+    };
     load();
-    const timer = window.setInterval(load, 30000);
+    const timer = window.setInterval(load, 15000);
     return () => window.clearInterval(timer);
   }, [activeCharacter?.id]);
 
@@ -293,8 +299,26 @@ export default function App() {
           )}
         </div>
         <div className="sa-section">
-          <h3>Fleet Proximity</h3>
-          <div className="sa-empty">Fleet members and their distance from you (Phase 5).</div>
+          <h3>Fleet Proximity{fleet?.in_fleet ? ` · ${fleet.member_count}` : ""}</h3>
+          {!activeCharacter ? (
+            <div className="sa-empty">Select a character to see its fleet.</div>
+          ) : !fleet || !fleet.in_fleet ? (
+            <div className="sa-empty">
+              Not in a fleet. Members, their system, and ship appear here when you join one
+              (needs the fleet read scope).
+            </div>
+          ) : (
+            <ul className="local-list">
+              {fleet.members.slice(0, 20).map((m) => (
+                <li key={m.character_id}>
+                  <span>{m.name}</span>
+                  <span style={{ color: "var(--text-dim)", fontSize: 11, marginLeft: 6 }}>
+                    {m.system}{m.ship ? ` · ${m.ship}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <div className="sa-section">
           <h3>Alerts</h3>

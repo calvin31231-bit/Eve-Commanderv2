@@ -19,12 +19,23 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
 use eve_core::auth::TokenManager;
+use eve_core::character::CharacterClient;
 use eve_core::config::Intensity;
+use eve_core::corp::CorpClient;
 use eve_core::db::Database;
 use eve_core::esi::{all_jobs, plan_fetches, EsiClient, Scheduler};
-use eve_core::notify::{Notification, Severity};
+use eve_core::notify::{fuel_alert, skill_queue_alert, Notification, Severity};
 
 use crate::tray::{self, SharedCenter};
+
+/// How often the alert rules are evaluated (their underlying ESI reads are
+/// cache-served, so this is cheap; it just bounds redundant rule passes).
+const ALERT_EVAL_INTERVAL: u64 = 60;
+
+/// How far ahead a skill queue ending / structure fuel running out raises a
+/// heads-up.
+const SKILL_WARN: Duration = Duration::from_secs(24 * 3600);
+const FUEL_WARN: Duration = Duration::from_secs(48 * 3600);
 
 /// How often the scheduler is consulted. Individual endpoints still only fire at
 /// their own (cache-timer-aligned) cadence; this is just the heartbeat.
@@ -45,6 +56,7 @@ pub fn spawn(
 ) {
     tauri::async_runtime::spawn(async move {
         let mut last_runs: HashMap<(i64, &'static str), u64> = HashMap::new();
+        let mut last_alert_eval: u64 = 0;
         let mut ticker = tokio::time::interval(TICK);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -55,6 +67,12 @@ pub fn spawn(
                 run_tick(&app, &esi, &tokens, &db, current, &notifications, &mut last_runs).await
             {
                 tracing::warn!("poll tick failed: {e}");
+            }
+            // Evaluate the alert rules on their own (slower) cadence.
+            let now = now_epoch();
+            if now.saturating_sub(last_alert_eval) >= ALERT_EVAL_INTERVAL {
+                last_alert_eval = now;
+                evaluate_alerts(&app, &esi, &tokens, &db, &notifications).await;
             }
         }
     });
@@ -136,6 +154,57 @@ async fn run_tick(
     }
 
     Ok(())
+}
+
+/// Evaluate the notification rules against fresh (cache-served) ESI reads and
+/// dispatch any alerts to the center + tray. Best-effort per character: a
+/// missing token/scope or a 403 (e.g. no corp director role) is skipped quietly
+/// so one character never blocks the others. This is what makes the Alerts rail
+/// populate — skill-queue and structure-fuel rules already live in `eve-core`.
+async fn evaluate_alerts(
+    app: &AppHandle,
+    esi: &EsiClient,
+    tokens: &TokenManager,
+    db: &Database,
+    notifications: &SharedCenter,
+) {
+    let Ok(characters) = db.list_characters().await else { return };
+    let character = CharacterClient::new(esi.clone(), tokens.clone());
+    let corp = CorpClient::new(esi.clone(), tokens.clone());
+    let now = SystemTime::now();
+
+    for c in &characters {
+        // Skill queue: empty → Warning, ending within a day → Info.
+        if let Ok(queue) = character.skill_queue(c.id).await {
+            let finish = queue.finishes_at().map(|t| {
+                UNIX_EPOCH + Duration::from_secs(t.unix_timestamp().max(0) as u64)
+            });
+            if let Some(note) = skill_queue_alert(c.id, &c.name, finish, now, SKILL_WARN) {
+                tray::dispatch(app, notifications, note);
+            }
+        }
+
+        // Structure fuel for the active character's corp (needs a director role +
+        // scope; 403s for everyone else and is skipped).
+        if c.active {
+            if let Ok(public) = character.public_info(c.id).await {
+                if let Ok(structures) = corp.structure_status(c.id, public.corporation_id).await {
+                    for s in structures {
+                        if s.fuel_expires.is_none() {
+                            continue;
+                        }
+                        let expires =
+                            now + Duration::from_secs(s.fuel_seconds_remaining.max(0) as u64);
+                        let name = format!("Structure {}", s.structure_id);
+                        if let Some(note) = fuel_alert(s.structure_id, &name, expires, now, FUEL_WARN)
+                        {
+                            tray::dispatch(app, notifications, note);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Whole seconds since the Unix epoch (the scheduler's time base).
