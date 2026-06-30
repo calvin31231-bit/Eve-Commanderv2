@@ -175,6 +175,31 @@ impl EsiClient {
         Ok(())
     }
 
+    /// DELETE an authenticated ESI path (write — e.g. kick a fleet member). ESI
+    /// returns 204 on success; no response body is parsed. Breaker-aware.
+    pub async fn delete_auth_empty(&self, path: &str, access_token: &str) -> Result<()> {
+        let backoff = self.backoff();
+        if backoff > Duration::ZERO {
+            return Err(Error::RateLimited(backoff.as_secs()));
+        }
+        let url = format!("{ESI_BASE}{path}");
+        let resp = self
+            .http
+            .delete(&url)
+            .header(reqwest::header::USER_AGENT, &self.user_agent)
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+        if let Ok(mut budget) = self.budget.lock() {
+            let headers = resp.headers().clone();
+            budget.observe_headers(|k| headers.get(k).and_then(|v| v.to_str().ok()));
+        }
+        if !resp.status().is_success() {
+            return Err(Error::other(format!("ESI DELETE {} returned {}", path, resp.status())));
+        }
+        Ok(())
+    }
+
     /// Fetch a path through the full cache-first pipeline and return the raw    /// body, without deserializing. The background poller uses this to **warm
     /// the cache** (and update the error budget) so later typed reads are served
     /// locally. `access_token` is `None` for public routes.

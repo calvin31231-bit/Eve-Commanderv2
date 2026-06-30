@@ -18,6 +18,7 @@ import type {
   CorpStructureView,
   CorpMemberView,
   FleetView,
+  FleetWingView,
   LpStoreView,
   Contract,
   CharacterAttributes,
@@ -340,6 +341,17 @@ export const api = {
   getFleet: (characterId: number) => call<FleetView>("get_fleet", { characterId }),
   setFleetSettings: (characterId: number, motd: string, isFreeMove: boolean) =>
     call<void>("set_fleet_settings", { characterId, motd, isFreeMove }),
+  getFleetWings: (characterId: number) =>
+    call<FleetWingView[]>("get_fleet_wings", { characterId }),
+  kickFleetMember: (characterId: number, memberId: number) =>
+    call<void>("kick_fleet_member", { characterId, memberId }),
+  moveFleetMember: (
+    characterId: number,
+    memberId: number,
+    role: string,
+    wingId?: number,
+    squadId?: number,
+  ) => call<void>("move_fleet_member", { characterId, memberId, role, wingId, squadId }),
   lpStore: (corporation: string) => call<LpStoreView>("lp_store", { corporation }),
   listGroups: () => call<CharacterGroup[]>("list_groups"),
   createGroup: (name: string) => call<CharacterGroup>("create_group", { name }),

@@ -81,6 +81,7 @@ import type {
   CorpStructureView,
   CorpMemberView,
   FleetView,
+  FleetWingView,
   LpStoreView,
 } from "./types";
 
@@ -2484,15 +2485,38 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
 
 function FleetView_({ character }: { character: Character | null }): ReactNode {
   const [fleet, setFleet] = useState<FleetView | null>(null);
+  const [wings, setWings] = useState<FleetWingView[]>([]);
   const [loading, setLoading] = useState(false);
   const [motd, setMotd] = useState("");
   const [freeMove, setFreeMove] = useState(false);
   const [motdMsg, setMotdMsg] = useState("");
+  const [memberMsg, setMemberMsg] = useState("");
 
   function load() {
     if (!character || !isTauri()) return;
     setLoading(true);
     api.getFleet(character.id).then(setFleet).catch(() => setFleet(null)).finally(() => setLoading(false));
+    api.getFleetWings(character.id).then(setWings).catch(() => setWings([]));
+  }
+
+  function kick(memberId: number, name: string) {
+    if (!character || !isTauri()) return;
+    setMemberMsg(`Kicking ${name}…`);
+    api.kickFleetMember(character.id, memberId)
+      .then(() => { setMemberMsg(`${name} kicked.`); load(); })
+      .catch((e) => setMemberMsg(String(e)));
+  }
+
+  function moveTo(memberId: number, name: string, value: string) {
+    if (!character || !isTauri() || !value) return;
+    // value is "squad:<wingId>:<squadId>" for a squad, or a bare role string.
+    const [role, wingId, squadId] = value.startsWith("squad:")
+      ? ["squad_member", Number(value.split(":")[1]), Number(value.split(":")[2])]
+      : [value, undefined, undefined];
+    setMemberMsg(`Moving ${name}…`);
+    api.moveFleetMember(character.id, memberId, role as string, wingId as number | undefined, squadId as number | undefined)
+      .then(() => { setMemberMsg(`${name} moved.`); load(); })
+      .catch((e) => setMemberMsg(String(e)));
   }
 
   function saveMotd() {
@@ -2528,10 +2552,38 @@ function FleetView_({ character }: { character: Character | null }): ReactNode {
                   <td>{m.name}</td>
                   <td className="loc">{m.ship}{m.system ? ` · ${m.system}` : ""}</td>
                   <td className="mono num">{m.role}</td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <select
+                      value=""
+                      onChange={(e) => moveTo(m.character_id, m.name, e.target.value)}
+                      title="Move member (boss only)"
+                      style={{ fontSize: 11, maxWidth: 120 }}
+                    >
+                      <option value="">Move to…</option>
+                      <option value="fleet_commander">Fleet commander</option>
+                      {wings.map((w) => (
+                        <optgroup key={w.id} label={w.name || `Wing ${w.id}`}>
+                          {w.squads.map((s) => (
+                            <option key={s.id} value={`squad:${w.id}:${s.id}`}>
+                              {s.name || `Squad ${s.id}`}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => kick(m.character_id, m.name)}
+                      title="Kick from fleet (boss only)"
+                      style={{ fontSize: 11, marginLeft: 4 }}
+                    >
+                      Kick
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {memberMsg && <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "6px 0 0" }}>{memberMsg}</p>}
           <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
             <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 4px" }}>
               Fleet settings (boss only — ESI write):

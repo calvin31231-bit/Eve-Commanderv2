@@ -699,6 +699,7 @@ export interface LpStoreView {
 }
 
 export interface FleetMemberView {
+  character_id: number;
   name: string;
   ship: string;
   system: string;
@@ -709,6 +710,17 @@ export interface FleetView {
   in_fleet: boolean;
   member_count: number;
   members: FleetMemberView[];
+}
+
+export interface FleetSquadView {
+  id: number;
+  name: string;
+}
+
+export interface FleetWingView {
+  id: number;
+  name: string;
+  squads: FleetSquadView[];
 }
 
 export interface CorpMemberView {

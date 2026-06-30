@@ -1721,6 +1721,7 @@ pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<Incursi
 /// One fleet member, named.
 #[derive(Debug, Serialize)]
 pub struct FleetMemberView {
+    pub character_id: i64,
     pub name: String,
     pub ship: String,
     pub system: String,
@@ -1762,6 +1763,7 @@ pub async fn get_fleet(state: State<'_, AppState>, character_id: i64) -> CmdResu
         members: members
             .into_iter()
             .map(|m| FleetMemberView {
+                character_id: m.character_id,
                 name: named(&names, m.character_id),
                 ship: named(&names, m.ship_type_id),
                 system: named(&names, m.solar_system_id),
@@ -1785,6 +1787,78 @@ pub async fn set_fleet_settings(
     state
         .fleet
         .set_settings(character_id, info.fleet_id, &motd, is_free_move)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// One squad inside a wing (move target).
+#[derive(Debug, Serialize)]
+pub struct FleetSquadView {
+    pub id: i64,
+    pub name: String,
+}
+
+/// A wing with its squads — the destinations a member can be moved into.
+#[derive(Debug, Serialize)]
+pub struct FleetWingView {
+    pub id: i64,
+    pub name: String,
+    pub squads: Vec<FleetSquadView>,
+}
+
+/// The active fleet's wing/squad hierarchy (move targets for member moves).
+/// Empty when not in a fleet or lacking the scope.
+#[tauri::command]
+pub async fn get_fleet_wings(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<FleetWingView>> {
+    let Ok(info) = state.fleet.current(character_id).await else {
+        return Ok(Vec::new());
+    };
+    let wings = state.fleet.wings(character_id, info.fleet_id).await.unwrap_or_default();
+    Ok(wings
+        .into_iter()
+        .map(|w| FleetWingView {
+            id: w.id,
+            name: w.name,
+            squads: w.squads.into_iter().map(|s| FleetSquadView { id: s.id, name: s.name }).collect(),
+        })
+        .collect())
+}
+
+/// Kick a member from the active fleet (the character must be the fleet boss).
+/// EULA-sanctioned ESI fleet write. Requires `esi-fleets.write_fleet.v1`.
+#[tauri::command]
+pub async fn kick_fleet_member(
+    state: State<'_, AppState>,
+    character_id: i64,
+    member_id: i64,
+) -> CmdResult<()> {
+    let info = state.fleet.current(character_id).await.map_err(|_| "not in a fleet".to_string())?;
+    state
+        .fleet
+        .kick_member(character_id, info.fleet_id, member_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Move a member to a new role/squad in the active fleet (boss only). `role` is
+/// `fleet_commander` | `wing_commander` | `squad_commander` | `squad_member`;
+/// squad roles need `wing_id`+`squad_id`.
+#[tauri::command]
+pub async fn move_fleet_member(
+    state: State<'_, AppState>,
+    character_id: i64,
+    member_id: i64,
+    role: String,
+    wing_id: Option<i64>,
+    squad_id: Option<i64>,
+) -> CmdResult<()> {
+    let info = state.fleet.current(character_id).await.map_err(|_| "not in a fleet".to_string())?;
+    state
+        .fleet
+        .move_member(character_id, info.fleet_id, member_id, &role, wing_id, squad_id)
         .await
         .map_err(|e| e.to_string())
 }
