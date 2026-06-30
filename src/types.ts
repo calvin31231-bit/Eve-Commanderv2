@@ -992,3 +992,16 @@ export interface RecruitBoardView {
   recruits: Recruit[];
   summary: RecruitSummary;
 }
+
+export interface SignatureView {
+  id: number;
+  system: string;
+  sig_id: string;
+  category: string;
+  name: string;
+  wh_type: string;
+  destination: string;
+  mass_state: string;
+  eol: boolean;
+  notes: string;
+}

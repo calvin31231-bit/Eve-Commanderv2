@@ -151,3 +151,21 @@ CREATE TABLE IF NOT EXISTS recruits (
 );
 
 CREATE INDEX IF NOT EXISTS idx_recruits_time ON recruits (applied_at);
+
+-- Cosmic-signature / wormhole chain log: scanned sigs per system, with optional
+-- wormhole connection details (destination, mass state, end-of-life).
+CREATE TABLE IF NOT EXISTS signatures (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    added_at    INTEGER NOT NULL,
+    system      TEXT    NOT NULL DEFAULT '',
+    sig_id      TEXT    NOT NULL DEFAULT '',
+    category    TEXT    NOT NULL DEFAULT '',
+    name        TEXT    NOT NULL DEFAULT '',
+    wh_type     TEXT    NOT NULL DEFAULT '',
+    destination TEXT    NOT NULL DEFAULT '',
+    mass_state  TEXT    NOT NULL DEFAULT 'stable',
+    eol         INTEGER NOT NULL DEFAULT 0,
+    notes       TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_signatures_system ON signatures (system);

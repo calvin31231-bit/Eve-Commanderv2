@@ -4333,6 +4333,86 @@ pub async fn delete_recruit(state: State<'_, AppState>, id: i64) -> CmdResult<()
     state.db.delete_recruit(id).await.map_err(|e| e.to_string())
 }
 
+/// One stored signature for the chain tracker.
+#[derive(Debug, Serialize)]
+pub struct SignatureView {
+    pub id: i64,
+    pub system: String,
+    pub sig_id: String,
+    pub category: String,
+    pub name: String,
+    pub wh_type: String,
+    pub destination: String,
+    pub mass_state: String,
+    pub eol: bool,
+    pub notes: String,
+}
+
+/// Merge a pasted probe-scanner dump into a system's signature list. Returns how
+/// many new signatures were added (existing ones are refreshed, not duplicated).
+#[tauri::command]
+pub async fn paste_signatures(state: State<'_, AppState>, system: String, paste: String) -> CmdResult<usize> {
+    if system.trim().is_empty() {
+        return Err("enter the system the scan is from".into());
+    }
+    state
+        .db
+        .upsert_signatures(system.trim(), &paste, now_epoch_secs())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// All tracked signatures (grouped by system on the frontend).
+#[tauri::command]
+pub async fn list_signatures(state: State<'_, AppState>) -> CmdResult<Vec<SignatureView>> {
+    let sigs = state.db.list_signatures().await.map_err(|e| e.to_string())?;
+    Ok(sigs
+        .into_iter()
+        .map(|s| SignatureView {
+            id: s.id,
+            system: s.system,
+            sig_id: s.sig_id,
+            category: s.category,
+            name: s.name,
+            wh_type: s.wh_type,
+            destination: s.destination,
+            mass_state: s.mass_state,
+            eol: s.eol,
+            notes: s.notes,
+        })
+        .collect())
+}
+
+/// Annotate a signature's wormhole connection (type, destination, mass, EOL).
+#[tauri::command]
+pub async fn annotate_signature(
+    state: State<'_, AppState>,
+    id: i64,
+    wh_type: String,
+    destination: String,
+    mass_state: String,
+    eol: bool,
+    notes: String,
+) -> CmdResult<()> {
+    state
+        .db
+        .annotate_signature(id, wh_type.trim(), destination.trim(), mass_state.trim(), eol, notes.trim())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Delete a signature.
+#[tauri::command]
+pub async fn delete_signature(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_signature(id).await.map_err(|e| e.to_string())
+}
+
+/// Clear all signatures for a system (stale chain).
+#[tauri::command]
+pub async fn clear_signatures(state: State<'_, AppState>, system: String) -> CmdResult<()> {
+    state.db.clear_signatures(system.trim()).await.map_err(|e| e.to_string())
+}
+
 /// One valued loot line.
 #[derive(Debug, Serialize)]
 pub struct LootLineView {

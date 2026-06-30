@@ -66,6 +66,7 @@ pub mod remap;
 pub mod reprocess;
 pub mod research;
 pub mod sde;
+pub mod signatures;
 pub mod skillplan;
 pub mod skillplan_import;
 pub mod srp;

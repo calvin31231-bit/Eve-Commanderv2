@@ -63,6 +63,7 @@ import type {
   AbyssTrackerView,
   LootValueView,
   RollPlan,
+  SignatureView,
   SrpBoardView,
   RecruitBoardView,
   AiSettingsView,
@@ -4580,9 +4581,102 @@ function NavigationHub({ character }: { character: Character | null }): ReactNod
       </div>
       <CourierCalc />
       <WormholeRoller />
+      <SignatureTracker />
       <TheraCard />
       {character && <JumpFatigueCard character={character} />}
     </>
+  );
+}
+
+// Cosmic-signature / wormhole chain tracker: paste the probe scanner, annotate
+// wormhole connections (destination, mass, EOL), see your chain by system.
+const MASS_STATES = ["stable", "destab", "critical"];
+
+function SignatureTracker(): ReactNode {
+  const [sigs, setSigs] = useState<SignatureView[] | null>(null);
+  const [system, setSystem] = useState("");
+  const [paste, setPaste] = useState("");
+
+  function load() {
+    if (!isTauri()) return;
+    api.listSignatures().then(setSigs).catch(() => setSigs([]));
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  function doPaste() {
+    if (!isTauri() || !system.trim() || !paste.trim()) return;
+    api.pasteSignatures(system.trim(), paste).then(() => { setPaste(""); load(); }).catch(() => undefined);
+  }
+
+  function annotate(s: SignatureView) {
+    const whType = window.prompt("Wormhole type (e.g. K162, C247):", s.wh_type) ?? s.wh_type;
+    const dest = window.prompt("Destination (system / class):", s.destination) ?? s.destination;
+    const mass = window.prompt("Mass state (stable / destab / critical):", s.mass_state) ?? s.mass_state;
+    const eol = window.confirm("End of life (EOL)? OK = yes, Cancel = no");
+    api.annotateSignature(s.id, whType, dest, MASS_STATES.includes(mass) ? mass : "stable", eol, s.notes).then(load);
+  }
+
+  if (!isTauri()) {
+    return <div className="card" style={{ marginTop: 16 }}><p style={{ color: "var(--text-dim)" }}>The signature tracker runs in the desktop shell.</p></div>;
+  }
+
+  // Group by system.
+  const bySystem: Record<string, SignatureView[]> = {};
+  (sigs ?? []).forEach((s) => { (bySystem[s.system] ??= []).push(s); });
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3>Signatures <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· chain tracker</span></h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Paste the in-game probe scanner (select all → copy) for a system; annotate wormholes with their
+        destination, mass, and EOL.
+      </p>
+      <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          System
+          <input value={system} onChange={(e) => setSystem(e.target.value)} placeholder="J100001 / Jita" />
+        </label>
+        <button onClick={doPaste} disabled={!system.trim() || !paste.trim()}>Add scan</button>
+      </div>
+      <textarea
+        value={paste}
+        onChange={(e) => setPaste(e.target.value)}
+        placeholder={"ABC-123\tCosmic Signature\tWormhole\tUnstable Wormhole\t100%\t1.5 AU"}
+        style={{ width: "100%", minHeight: 56, fontFamily: "monospace", fontSize: 12, marginTop: 6 }}
+      />
+      {Object.keys(bySystem).sort().map((sys) => (
+        <div key={sys} style={{ marginTop: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <strong>{sys}</strong>
+            <button style={{ fontSize: 11 }} onClick={() => api.clearSignatures(sys).then(load)}>Clear system</button>
+          </div>
+          <table className="holdings">
+            <tbody>
+              {bySystem[sys].map((s) => (
+                <tr key={s.id}>
+                  <td className="mono">{s.sig_id}</td>
+                  <td style={{ fontSize: 12 }}>
+                    {s.category || "—"}{s.name ? ` · ${s.name}` : ""}
+                    {s.category === "Wormhole" && (s.destination || s.wh_type) && (
+                      <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                        {s.wh_type}{s.destination ? ` → ${s.destination}` : ""}
+                        {s.mass_state !== "stable" ? ` · ${s.mass_state}` : ""}{s.eol ? " · EOL" : ""}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    {s.category === "Wormhole" && (
+                      <button style={{ fontSize: 11 }} onClick={() => annotate(s)}>Connect</button>
+                    )}{" "}
+                    <button style={{ fontSize: 11 }} onClick={() => api.deleteSignature(s.id).then(load)}>✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
   );
 }
 

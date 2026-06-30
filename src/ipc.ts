@@ -78,6 +78,7 @@ import type {
   JumpFatigue,
   TheraConnection,
   RollPlan,
+  SignatureView,
   SrpBoardView,
   RecruitBoardView,
   AiSettingsView,
@@ -210,6 +211,19 @@ export const api = {
     }),
   rollWormhole: (totalMass: number, maxJumpMass: number, shipPassMass: number) =>
     call<RollPlan>("roll_wormhole", { totalMass, maxJumpMass, shipPassMass }),
+  pasteSignatures: (system: string, paste: string) =>
+    call<number>("paste_signatures", { system, paste }),
+  listSignatures: () => call<SignatureView[]>("list_signatures"),
+  annotateSignature: (
+    id: number,
+    whType: string,
+    destination: string,
+    massState: string,
+    eol: boolean,
+    notes: string,
+  ) => call<void>("annotate_signature", { id, whType, destination, massState, eol, notes }),
+  deleteSignature: (id: number) => call<void>("delete_signature", { id }),
+  clearSignatures: (system: string) => call<void>("clear_signatures", { system }),
   submitSrpClaim: (claim: {
     pilot: string;
     ship: string;

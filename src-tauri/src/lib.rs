@@ -450,6 +450,11 @@ pub fn run() {
             commands::get_recruit_board,
             commands::set_recruit_status,
             commands::delete_recruit,
+            commands::paste_signatures,
+            commands::list_signatures,
+            commands::annotate_signature,
+            commands::delete_signature,
+            commands::clear_signatures,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

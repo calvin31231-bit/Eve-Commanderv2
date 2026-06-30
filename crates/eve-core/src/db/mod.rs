@@ -12,6 +12,7 @@ pub mod names;
 pub mod portability;
 pub mod recruit;
 pub mod settings;
+pub mod signatures;
 pub mod snapshots;
 pub mod srp;
 

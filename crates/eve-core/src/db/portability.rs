@@ -196,6 +196,28 @@ impl Database {
         })
         .collect::<Vec<_>>();
 
+        let signatures = sqlx::query(
+            "SELECT added_at, system, sig_id, category, name, wh_type, destination, mass_state, eol, notes FROM signatures",
+        )
+        .fetch_all(&self.app)
+        .await?
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "added_at": r.get::<i64, _>("added_at"),
+                "system": r.get::<String, _>("system"),
+                "sig_id": r.get::<String, _>("sig_id"),
+                "category": r.get::<String, _>("category"),
+                "name": r.get::<String, _>("name"),
+                "wh_type": r.get::<String, _>("wh_type"),
+                "destination": r.get::<String, _>("destination"),
+                "mass_state": r.get::<String, _>("mass_state"),
+                "eol": r.get::<i64, _>("eol"),
+                "notes": r.get::<String, _>("notes"),
+            })
+        })
+        .collect::<Vec<_>>();
+
         Ok(serde_json::json!({
             "format": "eve-commander-export",
             "version": 1,
@@ -211,6 +233,7 @@ impl Database {
             "abyss_runs": abyss_runs,
             "srp_claims": srp_claims,
             "recruits": recruits,
+            "signatures": signatures,
         }))
     }
 
@@ -228,6 +251,7 @@ impl Database {
             "abyss_runs",
             "srp_claims",
             "recruits",
+            "signatures",
             "names",
             "settings",
             "characters",
