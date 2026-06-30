@@ -164,6 +164,28 @@ interface HomeProps {
   characters: Character[];
   onLogin: () => void;
   onSelectCharacter: (characterId: number) => void;
+  loginBusy?: boolean;
+  loginError?: string | null;
+}
+
+// Visible feedback for the SSO flow, shown right under the login buttons so a
+// failure (or the "approve in browser" wait) is never silent.
+function LoginFeedback({ busy, error }: { busy?: boolean; error?: string | null }): ReactNode {
+  if (busy) {
+    return (
+      <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>
+        Opening your browser… approve the EVE login, then return here. (Waiting up to 2 minutes.)
+      </p>
+    );
+  }
+  if (error) {
+    return (
+      <p style={{ fontSize: 12, color: "var(--danger)", marginTop: 8, whiteSpace: "pre-wrap" }}>
+        Login failed: {error}
+      </p>
+    );
+  }
+  return null;
 }
 
 // The home dashboard's widgets, in their default order. The saved layout
@@ -175,7 +197,7 @@ const HOME_WIDGETS: { id: string; label: string }[] = [
   { id: "characters", label: "Characters" },
 ];
 
-function Home({ status, statusError, characters, onLogin, onSelectCharacter }: HomeProps): ReactNode {
+function Home({ status, statusError, characters, onLogin, onSelectCharacter, loginBusy, loginError }: HomeProps): ReactNode {
   useLang();
   const [account, setAccount] = useState<AccountOverview | null>(null);
   const [history, setHistory] = useState<PortfolioHistory | null>(null);
@@ -287,9 +309,10 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter }: H
       {characters.length === 0 ? (
         <>
           <p style={{ color: "var(--text-dim)" }}>No characters yet.</p>
-          <button className="primary" onClick={onLogin}>
-            Log in with EVE
+          <button className="primary" onClick={onLogin} disabled={loginBusy}>
+            {loginBusy ? "Connecting…" : "Log in with EVE"}
           </button>
+          <LoginFeedback busy={loginBusy} error={loginError} />
         </>
       ) : (
         <>
@@ -310,9 +333,10 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter }: H
               </li>
             ))}
           </ul>
-          <button className="primary" style={{ marginTop: 10 }} onClick={onLogin}>
-            Add character
+          <button className="primary" style={{ marginTop: 10 }} onClick={onLogin} disabled={loginBusy}>
+            {loginBusy ? "Connecting…" : "Add character"}
           </button>
+          <LoginFeedback busy={loginBusy} error={loginError} />
         </>
       )}
     </div>

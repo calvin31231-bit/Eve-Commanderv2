@@ -44,6 +44,8 @@ export default function App() {
   }
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [alerts, setAlerts] = useState<Notification[]>([]);
   const [localIntel, setLocalIntel] = useState<LocalIntel | null>(null);
@@ -130,6 +132,12 @@ export default function App() {
   }
 
   async function onLogin() {
+    if (!isTauri()) {
+      setLoginError("Login runs in the desktop app, not the browser preview.");
+      return;
+    }
+    setLoginBusy(true);
+    setLoginError(null);
     try {
       // One backend round-trip: opens the system browser, captures the loopback
       // redirect, and resolves with the added character.
@@ -142,7 +150,10 @@ export default function App() {
         await reloadCharacters();
       }
     } catch (e) {
+      setLoginError(String(e));
       setStatusError(String(e));
+    } finally {
+      setLoginBusy(false);
     }
   }
 
@@ -213,7 +224,7 @@ export default function App() {
 
       {/* Main canvas */}
       <main className="main-canvas">
-        {renderHub(activeHub, { status, statusError, characters, onLogin, onSelectCharacter }, activeCharacter)}
+        {renderHub(activeHub, { status, statusError, characters, onLogin, onSelectCharacter, loginBusy, loginError }, activeCharacter)}
       </main>
 
       {/* Right Situational Awareness rail — always present in every hub */}
