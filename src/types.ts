@@ -840,6 +840,26 @@ export interface WidgetSlot {
   visible: boolean;
 }
 
+export interface PluginPanel {
+  title: string;
+  command: string;
+  args: unknown;
+}
+
+export interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  panels: PluginPanel[];
+}
+
+export interface PluginView {
+  manifest: PluginManifest;
+  errors: string[];
+}
+
 // Mirrors eve_core::ai::ChatMessage (tool fields omitted for the simple UI).
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";

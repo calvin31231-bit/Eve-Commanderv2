@@ -61,6 +61,7 @@ pub mod names;
 pub mod navigation;
 pub mod notify;
 pub mod planets;
+pub mod plugin;
 pub mod prices;
 pub mod pve;
 pub mod recruit;

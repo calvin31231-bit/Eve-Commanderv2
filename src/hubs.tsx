@@ -74,6 +74,7 @@ import type {
   WidgetSlot,
   UpdateStatus,
   TelemetryEventView,
+  PluginView,
   MemoryNoteView,
   SavedPlanView,
   SavedFitView,
@@ -3449,6 +3450,7 @@ function ToolsHub(): ReactNode {
           { id: "income", label: "Income Optimizer" },
           { id: "appraisal", label: "Appraisal" },
           { id: "ai", label: "AI Assistant" },
+          { id: "plugins", label: "Plugins" },
         ]}
         active={sub}
         onSelect={setSub}
@@ -3457,6 +3459,7 @@ function ToolsHub(): ReactNode {
       {sub === "income" && <IncomeOptimizer />}
       {sub === "appraisal" && <AppraisalTool />}
       {sub === "ai" && <AiAssistant />}
+      {sub === "plugins" && <PluginsPanel />}
       {sub === "settings" && (!isTauri() ? (
         <div className="card"><p style={{ color: "var(--text-dim)" }}>Design preview — settings load in the desktop shell.</p></div>
       ) : !settings ? (
@@ -3671,6 +3674,85 @@ function DataPrivacy(): ReactNode {
         )}
       </div>
       {msg && <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>{msg}</p>}
+    </div>
+  );
+}
+
+// Phase 7: read-only plugin panels. Each plugin is a JSON manifest in the
+// app's plugins/ dir; panels call a whitelisted read-only tool and show the
+// result. A plugin can never do more than the core read-only tools allow.
+function PluginsPanel(): ReactNode {
+  const [plugins, setPlugins] = useState<PluginView[] | null>(null);
+  const [results, setResults] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    api.listPlugins().then(setPlugins).catch(() => setPlugins([]));
+  }, []);
+
+  function run(pluginId: string, idx: number) {
+    const key = `${pluginId}:${idx}`;
+    setResults((r) => ({ ...r, [key]: "Running…" }));
+    api
+      .runPluginPanel(pluginId, idx)
+      .then((out) => {
+        let pretty = out;
+        try { pretty = JSON.stringify(JSON.parse(out), null, 2); } catch { /* leave as-is */ }
+        setResults((r) => ({ ...r, [key]: pretty }));
+      })
+      .catch((e) => setResults((r) => ({ ...r, [key]: String(e) })));
+  }
+
+  if (!isTauri()) {
+    return <div className="card"><p style={{ color: "var(--text-dim)" }}>Plugins load in the desktop shell.</p></div>;
+  }
+  if (!plugins) return <div className="card"><p style={{ color: "var(--text-dim)" }}>{t("common.loading")}</p></div>;
+
+  return (
+    <div className="card">
+      <h3>Plugins <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· read-only</span></h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Drop a plugin manifest (<span className="mono">*.json</span>) in the app's <span className="mono">plugins/</span> folder.
+        Each panel calls a whitelisted read-only tool — plugins can read and display, never act in-game.
+      </p>
+      {plugins.length === 0 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No plugins installed.</p>
+      )}
+      {plugins.map((p) => (
+        <div key={p.manifest.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+            <strong>{p.manifest.name}</strong>
+            {p.manifest.version && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>v{p.manifest.version}</span>}
+            {p.manifest.author && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>· {p.manifest.author}</span>}
+          </div>
+          {p.manifest.description && (
+            <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{p.manifest.description}</div>
+          )}
+          {p.errors.length > 0 ? (
+            <ul style={{ color: "var(--danger)", fontSize: 12 }}>
+              {p.errors.map((e, i) => <li key={i}>{e}</li>)}
+            </ul>
+          ) : (
+            p.manifest.panels.map((panel, idx) => {
+              const key = `${p.manifest.id}:${idx}`;
+              return (
+                <div key={idx} style={{ marginTop: 6 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <button style={{ fontSize: 11 }} onClick={() => run(p.manifest.id, idx)}>Run</button>
+                    <span style={{ fontSize: 13 }}>{panel.title}</span>
+                    <span className="mono" style={{ fontSize: 10, color: "var(--text-dim)" }}>{panel.command}</span>
+                  </div>
+                  {results[key] && (
+                    <pre style={{ fontSize: 11, background: "rgba(10,14,22,0.5)", padding: 8, borderRadius: 6, overflowX: "auto", marginTop: 4 }}>
+                      {results[key]}
+                    </pre>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      ))}
     </div>
   );
 }

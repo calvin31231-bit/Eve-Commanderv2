@@ -1,0 +1,11 @@
+{
+  "id": "empire-snapshot",
+  "name": "Empire Snapshot",
+  "version": "1.0.0",
+  "author": "Capsuleer",
+  "description": "A couple of read-only panels: account overview and current-system risk. Copy this file into the app's plugins/ folder and edit the commands/args to taste.",
+  "panels": [
+    { "title": "Account overview", "command": "get_account_overview", "args": {} },
+    { "title": "Region map (The Forge)", "command": "get_region_map", "args": { "region": "The Forge" } }
+  ]
+}

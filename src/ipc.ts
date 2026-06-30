@@ -95,6 +95,7 @@ import type {
   TelemetryEventView,
   SharedImportView,
   WidgetSlot,
+  PluginView,
   MemoryNoteView,
   SavedPlanView,
   SavedFitView,
@@ -419,6 +420,9 @@ export const api = {
     call<WidgetSlot[]>("get_home_layout", { available }),
   setHomeLayout: (slots: WidgetSlot[]) =>
     call<void>("set_home_layout", { slots }),
+  listPlugins: () => call<PluginView[]>("list_plugins"),
+  runPluginPanel: (pluginId: string, panelIndex: number) =>
+    call<string>("run_plugin_panel", { pluginId, panelIndex }),
   exportData: () => call<string>("export_data"),
   wipeData: () => call<void>("wipe_data"),
   saveSkillPlan: (name: string, body: string) =>

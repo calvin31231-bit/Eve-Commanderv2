@@ -462,6 +462,8 @@ pub fn run() {
             commands::import_shared,
             commands::get_home_layout,
             commands::set_home_layout,
+            commands::list_plugins,
+            commands::run_plugin_panel,
             commands::export_data,
             commands::wipe_data,
             commands::save_skill_plan,

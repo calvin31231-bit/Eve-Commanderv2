@@ -4517,6 +4517,107 @@ pub async fn set_home_layout(
     state.db.set_setting("home_layout", &json).await.map_err(|e| e.to_string())
 }
 
+/// An installed plugin with its manifest and validation status.
+#[derive(Debug, Serialize)]
+pub struct PluginView {
+    pub manifest: eve_core::plugin::PluginManifest,
+    /// Validation problems; empty means every panel is safe to run.
+    pub errors: Vec<String>,
+}
+
+/// The plugins directory (`<data_dir>/plugins/`), created on demand.
+fn plugins_dir(state: &AppState) -> std::path::PathBuf {
+    state.config.data_dir.join("plugins")
+}
+
+/// List installed plugins: read every `*.json` manifest in the plugins dir,
+/// parse it, and validate each panel's command against the read-only tool
+/// registry (the only capability a plugin gets). Malformed/unsafe plugins are
+/// returned with their errors so the UI can show why they won't run.
+#[tauri::command]
+pub async fn list_plugins(state: State<'_, AppState>) -> CmdResult<Vec<PluginView>> {
+    let dir = plugins_dir(&state);
+    std::fs::create_dir_all(&dir).ok();
+    let allowed: Vec<String> =
+        crate::ai_tools::tool_specs().into_iter().map(|t| t.name).collect();
+    let allow_refs: Vec<&str> = allowed.iter().map(|s| s.as_str()).collect();
+
+    let mut out = Vec::new();
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(out),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        match eve_core::plugin::parse_manifest(&text) {
+            Ok(manifest) => {
+                let errors = eve_core::plugin::validate(&manifest, &allow_refs);
+                out.push(PluginView { manifest, errors });
+            }
+            Err(e) => out.push(PluginView {
+                manifest: eve_core::plugin::PluginManifest {
+                    id: path.file_stem().and_then(|s| s.to_str()).unwrap_or("?").to_string(),
+                    name: path.file_name().and_then(|s| s.to_str()).unwrap_or("?").to_string(),
+                    version: String::new(),
+                    description: String::new(),
+                    author: String::new(),
+                    panels: Vec::new(),
+                },
+                errors: vec![e.to_string()],
+            }),
+        }
+    }
+    Ok(out)
+}
+
+/// Run one plugin panel: re-validate the referenced command against the
+/// read-only registry, then execute it and return the JSON result. The
+/// re-validation means a panel can never reach a tool outside the allowlist even
+/// if `list_plugins` results are stale.
+#[tauri::command]
+pub async fn run_plugin_panel(
+    state: State<'_, AppState>,
+    plugin_id: String,
+    panel_index: usize,
+) -> CmdResult<String> {
+    let dir = plugins_dir(&state);
+    // Find the manifest whose id matches (scan the dir; ids are small in number).
+    let entries = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    let mut manifest: Option<eve_core::plugin::PluginManifest> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            if let Ok(m) = eve_core::plugin::parse_manifest(&text) {
+                if m.id == plugin_id {
+                    manifest = Some(m);
+                    break;
+                }
+            }
+        }
+    }
+    let manifest = manifest.ok_or_else(|| "plugin not found".to_string())?;
+    let panel = manifest
+        .panels
+        .get(panel_index)
+        .ok_or_else(|| "panel not found".to_string())?;
+
+    // Security gate: the command must be in the read-only registry.
+    let allowed: Vec<String> =
+        crate::ai_tools::tool_specs().into_iter().map(|t| t.name).collect();
+    if !allowed.iter().any(|n| n == &panel.command) {
+        return Err(format!("command not in the read-only registry: {}", panel.command));
+    }
+    let args = eve_core::plugin::panel_args_json(panel);
+    Ok(crate::ai_tools::execute_tool(&state, &panel.command, &args).await)
+}
+
 // ---- Skill-plan import (EVEMon / text) --------------------------------------
 
 /// One resolved import target for the skill planner.
