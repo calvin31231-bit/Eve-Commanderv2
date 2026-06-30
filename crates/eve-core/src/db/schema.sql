@@ -169,3 +169,19 @@ CREATE TABLE IF NOT EXISTS signatures (
 );
 
 CREATE INDEX IF NOT EXISTS idx_signatures_system ON signatures (system);
+
+-- Structure reinforcement timerboard: tracked exit times for armor/hull/anchor
+-- timers (friendly or hostile), with a countdown computed at read time.
+CREATE TABLE IF NOT EXISTS timers (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at INTEGER NOT NULL,
+    title      TEXT    NOT NULL DEFAULT '',
+    system     TEXT    NOT NULL DEFAULT '',
+    structure  TEXT    NOT NULL DEFAULT '',
+    timer_type TEXT    NOT NULL DEFAULT 'armor',
+    side       TEXT    NOT NULL DEFAULT 'hostile',
+    exits_at   INTEGER NOT NULL,
+    notes      TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_timers_exit ON timers (exits_at);

@@ -4333,6 +4333,80 @@ pub async fn delete_recruit(state: State<'_, AppState>, id: i64) -> CmdResult<()
     state.db.delete_recruit(id).await.map_err(|e| e.to_string())
 }
 
+/// A reinforcement timer with its live countdown.
+#[derive(Debug, Serialize)]
+pub struct TimerView {
+    pub id: i64,
+    pub title: String,
+    pub system: String,
+    pub structure: String,
+    pub timer_type: String,
+    pub side: String,
+    pub exits_at: i64,
+    /// Seconds until the timer exits (negative once it's passed).
+    pub seconds_remaining: i64,
+    pub notes: String,
+}
+
+/// Add a reinforcement timer. `exitsAt` is epoch seconds (UTC).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn add_timer(
+    state: State<'_, AppState>,
+    title: String,
+    system: String,
+    structure: String,
+    timer_type: String,
+    side: String,
+    exits_at: i64,
+    notes: String,
+) -> CmdResult<i64> {
+    if title.trim().is_empty() {
+        return Err("a timer needs a title".into());
+    }
+    state
+        .db
+        .add_timer(
+            now_epoch_secs(),
+            title.trim(),
+            system.trim(),
+            structure.trim(),
+            timer_type.trim(),
+            side.trim(),
+            exits_at,
+            notes.trim(),
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// All timers, soonest first, with live countdowns.
+#[tauri::command]
+pub async fn list_timers(state: State<'_, AppState>) -> CmdResult<Vec<TimerView>> {
+    let now = now_epoch_secs();
+    let timers = state.db.list_timers().await.map_err(|e| e.to_string())?;
+    Ok(timers
+        .into_iter()
+        .map(|t| TimerView {
+            seconds_remaining: t.exits_at - now,
+            id: t.id,
+            title: t.title,
+            system: t.system,
+            structure: t.structure,
+            timer_type: t.timer_type,
+            side: t.side,
+            exits_at: t.exits_at,
+            notes: t.notes,
+        })
+        .collect())
+}
+
+/// Delete a timer.
+#[tauri::command]
+pub async fn delete_timer(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_timer(id).await.map_err(|e| e.to_string())
+}
+
 /// One stored signature for the chain tracker.
 #[derive(Debug, Serialize)]
 pub struct SignatureView {

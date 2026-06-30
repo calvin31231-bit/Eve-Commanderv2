@@ -79,6 +79,7 @@ import type {
   TheraConnection,
   RollPlan,
   SignatureView,
+  TimerView,
   SrpBoardView,
   RecruitBoardView,
   AiSettingsView,
@@ -224,6 +225,26 @@ export const api = {
   ) => call<void>("annotate_signature", { id, whType, destination, massState, eol, notes }),
   deleteSignature: (id: number) => call<void>("delete_signature", { id }),
   clearSignatures: (system: string) => call<void>("clear_signatures", { system }),
+  addTimer: (t: {
+    title: string;
+    system: string;
+    structure: string;
+    timer_type: string;
+    side: string;
+    exits_at: number;
+    notes: string;
+  }) =>
+    call<number>("add_timer", {
+      title: t.title,
+      system: t.system,
+      structure: t.structure,
+      timerType: t.timer_type,
+      side: t.side,
+      exitsAt: t.exits_at,
+      notes: t.notes,
+    }),
+  listTimers: () => call<TimerView[]>("list_timers"),
+  deleteTimer: (id: number) => call<void>("delete_timer", { id }),
   submitSrpClaim: (claim: {
     pilot: string;
     ship: string;

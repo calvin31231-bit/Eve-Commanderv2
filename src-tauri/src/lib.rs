@@ -455,6 +455,9 @@ pub fn run() {
             commands::annotate_signature,
             commands::delete_signature,
             commands::clear_signatures,
+            commands::add_timer,
+            commands::list_timers,
+            commands::delete_timer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EVE Commander");

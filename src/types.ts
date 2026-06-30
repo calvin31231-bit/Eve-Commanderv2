@@ -1005,3 +1005,15 @@ export interface SignatureView {
   eol: boolean;
   notes: string;
 }
+
+export interface TimerView {
+  id: number;
+  title: string;
+  system: string;
+  structure: string;
+  timer_type: string;
+  side: string;
+  exits_at: number;
+  seconds_remaining: number;
+  notes: string;
+}

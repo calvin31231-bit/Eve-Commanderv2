@@ -64,6 +64,7 @@ import type {
   LootValueView,
   RollPlan,
   SignatureView,
+  TimerView,
   SrpBoardView,
   RecruitBoardView,
   AiSettingsView,
@@ -2128,6 +2129,117 @@ function SrpBoard(): ReactNode {
   );
 }
 
+// Structure reinforcement timerboard: track armor/hull/anchor exit times with a
+// live countdown. Local — no ESI writes.
+function Timerboard(): ReactNode {
+  const [timers, setTimers] = useState<TimerView[] | null>(null);
+  const [title, setTitle] = useState("");
+  const [system, setSystem] = useState("");
+  const [structure, setStructure] = useState("Astrahus");
+  const [type, setType] = useState("armor");
+  const [side, setSide] = useState("hostile");
+  const [when, setWhen] = useState("");
+  const [, tick] = useState(0);
+
+  function load() {
+    if (!isTauri()) return;
+    api.listTimers().then(setTimers).catch(() => setTimers([]));
+  }
+  useEffect(() => {
+    load();
+    const t = window.setInterval(() => tick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function add() {
+    if (!isTauri() || !title.trim() || !when) return;
+    // datetime-local is wall-clock; EVE timers are UTC, so read the input as UTC.
+    const exits = Math.round(new Date(when + "Z").getTime() / 1000);
+    if (Number.isNaN(exits)) return;
+    api.addTimer({ title: title.trim(), system: system.trim(), structure: structure.trim(), timer_type: type, side, exits_at: exits, notes: "" })
+      .then(() => { setTitle(""); setSystem(""); setWhen(""); load(); })
+      .catch(() => undefined);
+  }
+
+  function countdown(secs: number): string {
+    if (secs <= 0) return "EXITED";
+    const d = Math.floor(secs / 86400), h = Math.floor((secs % 86400) / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    return `${m}m ${s}s`;
+  }
+
+  if (!isTauri()) {
+    return <div className="card"><p style={{ color: "var(--text-dim)" }}>The timerboard runs in the desktop shell.</p></div>;
+  }
+
+  return (
+    <>
+      <div className="card">
+        <h3>Timerboard · Add timer <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· times in EVE (UTC)</span></h3>
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.9fr 1fr auto auto", gap: 6, alignItems: "end" }}>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Title
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Astrahus armor" />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            System
+            <input value={system} onChange={(e) => setSystem(e.target.value)} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Structure
+            <input value={structure} onChange={(e) => setStructure(e.target.value)} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Type
+            <select value={type} onChange={(e) => setType(e.target.value)}>
+              {["armor", "hull", "anchor", "moon", "other"].map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Side
+            <select value={side} onChange={(e) => setSide(e.target.value)}>
+              {["hostile", "friendly", "neutral"].map((sd) => <option key={sd} value={sd}>{sd}</option>)}
+            </select>
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
+          <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+          <button onClick={add} disabled={!title.trim() || !when}>Add timer</button>
+        </div>
+      </div>
+
+      {timers && timers.length > 0 && (
+        <div className="card">
+          <h3>Upcoming</h3>
+          <table className="holdings">
+            <tbody>
+              {timers.map((t) => (
+                <tr key={t.id} style={{ opacity: t.seconds_remaining <= 0 ? 0.5 : 1 }}>
+                  <td>
+                    <strong>{t.title}</strong>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                      {t.system}{t.structure ? ` · ${t.structure}` : ""} · {t.timer_type}
+                    </div>
+                  </td>
+                  <td style={{ fontSize: 11 }} className={t.side === "friendly" ? "pos" : t.side === "hostile" ? "neg" : ""}>{t.side}</td>
+                  <td className={"mono num" + (t.seconds_remaining > 0 && t.seconds_remaining < 3600 ? " neg" : "")}>
+                    {countdown(t.seconds_remaining)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <button style={{ fontSize: 11 }} onClick={() => api.deleteTimer(t.id).then(load)}>✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
 // Recruitment / HR pipeline: applicants move applied → interview → trial →
 // accepted/rejected. Local — no ESI writes.
 const RECRUIT_STAGES = ["applied", "interview", "trial", "accepted", "rejected"];
@@ -2303,12 +2415,14 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
           { id: "fleet", label: "Fleet" },
           { id: "srp", label: "SRP" },
           { id: "recruit", label: "Recruitment" },
+          { id: "timers", label: "Timerboard" },
         ]}
         active={sub}
         onSelect={setSub}
       />
       {sub === "srp" && <SrpBoard />}
       {sub === "recruit" && <RecruitBoard />}
+      {sub === "timers" && <Timerboard />}
       {sub === "groups" && (
         <>
           <div className="card" style={{ maxWidth: 560 }}>

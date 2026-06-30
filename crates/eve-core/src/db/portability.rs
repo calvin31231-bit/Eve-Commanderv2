@@ -218,6 +218,26 @@ impl Database {
         })
         .collect::<Vec<_>>();
 
+        let timers = sqlx::query(
+            "SELECT created_at, title, system, structure, timer_type, side, exits_at, notes FROM timers",
+        )
+        .fetch_all(&self.app)
+        .await?
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "created_at": r.get::<i64, _>("created_at"),
+                "title": r.get::<String, _>("title"),
+                "system": r.get::<String, _>("system"),
+                "structure": r.get::<String, _>("structure"),
+                "timer_type": r.get::<String, _>("timer_type"),
+                "side": r.get::<String, _>("side"),
+                "exits_at": r.get::<i64, _>("exits_at"),
+                "notes": r.get::<String, _>("notes"),
+            })
+        })
+        .collect::<Vec<_>>();
+
         Ok(serde_json::json!({
             "format": "eve-commander-export",
             "version": 1,
@@ -234,6 +254,7 @@ impl Database {
             "srp_claims": srp_claims,
             "recruits": recruits,
             "signatures": signatures,
+            "timers": timers,
         }))
     }
 
@@ -252,6 +273,7 @@ impl Database {
             "srp_claims",
             "recruits",
             "signatures",
+            "timers",
             "names",
             "settings",
             "characters",
