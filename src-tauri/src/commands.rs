@@ -4345,6 +4345,178 @@ pub async fn wipe_data(state: State<'_, AppState>) -> CmdResult<()> {
     state.db.wipe_all().await.map_err(|e| e.to_string())
 }
 
+// ---- Phase 7: update check / telemetry / sharing / dashboard ----------------
+
+/// Default releases endpoint (GitHub releases API for this project). The check
+/// is notify-only and never downloads — see `eve_core::update`.
+const RELEASES_URL: &str =
+    "https://api.github.com/repos/calvin31231-bit/eve-commanderv2/releases";
+
+/// Check whether a newer release is published. Best-effort: a network failure
+/// reports "no update" rather than erroring. Honors a `releases_url` override
+/// setting for self-hosted/forked builds.
+#[tauri::command]
+pub async fn check_for_update(state: State<'_, AppState>) -> CmdResult<eve_core::update::UpdateStatus> {
+    let url = state
+        .db
+        .get_setting_or("releases_url", RELEASES_URL)
+        .await
+        .unwrap_or_else(|_| RELEASES_URL.to_string());
+    let http = reqwest::Client::new();
+    eve_core::update::check(&http, &state.config.user_agent, &url, env!("CARGO_PKG_VERSION"))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Whether opt-in telemetry is enabled (default false).
+#[tauri::command]
+pub async fn get_telemetry_consent(state: State<'_, AppState>) -> CmdResult<bool> {
+    Ok(state.db.get_setting_or("telemetry_consent", "false").await.map_err(|e| e.to_string())? == "true")
+}
+
+/// Enable/disable opt-in telemetry. Turning it off also clears any buffered
+/// events so nothing lingers after consent is withdrawn.
+#[tauri::command]
+pub async fn set_telemetry_consent(state: State<'_, AppState>, consent: bool) -> CmdResult<()> {
+    state
+        .db
+        .set_setting("telemetry_consent", if consent { "true" } else { "false" })
+        .await
+        .map_err(|e| e.to_string())?;
+    if !consent {
+        state.db.clear_telemetry().await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Record one anonymous usage event — only if the player has consented. The
+/// event is sanitized to a name + small integer counts (never game data) by
+/// `eve_core::telemetry`. No-op when consent is off.
+#[tauri::command]
+pub async fn record_telemetry_event(
+    state: State<'_, AppState>,
+    name: String,
+    counts: std::collections::HashMap<String, u32>,
+) -> CmdResult<bool> {
+    let consent = state
+        .db
+        .get_setting_or("telemetry_consent", "false")
+        .await
+        .map_err(|e| e.to_string())?
+        == "true";
+    if !eve_core::telemetry::should_record(consent) {
+        return Ok(false);
+    }
+    let pairs: Vec<(&str, u32)> = counts.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    let event = eve_core::telemetry::TelemetryEvent::new(&name, &pairs);
+    let json = serde_json::to_string(&event.counts).unwrap_or_else(|_| "{}".to_string());
+    state
+        .db
+        .record_telemetry(&event.name, &json, now_epoch_secs())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// The buffered telemetry events, for transparency (the player can see exactly
+/// what would be sent before deciding to keep it on).
+#[tauri::command]
+pub async fn list_telemetry(state: State<'_, AppState>) -> CmdResult<Vec<TelemetryEventView>> {
+    let rows = state.db.list_telemetry().await.map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .map(|r| TelemetryEventView { name: r.name, counts_json: r.counts_json, created_at: r.created_at })
+        .collect())
+}
+
+/// One buffered telemetry event, surfaced for transparency.
+#[derive(Debug, Serialize)]
+pub struct TelemetryEventView {
+    pub name: String,
+    pub counts_json: String,
+    pub created_at: i64,
+}
+
+/// Clear the local telemetry buffer.
+#[tauri::command]
+pub async fn clear_telemetry(state: State<'_, AppState>) -> CmdResult<()> {
+    state.db.clear_telemetry().await.map_err(|e| e.to_string())
+}
+
+/// Build a compact, copy-pasteable share code for a fit or skill plan (`kind` is
+/// "fit" or "plan"). Backend-free community sharing — see `eve_core::share`.
+#[tauri::command]
+pub fn share_artifact(kind: String, name: String, body: String) -> CmdResult<String> {
+    if kind != "fit" && kind != "plan" {
+        return Err("share kind must be 'fit' or 'plan'".into());
+    }
+    Ok(eve_core::share::encode(&eve_core::share::SharedArtifact { kind, name, body }))
+}
+
+/// Import a share code into the local library: decodes it and saves the fit or
+/// skill plan. Returns the imported artifact's name + kind for a confirmation.
+#[tauri::command]
+pub async fn import_shared(state: State<'_, AppState>, code: String) -> CmdResult<SharedImportView> {
+    let art = eve_core::share::decode(&code).map_err(|e| e.to_string())?;
+    let now = now_epoch_secs();
+    match art.kind.as_str() {
+        "plan" => {
+            state.db.save_skill_plan(&art.name, &art.body, now).await.map_err(|e| e.to_string())?;
+        }
+        "fit" => {
+            // Ship name is the bracketed header's first field (best-effort).
+            let ship = art
+                .body
+                .lines()
+                .next()
+                .and_then(|l| l.trim().strip_prefix('['))
+                .and_then(|l| l.split(',').next())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            state.db.save_fit(&art.name, &ship, &art.body, now).await.map_err(|e| e.to_string())?;
+        }
+        _ => return Err("unknown share kind".into()),
+    }
+    Ok(SharedImportView { kind: art.kind, name: art.name })
+}
+
+/// Confirmation of an imported share code.
+#[derive(Debug, Serialize)]
+pub struct SharedImportView {
+    pub kind: String,
+    pub name: String,
+}
+
+/// The reconciled home-dashboard layout: the player's saved widget order/
+/// visibility, merged against the widget ids the build ships (passed by the
+/// frontend) so new widgets appear and removed ones drop.
+#[tauri::command]
+pub async fn get_home_layout(
+    state: State<'_, AppState>,
+    available: Vec<String>,
+) -> CmdResult<Vec<eve_core::dashboard::WidgetSlot>> {
+    let saved: Vec<eve_core::dashboard::WidgetSlot> = state
+        .db
+        .get_setting_or("home_layout", "[]")
+        .await
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let avail: Vec<&str> = available.iter().map(|s| s.as_str()).collect();
+    Ok(eve_core::dashboard::reconcile(&saved, &avail))
+}
+
+/// Persist the home-dashboard layout (widget order + visibility).
+#[tauri::command]
+pub async fn set_home_layout(
+    state: State<'_, AppState>,
+    slots: Vec<eve_core::dashboard::WidgetSlot>,
+) -> CmdResult<()> {
+    let json = serde_json::to_string(&slots).map_err(|e| e.to_string())?;
+    state.db.set_setting("home_layout", &json).await.map_err(|e| e.to_string())
+}
+
 // ---- Skill-plan import (EVEMon / text) --------------------------------------
 
 /// One resolved import target for the skill planner.

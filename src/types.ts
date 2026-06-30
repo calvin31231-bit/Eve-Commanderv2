@@ -817,6 +817,29 @@ export interface AiEndpointView {
   models: string[];
 }
 
+export interface UpdateStatus {
+  current: string;
+  latest: string;
+  update_available: boolean;
+  url: string;
+}
+
+export interface TelemetryEventView {
+  name: string;
+  counts_json: string;
+  created_at: number;
+}
+
+export interface SharedImportView {
+  kind: string;
+  name: string;
+}
+
+export interface WidgetSlot {
+  id: string;
+  visible: boolean;
+}
+
 // Mirrors eve_core::ai::ChatMessage (tool fields omitted for the simple UI).
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";

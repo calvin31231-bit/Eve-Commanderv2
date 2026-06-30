@@ -79,6 +79,15 @@ CREATE TABLE IF NOT EXISTS ai_memory_vectors (
     vec     BLOB    NOT NULL
 );
 
+-- Opt-in anonymous telemetry buffer (off by default). Holds only an event name
+-- + a JSON map of small integer counts — never game data. See `telemetry`.
+CREATE TABLE IF NOT EXISTS telemetry_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,
+    counts_json TEXT    NOT NULL DEFAULT '{}',
+    created_at  INTEGER NOT NULL
+);
+
 -- Reusable skill-plan library: named plans stored independent of any character
 -- (body is the importable text form) so they can be loaded onto a new alt.
 CREATE TABLE IF NOT EXISTS skill_plans (

@@ -70,6 +70,9 @@ import type {
   AiSettingsView,
   AiEndpointView,
   AiAgentView,
+  WidgetSlot,
+  UpdateStatus,
+  TelemetryEventView,
   MemoryNoteView,
   SavedPlanView,
   SavedFitView,
@@ -161,9 +164,22 @@ interface HomeProps {
   onSelectCharacter: (characterId: number) => void;
 }
 
+// The home dashboard's widgets, in their default order. The saved layout
+// (order + visibility) is reconciled against this list on the backend, so
+// adding a widget here makes it appear for everyone on next launch.
+const HOME_WIDGETS: { id: string; label: string }[] = [
+  { id: "networth", label: "Account net worth" },
+  { id: "status", label: "Tranquility status" },
+  { id: "characters", label: "Characters" },
+];
+
 function Home({ status, statusError, characters, onLogin, onSelectCharacter }: HomeProps): ReactNode {
   const [account, setAccount] = useState<AccountOverview | null>(null);
   const [history, setHistory] = useState<PortfolioHistory | null>(null);
+  const [layout, setLayout] = useState<WidgetSlot[]>(
+    HOME_WIDGETS.map((w) => ({ id: w.id, visible: true })),
+  );
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     if (!isTauri() || characters.length === 0) {
@@ -175,12 +191,28 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter }: H
     api.getPortfolioHistory(null, 90).then(setHistory).catch(() => undefined);
   }, [characters.length]);
 
-  return (
-    <>
-      <h1>Welcome, Capsuleer</h1>
-      <div className="sub">Your at-a-glance command center.</div>
+  useEffect(() => {
+    if (!isTauri()) return;
+    api.getHomeLayout(HOME_WIDGETS.map((w) => w.id)).then(setLayout).catch(() => undefined);
+  }, []);
 
-      {account && account.characters.length > 0 && (
+  function persist(next: WidgetSlot[]) {
+    setLayout(next);
+    if (isTauri()) api.setHomeLayout(next).catch(() => undefined);
+  }
+  function toggle(id: string) {
+    persist(layout.map((s) => (s.id === id ? { ...s, visible: !s.visible } : s)));
+  }
+  function move(idx: number, dir: -1 | 1) {
+    const j = idx + dir;
+    if (j < 0 || j >= layout.length) return;
+    const next = [...layout];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    persist(next);
+  }
+  const label = (id: string) => HOME_WIDGETS.find((w) => w.id === id)?.label ?? id;
+
+  const networthWidget = account && account.characters.length > 0 && (
         <div className="card account-card">
           <div className="account-headline">
             <div>
@@ -229,56 +261,109 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter }: H
             </table>
           )}
         </div>
+      );
+
+  const statusWidget = (
+    <div className="card">
+      <h3>Tranquility status</h3>
+      {status ? (
+        <p className="mono" style={{ fontSize: 24 }}>
+          {status.players.toLocaleString()} <span style={{ color: "var(--text-dim)", fontSize: 13 }}>online</span>
+        </p>
+      ) : (
+        <p style={{ color: statusError ? "var(--danger)" : "var(--text-dim)" }}>
+          {statusError ?? "Loading…"}
+        </p>
+      )}
+    </div>
+  );
+
+  const charactersWidget = (
+    <div className="card">
+      <h3>Characters</h3>
+      {characters.length === 0 ? (
+        <>
+          <p style={{ color: "var(--text-dim)" }}>No characters yet.</p>
+          <button className="primary" onClick={onLogin}>
+            Log in with EVE
+          </button>
+        </>
+      ) : (
+        <>
+          <ul className="char-list">
+            {characters.map((c) => (
+              <li key={c.id}>
+                <button
+                  className={`char-row${c.active ? " active" : ""}`}
+                  onClick={() => onSelectCharacter(c.id)}
+                  title={c.active ? "Active character" : "Make active"}
+                >
+                  <span className="char-row-id">
+                    <img className="avatar" src={portraitUrl(c.id, 32)} alt="" width={24} height={24} loading="lazy" />
+                    {c.name}
+                  </span>
+                  {c.active && <span className="badge safe">active</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button className="primary" style={{ marginTop: 10 }} onClick={onLogin}>
+            Add character
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  const widgetNode = (id: string): ReactNode => {
+    if (id === "networth") return networthWidget || null;
+    if (id === "status") return statusWidget;
+    if (id === "characters") return charactersWidget;
+    return null;
+  };
+
+  // The net-worth widget spans the full width; the rest sit in a grid.
+  const visible = layout.filter((s) => s.visible);
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div>
+          <h1>Welcome, Capsuleer</h1>
+          <div className="sub">Your at-a-glance command center.</div>
+        </div>
+        <button onClick={() => setEditing((e) => !e)} title="Show, hide, and reorder dashboard widgets">
+          {editing ? "Done" : "Customize"}
+        </button>
+      </div>
+
+      {editing && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Dashboard layout</h3>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {layout.map((s, i) => (
+              <li key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                <label style={{ flex: 1, display: "flex", gap: 6, alignItems: "center" }}>
+                  <input type="checkbox" checked={s.visible} onChange={() => toggle(s.id)} />
+                  {label(s.id)}
+                </label>
+                <button onClick={() => move(i, -1)} disabled={i === 0} title="Move up">↑</button>
+                <button onClick={() => move(i, 1)} disabled={i === layout.length - 1} title="Move down">↓</button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
+      {visible.filter((s) => s.id === "networth").map((s) => (
+        <div key={s.id}>{widgetNode(s.id)}</div>
+      ))}
       <div className="card-grid">
-        <div className="card">
-          <h3>Tranquility status</h3>
-          {status ? (
-            <p className="mono" style={{ fontSize: 24 }}>
-              {status.players.toLocaleString()} <span style={{ color: "var(--text-dim)", fontSize: 13 }}>online</span>
-            </p>
-          ) : (
-            <p style={{ color: statusError ? "var(--danger)" : "var(--text-dim)" }}>
-              {statusError ?? "Loading…"}
-            </p>
-          )}
-        </div>
-
-        <div className="card">
-          <h3>Characters</h3>
-          {characters.length === 0 ? (
-            <>
-              <p style={{ color: "var(--text-dim)" }}>No characters yet.</p>
-              <button className="primary" onClick={onLogin}>
-                Log in with EVE
-              </button>
-            </>
-          ) : (
-            <>
-              <ul className="char-list">
-                {characters.map((c) => (
-                  <li key={c.id}>
-                    <button
-                      className={`char-row${c.active ? " active" : ""}`}
-                      onClick={() => onSelectCharacter(c.id)}
-                      title={c.active ? "Active character" : "Make active"}
-                    >
-                      <span className="char-row-id">
-                        <img className="avatar" src={portraitUrl(c.id, 32)} alt="" width={24} height={24} loading="lazy" />
-                        {c.name}
-                      </span>
-                      {c.active && <span className="badge safe">active</span>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <button className="primary" style={{ marginTop: 10 }} onClick={onLogin}>
-                Add character
-              </button>
-            </>
-          )}
-        </div>
+        {visible
+          .filter((s) => s.id !== "networth")
+          .map((s) => (
+            <div key={s.id} style={{ display: "contents" }}>{widgetNode(s.id)}</div>
+          ))}
       </div>
     </>
   );
@@ -1028,6 +1113,17 @@ function SkillPlanner({ character }: { character: Character }): ReactNode {
                   <span style={{ fontSize: 13 }}>{p.name}</span>
                   <button
                     style={{ fontSize: 11, marginLeft: "auto" }}
+                    onClick={() =>
+                      api.shareArtifact("plan", p.name, p.body).then((codeStr) => {
+                        navigator.clipboard?.writeText(codeStr);
+                        setImportMsg(`Share code for "${p.name}" copied to clipboard.`);
+                      }).catch((e) => setImportMsg(String(e)))
+                    }
+                  >
+                    Share
+                  </button>
+                  <button
+                    style={{ fontSize: 11 }}
                     onClick={() => api.deleteSkillPlan(p.id).then(loadLibrary)}
                   >
                     Delete
@@ -3403,7 +3499,99 @@ function ToolsHub(): ReactNode {
         </div>
       ))}
       {sub === "settings" && <DataPrivacy />}
+      {sub === "settings" && <AppMaintenance />}
     </>
+  );
+}
+
+// Phase 7: update check, opt-in telemetry, and offline share-code import.
+function AppMaintenance(): ReactNode {
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [consent, setConsent] = useState(false);
+  const [events, setEvents] = useState<TelemetryEventView[]>([]);
+  const [code, setCode] = useState("");
+  const [importMsg, setImportMsg] = useState("");
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    api.getTelemetryConsent().then(setConsent).catch(() => undefined);
+  }, []);
+
+  function refreshEvents() {
+    api.listTelemetry().then(setEvents).catch(() => setEvents([]));
+  }
+  function toggleConsent(next: boolean) {
+    setConsent(next);
+    api.setTelemetryConsent(next).then(() => { if (next) refreshEvents(); else setEvents([]); }).catch(() => undefined);
+  }
+  function check() {
+    setChecking(true);
+    api.checkForUpdate().then(setUpdate).catch(() => undefined).finally(() => setChecking(false));
+  }
+  function doImport() {
+    setImportMsg("Importing…");
+    api
+      .importShared(code.trim())
+      .then((r) => { setImportMsg(`Imported ${r.kind === "plan" ? "skill plan" : "fit"} "${r.name}" to your library.`); setCode(""); })
+      .catch((e) => setImportMsg(String(e)));
+  }
+
+  if (!isTauri()) return null;
+
+  return (
+    <div className="card">
+      <h3>App &amp; Community</h3>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={check} disabled={checking}>{checking ? "Checking…" : "Check for updates"}</button>
+          {update && (
+            <span style={{ fontSize: 12, color: update.update_available ? "var(--accent)" : "var(--text-dim)" }}>
+              {update.update_available
+                ? <>Update available: {update.latest} {update.url && <a href={update.url} target="_blank" rel="noreferrer">release notes</a>}</>
+                : `Up to date (${update.current}).`}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <label className="setting-row">
+        <div>
+          <div className="setting-name">Anonymous usage telemetry</div>
+          <div className="setting-help">Off by default. Sends only feature-usage counts — never ISK, names, ids, or any game data. Everything stays local until you opt in.</div>
+        </div>
+        <input type="checkbox" checked={consent} onChange={(e) => toggleConsent(e.target.checked)} />
+      </label>
+      {consent && (
+        <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 12 }}>
+          <button onClick={refreshEvents} style={{ fontSize: 11 }}>Show buffered events</button>
+          {events.length > 0 && (
+            <button onClick={() => api.clearTelemetry().then(() => setEvents([]))} style={{ fontSize: 11, marginLeft: 6 }}>Clear</button>
+          )}
+          {events.map((e, i) => (
+            <div key={i} className="mono">{e.name} {e.counts_json !== "{}" ? e.counts_json : ""}</div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+        <div className="setting-name">Import a shared fit or skill plan</div>
+        <div className="setting-help" style={{ marginBottom: 6 }}>
+          Paste an <span className="mono">EVECMDR1:</span> share code from another player — it imports straight into your local library.
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="EVECMDR1:…"
+            style={{ flex: 1 }}
+          />
+          <button onClick={doImport} disabled={!code.trim()}>Import</button>
+        </div>
+        {importMsg && <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>{importMsg}</p>}
+      </div>
+    </div>
   );
 }
 
@@ -3639,6 +3827,17 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
               {f.ship && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>· {f.ship}</span>}
               <button
                 style={{ fontSize: 11, marginLeft: "auto" }}
+                onClick={() =>
+                  api.shareArtifact("fit", f.name, f.eft).then((codeStr) => {
+                    navigator.clipboard?.writeText(codeStr);
+                    setError(`Share code for "${f.name}" copied to clipboard.`);
+                  }).catch((e) => setError(String(e)))
+                }
+              >
+                Share
+              </button>
+              <button
+                style={{ fontSize: 11 }}
                 onClick={() => api.deleteFit(f.id).then(loadLibrary)}
               >
                 Delete

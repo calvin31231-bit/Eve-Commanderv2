@@ -91,6 +91,10 @@ import type {
   ChatMessage,
   AiChatView,
   AiAgentView,
+  UpdateStatus,
+  TelemetryEventView,
+  SharedImportView,
+  WidgetSlot,
   MemoryNoteView,
   SavedPlanView,
   SavedFitView,
@@ -400,6 +404,21 @@ export const api = {
   pinMemory: (id: number, pinned: boolean) =>
     call<void>("pin_memory", { id, pinned }),
   reindexMemory: () => call<number>("reindex_memory"),
+  checkForUpdate: () => call<UpdateStatus>("check_for_update"),
+  getTelemetryConsent: () => call<boolean>("get_telemetry_consent"),
+  setTelemetryConsent: (consent: boolean) =>
+    call<void>("set_telemetry_consent", { consent }),
+  recordTelemetryEvent: (name: string, counts: Record<string, number>) =>
+    call<boolean>("record_telemetry_event", { name, counts }),
+  listTelemetry: () => call<TelemetryEventView[]>("list_telemetry"),
+  clearTelemetry: () => call<void>("clear_telemetry"),
+  shareArtifact: (kind: "fit" | "plan", name: string, body: string) =>
+    call<string>("share_artifact", { kind, name, body }),
+  importShared: (code: string) => call<SharedImportView>("import_shared", { code }),
+  getHomeLayout: (available: string[]) =>
+    call<WidgetSlot[]>("get_home_layout", { available }),
+  setHomeLayout: (slots: WidgetSlot[]) =>
+    call<void>("set_home_layout", { slots }),
   exportData: () => call<string>("export_data"),
   wipeData: () => call<void>("wipe_data"),
   saveSkillPlan: (name: string, body: string) =>

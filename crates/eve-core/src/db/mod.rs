@@ -15,6 +15,7 @@ pub mod settings;
 pub mod signatures;
 pub mod snapshots;
 pub mod srp;
+pub mod telemetry;
 pub mod timers;
 
 use std::path::Path;
