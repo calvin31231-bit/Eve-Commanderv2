@@ -385,6 +385,7 @@ pub fn run() {
             commands::open_market_window,
             commands::get_corp_structures,
             commands::get_corp_members,
+            commands::get_container_thefts,
             commands::lp_store,
             commands::get_incursions,
             commands::get_fw_systems,

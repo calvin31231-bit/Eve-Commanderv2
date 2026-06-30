@@ -732,6 +732,16 @@ export interface CorpMemberView {
   logoff_date: string | null;
 }
 
+export interface ContainerTheftView {
+  character_name: string;
+  action: string;
+  item_name: string;
+  quantity: number;
+  logged_at: string | null;
+  severity: number;
+  reason: string;
+}
+
 export interface CorpStructureView {
   structure_id: number;
   name: string;

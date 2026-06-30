@@ -88,6 +88,82 @@ pub struct MemberTrack {
     pub start_date: Option<String>,
 }
 
+/// One corp container audit-log entry (ESI
+/// `GET /corporations/{id}/containers/logs/`). The action plus the actor and
+/// quantity is what theft detection keys on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContainerLog {
+    #[serde(default)]
+    pub action: String,
+    pub character_id: i64,
+    #[serde(default)]
+    pub container_id: i64,
+    #[serde(default)]
+    pub container_type_id: i64,
+    #[serde(default)]
+    pub location_id: i64,
+    #[serde(default)]
+    pub logged_at: Option<String>,
+    #[serde(default)]
+    pub quantity: Option<i64>,
+    #[serde(default)]
+    pub type_id: Option<i64>,
+    #[serde(default)]
+    pub password_type: Option<String>,
+}
+
+/// A container-log entry the vetting heuristic flagged as theft-suspicious, with
+/// a severity (0..=1) and a human reason.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContainerLogFlag {
+    pub character_id: i64,
+    pub container_id: i64,
+    pub action: String,
+    pub quantity: i64,
+    pub logged_at: Option<String>,
+    pub type_id: i64,
+    /// 0.0..=1.0 — how suspicious this looks.
+    pub severity: f64,
+    pub reason: String,
+}
+
+/// Score container-log entries for likely theft and return only the suspicious
+/// ones, most-severe first. Pure → unit-tested.
+///
+/// Heuristic: password tampering (`set_password`/`enter_password`) and `unlock`
+/// are the classic theft vectors (someone breaking into a secured can), and a
+/// large-`quantity` `move`/`add` out of a can is the act itself. Benign,
+/// high-volume operational actions (`configure`, `assemble`, `repackage`,
+/// `set_name`, `lock`) are ignored.
+pub fn flag_container_thefts(logs: &[ContainerLog], large_quantity: i64) -> Vec<ContainerLogFlag> {
+    let mut out: Vec<ContainerLogFlag> = Vec::new();
+    for l in logs {
+        let qty = l.quantity.unwrap_or(0);
+        let (severity, reason) = match l.action.as_str() {
+            "set_password" | "enter_password" => {
+                (0.9, "container password changed/entered — classic theft vector".to_string())
+            }
+            "unlock" => (0.7, "secured container unlocked".to_string()),
+            "move" | "add" if qty >= large_quantity => {
+                (0.6, format!("large {} of {} units", l.action, qty))
+            }
+            _ => continue,
+        };
+        out.push(ContainerLogFlag {
+            character_id: l.character_id,
+            container_id: l.container_id,
+            action: l.action.clone(),
+            quantity: qty,
+            logged_at: l.logged_at.clone(),
+            type_id: l.type_id.unwrap_or(0),
+            severity,
+            reason,
+        });
+    }
+    out.sort_by(|a, b| b.severity.partial_cmp(&a.severity).unwrap_or(std::cmp::Ordering::Equal));
+    out
+}
+
 /// Authenticated corporation reads over the cache-first ESI client.
 #[derive(Clone)]
 pub struct CorpClient {
@@ -142,6 +218,21 @@ impl CorpClient {
         members.sort_by(|a, b| b.logon_date.cmp(&a.logon_date));
         Ok(members)
     }
+
+    /// Corp container audit logs (theft-detection source). Requires a director
+    /// role + `esi-corporations.read_container_logs.v1`; 403s otherwise.
+    pub async fn container_logs(
+        &self,
+        character_id: i64,
+        corp_id: i64,
+    ) -> Result<Vec<ContainerLog>> {
+        let token = self.tokens.access_token(character_id).await?;
+        let path = format!("/latest/corporations/{corp_id}/containers/logs/");
+        self.esi
+            .get_auth_json_paged::<ContainerLog>(&path, &token)
+            .await
+            .map_err(|e| Error::other(format!("container logs: {e}")))
+    }
 }
 
 #[cfg(test)]
@@ -182,5 +273,37 @@ mod tests {
         let now = ts("2026-06-22T00:00:00Z");
         let out = summarize_structures(&[st(1, Some("2026-06-21T00:00:00Z"))], now);
         assert_eq!(out[0].fuel_seconds_remaining, 0);
+    }
+
+    fn log(action: &str, qty: Option<i64>) -> ContainerLog {
+        ContainerLog {
+            action: action.into(),
+            character_id: 90000001,
+            container_id: 1000000001,
+            container_type_id: 17363,
+            location_id: 60003760,
+            logged_at: Some("2026-06-22T00:00:00Z".into()),
+            quantity: qty,
+            type_id: Some(34),
+            password_type: None,
+        }
+    }
+
+    #[test]
+    fn theft_flags_password_unlock_and_large_moves() {
+        let logs = vec![
+            log("configure", None),          // benign → ignored
+            log("set_name", None),           // benign → ignored
+            log("move", Some(5)),            // small move → ignored
+            log("unlock", None),             // suspicious
+            log("move", Some(10_000)),       // large move → suspicious
+            log("set_password", None),       // most suspicious
+        ];
+        let flags = flag_container_thefts(&logs, 1000);
+        assert_eq!(flags.len(), 3);
+        // Most-severe first: password tampering tops the list.
+        assert_eq!(flags[0].action, "set_password");
+        assert!(flags[0].severity > flags[1].severity);
+        assert!(flags.iter().all(|f| f.action != "move" || f.quantity >= 1000));
     }
 }

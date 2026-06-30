@@ -17,6 +17,7 @@ import type {
   ColonyView,
   CorpStructureView,
   CorpMemberView,
+  ContainerTheftView,
   FleetView,
   FleetWingView,
   LpStoreView,
@@ -338,6 +339,8 @@ export const api = {
     call<CorpStructureView[]>("get_corp_structures", { characterId }),
   getCorpMembers: (characterId: number) =>
     call<CorpMemberView[]>("get_corp_members", { characterId }),
+  getContainerThefts: (characterId: number) =>
+    call<ContainerTheftView[]>("get_container_thefts", { characterId }),
   getFleet: (characterId: number) => call<FleetView>("get_fleet", { characterId }),
   setFleetSettings: (characterId: number, motd: string, isFreeMove: boolean) =>
     call<void>("set_fleet_settings", { characterId, motd, isFreeMove }),

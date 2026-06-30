@@ -80,6 +80,7 @@ import type {
   TheraConnection,
   CorpStructureView,
   CorpMemberView,
+  ContainerTheftView,
   FleetView,
   FleetWingView,
   LpStoreView,
@@ -2611,11 +2612,14 @@ function FleetView_({ character }: { character: Character | null }): ReactNode {
 
 function CorpMembers({ character }: { character: Character | null }): ReactNode {
   const [rows, setRows] = useState<CorpMemberView[] | null>(null);
+  const [thefts, setThefts] = useState<ContainerTheftView[]>([]);
 
   useEffect(() => {
     setRows(null);
+    setThefts([]);
     if (!character || !isTauri()) return;
     api.getCorpMembers(character.id).then(setRows).catch(() => setRows([]));
+    api.getContainerThefts(character.id).then(setThefts).catch(() => setThefts([]));
   }, [character]);
 
   if (!character) return <div className="sub">Select a character with a corp role.</div>;
@@ -2643,6 +2647,31 @@ function CorpMembers({ character }: { character: Character | null }): ReactNode 
           ))}
         </tbody>
       </table>
+      {thefts.length > 0 && (
+        <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+          <h4 style={{ margin: "0 0 6px", color: "var(--danger)" }}>
+            Container-log alerts <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {thefts.length}</span>
+          </h4>
+          <table className="holdings">
+            <tbody>
+              {thefts.slice(0, 50).map((t, i) => (
+                <tr key={i}>
+                  <td>{t.character_name}</td>
+                  <td className="loc">
+                    {t.action}
+                    {t.item_name ? ` · ${t.item_name}${t.quantity ? ` ×${t.quantity}` : ""}` : ""}
+                    <span style={{ display: "block", fontSize: 11, color: "var(--text-dim)" }}>{t.reason}</span>
+                  </td>
+                  <td className="mono num">{t.logged_at ? shortDate(t.logged_at) : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "6px 0 0" }}>
+            Heuristic vetting from corp container audit logs (password tampering, unlocks, large moves).
+          </p>
+        </div>
+      )}
     </div>
   );
 }

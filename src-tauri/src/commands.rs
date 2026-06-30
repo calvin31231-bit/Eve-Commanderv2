@@ -47,6 +47,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-ui.open_window.v1",
     "esi-corporations.read_structures.v1",
     "esi-corporations.track_members.v1",
+    "esi-corporations.read_container_logs.v1",
     "esi-location.read_location.v1",
     "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
@@ -2151,6 +2152,59 @@ pub async fn get_corp_members(
             logon_date: m.logon_date,
             logoff_date: m.logoff_date,
             character_id: m.character_id,
+        })
+        .collect())
+}
+
+/// One flagged container-log entry (names resolved) for the vetting view.
+#[derive(Debug, Serialize)]
+pub struct ContainerTheftView {
+    pub character_name: String,
+    pub action: String,
+    pub item_name: String,
+    pub quantity: i64,
+    pub logged_at: Option<String>,
+    pub severity: f64,
+    pub reason: String,
+}
+
+/// Theft-suspicious corp container-log entries (password tampering, unlocks,
+/// large moves), most-severe first. Empty when the active character lacks the
+/// director role / `esi-corporations.read_container_logs.v1` scope.
+#[tauri::command]
+pub async fn get_container_thefts(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<ContainerTheftView>> {
+    let Ok(public) = state.character.public_info(character_id).await else {
+        return Ok(Vec::new());
+    };
+    let logs = match state.corp.container_logs(character_id, public.corporation_id).await {
+        Ok(l) => l,
+        Err(_) => return Ok(Vec::new()),
+    };
+    // A "large move" threshold; tuned conservatively so routine ops don't flag.
+    let flags = eve_core::corp::flag_container_thefts(&logs, 1000);
+
+    let mut ids: Vec<i64> = Vec::new();
+    for f in &flags {
+        ids.push(f.character_id);
+        if f.type_id != 0 {
+            ids.push(f.type_id);
+        }
+    }
+    let names = names_for(&state, &ids).await;
+
+    Ok(flags
+        .into_iter()
+        .map(|f| ContainerTheftView {
+            character_name: named(&names, f.character_id),
+            action: f.action.replace('_', " "),
+            item_name: if f.type_id != 0 { named(&names, f.type_id) } else { String::new() },
+            quantity: f.quantity,
+            logged_at: f.logged_at,
+            severity: f.severity,
+            reason: f.reason,
         })
         .collect())
 }
