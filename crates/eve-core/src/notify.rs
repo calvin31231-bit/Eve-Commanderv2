@@ -307,6 +307,30 @@ pub fn job_done_alert(
     ))
 }
 
+/// Rule: PI extractor cycle. Warning once a colony's extractor program has
+/// expired (heads are idle); keyed per planet so it fires once per cycle. Pure.
+pub fn pi_extractor_alert(
+    character_id: i64,
+    character_name: &str,
+    planet_id: i64,
+    planet_label: &str,
+    has_program: bool,
+    seconds_remaining: i64,
+    now: SystemTime,
+) -> Option<Notification> {
+    if !has_program || seconds_remaining > 0 {
+        return None;
+    }
+    Some(Notification::new(
+        format!("pi:{character_id}:{planet_id}"),
+        "PI extractors expired",
+        format!("{planet_label} extraction has ended ({character_name}) — reset the program."),
+        Severity::Warning,
+        "pi",
+        now,
+    ))
+}
+
 fn to_epoch(t: SystemTime) -> u64 {
     t.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -327,6 +351,17 @@ mod tests {
     fn severity_orders_info_warning_critical() {
         assert!(Severity::Info < Severity::Warning);
         assert!(Severity::Warning < Severity::Critical);
+    }
+
+    #[test]
+    fn pi_alert_fires_only_when_expired_program() {
+        // Running program → quiet; idle colony with no program → quiet too.
+        assert!(pi_extractor_alert(1, "Cap", 40001, "Barren I", true, 600, now()).is_none());
+        assert!(pi_extractor_alert(1, "Cap", 40001, "Barren I", false, 0, now()).is_none());
+        // Expired program → Warning keyed per character+planet.
+        let n = pi_extractor_alert(1, "Cap", 40001, "Barren I", true, 0, now()).unwrap();
+        assert_eq!(n.key, "pi:1:40001");
+        assert_eq!(n.severity, Severity::Warning);
     }
 
     #[test]

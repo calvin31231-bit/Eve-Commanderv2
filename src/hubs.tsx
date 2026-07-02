@@ -52,6 +52,8 @@ import type {
   SavedLoadoutView,
   DoctrineView,
   DscanResult,
+  DscanDiff,
+  DoctrineComplianceView,
   ThreatScanView,
   PilotBackgroundView,
   IncursionView,
@@ -2252,6 +2254,22 @@ function SrpBoard(): ReactNode {
       .catch(() => undefined);
   }
 
+  const [prefillMsg, setPrefillMsg] = useState("");
+  function prefill() {
+    if (!isTauri() || !km.trim()) return;
+    setPrefillMsg("Looking up killmail…");
+    api
+      .srpPrefill(km.trim())
+      .then((p) => {
+        setPilot(p.pilot);
+        setShip(p.ship);
+        setLoss((p.loss_value / 1_000_000).toFixed(1));
+        setLocation(p.location);
+        setPrefillMsg("Filled from killmail.");
+      })
+      .catch((e) => setPrefillMsg(String(e)));
+  }
+
   function approve(c: SrpBoardView["claims"][number]) {
     const v = window.prompt("Payout (millions of ISK):", (c.loss_value / 1_000_000).toFixed(0));
     if (v === null) return;
@@ -2293,10 +2311,14 @@ function SrpBoard(): ReactNode {
           </label>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-          <input value={km} onChange={(e) => setKm(e.target.value)} placeholder="killmail URL (optional)" style={{ flex: 1 }} />
+          <input value={km} onChange={(e) => setKm(e.target.value)} placeholder="zKillboard link (optional)" style={{ flex: 1 }} />
+          <button onClick={prefill} disabled={!km.trim()} title="Fill pilot/ship/value/system from the killmail">
+            Autofill
+          </button>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="notes" style={{ flex: 1 }} />
           <button onClick={submit}>Submit</button>
         </div>
+        {prefillMsg && <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "4px 0 0" }}>{prefillMsg}</p>}
       </div>
 
       {s && (
@@ -3998,6 +4020,20 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
   const [stats, setStats] = useState<FitStatsView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<SavedFitView[] | null>(null);
+  const [kmUrl, setKmUrl] = useState("");
+  const [compliance, setCompliance] = useState<DoctrineComplianceView | null>(null);
+
+  function fromKillmail() {
+    if (!isTauri() || !kmUrl.trim()) return;
+    setError("Reconstructing fit from killmail…");
+    api
+      .reconstructFit(kmUrl.trim())
+      .then((r) => {
+        setEft(r.eft);
+        setError(`Reconstructed ${r.ship}${r.pilot ? ` (${r.pilot})` : ""} — parse or run stats to size it up.`);
+      })
+      .catch((e) => setError(String(e)));
+  }
 
   function checkStats() {
     if (!isTauri() || !eft.trim()) return;
@@ -4057,6 +4093,15 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
       <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
         Paste an EFT block (from PYFA or the in-game fitting window) to parse and resolve it.
       </p>
+      <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+        <input
+          value={kmUrl}
+          onChange={(e) => setKmUrl(e.target.value)}
+          placeholder="…or paste a zKillboard link to reconstruct the victim's fit"
+          style={{ flex: 1, fontSize: 12 }}
+        />
+        <button onClick={fromKillmail} disabled={!kmUrl.trim()}>From killmail</button>
+      </div>
       <textarea
         value={eft}
         onChange={(e) => setEft(e.target.value)}
@@ -4094,6 +4139,13 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
               <span style={{ fontSize: 13 }}>{f.name}</span>
               {f.ship && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>· {f.ship}</span>}
               <button
+                style={{ fontSize: 11 }}
+                title="Which of your characters can fly this doctrine, and the training gap"
+                onClick={() => api.doctrineCompliance(f.id).then(setCompliance).catch(() => setCompliance(null))}
+              >
+                Compliance
+              </button>
+              <button
                 style={{ fontSize: 11, marginLeft: "auto" }}
                 onClick={() =>
                   api.shareArtifact("fit", f.name, f.eft).then((codeStr) => {
@@ -4112,6 +4164,32 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
               </button>
             </div>
           ))}
+        </div>
+      )}
+      {compliance && (
+        <div style={{ marginTop: 10 }}>
+          <p style={{ fontSize: 12, margin: "0 0 4px" }}>
+            <strong>Doctrine compliance:</strong> {compliance.fit_name}
+            {compliance.ship ? ` (${compliance.ship})` : ""}
+            <button style={{ fontSize: 11, marginLeft: 8 }} onClick={() => setCompliance(null)}>Hide</button>
+          </p>
+          <table className="holdings">
+            <tbody>
+              {compliance.rows.map((r) => (
+                <tr key={r.character_id}>
+                  <td>{r.character_name}</td>
+                  <td>
+                    {r.can_fly ? (
+                      <span className="badge safe">can fly</span>
+                    ) : (
+                      <span className="badge caution">{r.missing_count} skill{r.missing_count === 1 ? "" : "s"} short</span>
+                    )}
+                  </td>
+                  <td className="mono num">{r.can_fly ? "—" : formatDuration(r.train_seconds)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
       {stats && (
@@ -5344,10 +5422,19 @@ function ThreatScanner(): ReactNode {
 function DscanPanel(): ReactNode {
   const [text, setText] = useState("");
   const [result, setResult] = useState<DscanResult | null>(null);
+  const [lastScan, setLastScan] = useState("");
+  const [diff, setDiff] = useState<DscanDiff | null>(null);
 
   function scan() {
     if (!isTauri()) return;
     api.parseDscan(text).then(setResult).catch(() => setResult(null));
+    // Diff against the previous paste — the "what just landed" readout.
+    if (lastScan && lastScan !== text) {
+      api.dscanDiff(lastScan, text).then(setDiff).catch(() => setDiff(null));
+    } else {
+      setDiff(null);
+    }
+    setLastScan(text);
   }
 
   return (
@@ -5366,6 +5453,24 @@ function DscanPanel(): ReactNode {
       <button onClick={scan} disabled={!text.trim()} style={{ marginTop: 8 }}>
         Scan
       </button>
+      {diff && (diff.appeared.length > 0 || diff.disappeared.length > 0) && (
+        <div style={{ marginTop: 10, borderLeft: "2px solid var(--accent)", paddingLeft: 8 }}>
+          <p style={{ fontSize: 12, margin: "0 0 4px", color: "var(--text-dim)" }}>Since last scan:</p>
+          {diff.warnings.map((w, i) => (
+            <p key={i} style={{ margin: "2px 0" }}><span className="badge danger">!</span> {w}</p>
+          ))}
+          {diff.appeared.map((g) => (
+            <p key={`a-${g.type_name}`} style={{ margin: "2px 0", fontSize: 12 }}>
+              <span className="neg">▲ +{g.count}</span> {g.type_name}
+            </p>
+          ))}
+          {diff.disappeared.map((g) => (
+            <p key={`d-${g.type_name}`} style={{ margin: "2px 0", fontSize: 12, color: "var(--text-dim)" }}>
+              ▽ −{g.count} {g.type_name}
+            </p>
+          ))}
+        </div>
+      )}
       {result && (
         <div style={{ marginTop: 10 }}>
           {result.warnings.map((w, i) => (

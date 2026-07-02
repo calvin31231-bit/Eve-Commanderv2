@@ -29,7 +29,10 @@ use eve_core::esi_notifications::{
 };
 use eve_core::industry::IndustryClient;
 use eve_core::names::NameResolver;
-use eve_core::notify::{fuel_alert, job_done_alert, skill_queue_alert, Notification, Severity};
+use eve_core::notify::{
+    fuel_alert, job_done_alert, pi_extractor_alert, skill_queue_alert, Notification, Severity,
+};
+use eve_core::planets::PlanetsClient;
 
 use crate::tray::{self, SharedCenter};
 
@@ -180,6 +183,7 @@ async fn evaluate_alerts(
     let corp = CorpClient::new(esi.clone(), tokens.clone());
     let industry = IndustryClient::new(esi.clone(), tokens.clone());
     let esi_notifs = NotificationsClient::new(esi.clone(), tokens.clone());
+    let planets = PlanetsClient::new(esi.clone(), tokens.clone());
     let now = SystemTime::now();
     let now_secs = now_epoch() as i64;
 
@@ -205,6 +209,24 @@ async fn evaluate_alerts(
                     &job.activity,
                     &product,
                     job.seconds_remaining,
+                    now,
+                ) {
+                    tray::dispatch(app, notifications, note);
+                }
+            }
+        }
+
+        // PI: warn once a colony's extractor program has expired (heads idle).
+        if let Ok(colonies) = planets.summary(c.id).await {
+            for col in &colonies {
+                let label = format!("{} planet {}", col.planet_type, col.planet_id);
+                if let Some(note) = pi_extractor_alert(
+                    c.id,
+                    &c.name,
+                    col.planet_id,
+                    &label,
+                    col.soonest_expiry.is_some(),
+                    col.seconds_remaining,
                     now,
                 ) {
                     tray::dispatch(app, notifications, note);

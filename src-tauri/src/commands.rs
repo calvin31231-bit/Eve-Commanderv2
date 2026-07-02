@@ -2699,6 +2699,70 @@ pub fn parse_dscan(text: String) -> eve_core::dscan::DscanResult {
     eve_core::dscan::parse_dscan(&text)
 }
 
+/// One character's compliance against a doctrine fit.
+#[derive(Debug, Serialize)]
+pub struct ComplianceRow {
+    pub character_id: i64,
+    pub character_name: String,
+    pub can_fly: bool,
+    pub missing_count: usize,
+    /// Training time to close the gap (seconds; 0 when compliant).
+    pub train_seconds: i64,
+}
+
+/// Doctrine compliance for a saved fit: which of your characters can fly it
+/// now, and how far the rest are. (ESI only exposes your own characters'
+/// skills, so this covers your roster — not other corp members.)
+#[derive(Debug, Serialize)]
+pub struct DoctrineComplianceView {
+    pub fit_name: String,
+    pub ship: String,
+    pub rows: Vec<ComplianceRow>,
+}
+
+#[tauri::command]
+pub async fn doctrine_compliance(
+    state: State<'_, AppState>,
+    fit_id: i64,
+) -> CmdResult<DoctrineComplianceView> {
+    let fits = state.db.list_fits().await.map_err(|e| e.to_string())?;
+    let fit = fits
+        .into_iter()
+        .find(|f| f.id == fit_id)
+        .ok_or_else(|| "saved fit not found".to_string())?;
+    let characters = state.db.list_characters().await.map_err(|e| e.to_string())?;
+
+    let mut rows = Vec::new();
+    for c in &characters {
+        match can_fly_fit(state.clone(), c.id, fit.eft.clone()).await {
+            Ok(v) if v.parsed => rows.push(ComplianceRow {
+                character_id: c.id,
+                character_name: c.name.clone(),
+                can_fly: v.can_fly,
+                missing_count: v.missing.len(),
+                train_seconds: v.total_seconds,
+            }),
+            _ => rows.push(ComplianceRow {
+                character_id: c.id,
+                character_name: c.name.clone(),
+                can_fly: false,
+                missing_count: 0,
+                train_seconds: 0,
+            }),
+        }
+    }
+    // Compliant pilots first, then shortest training gap.
+    rows.sort_by(|a, b| b.can_fly.cmp(&a.can_fly).then(a.train_seconds.cmp(&b.train_seconds)));
+    Ok(DoctrineComplianceView { fit_name: fit.name, ship: fit.ship, rows })
+}
+
+/// Diff two D-scan pastes: what appeared/disappeared, with danger callouts for
+/// the arrivals (the hunter's "what just landed" readout).
+#[tauri::command]
+pub fn dscan_diff(previous: String, current: String) -> eve_core::dscan::DscanDiff {
+    eve_core::dscan::diff_scans(&previous, &current)
+}
+
 /// After-action / DPS summary of the latest combat log, plus a flag for whether
 /// any log was found (so the UI can distinguish "no fights" from "no logs dir").
 #[derive(Debug, Serialize)]
@@ -4944,6 +5008,88 @@ pub async fn delete_abyss_run(state: State<'_, AppState>, id: i64) -> CmdResult<
 pub struct SrpBoardView {
     pub claims: Vec<eve_core::srp::SrpClaim>,
     pub summary: eve_core::srp::SrpSummary,
+}
+
+/// Killmail details resolved for SRP prefill (from a zKill link).
+#[derive(Debug, Serialize)]
+pub struct SrpPrefillView {
+    pub pilot: String,
+    pub ship: String,
+    pub loss_value: f64,
+    pub location: String,
+}
+
+/// Resolve a zKillboard link into SRP claim fields: pilot, ship, appraised
+/// loss value (zKill), and system. One zKill call + one public ESI killmail.
+#[tauri::command]
+pub async fn srp_prefill(state: State<'_, AppState>, url: String) -> CmdResult<SrpPrefillView> {
+    let kill_id = eve_core::intel::parse_kill_id(&url)
+        .ok_or_else(|| "not a zKillboard kill link".to_string())?;
+    let kref = state.zkill.kill_ref(kill_id).await.map_err(|e| e.to_string())?;
+    let km = eve_core::killmail::KillmailClient::new(state.esi.clone())
+        .killmail(kref.killmail_id, &kref.hash)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut ids = vec![km.victim.ship_type_id, km.solar_system_id];
+    if let Some(c) = km.victim.character_id {
+        ids.push(c);
+    }
+    let names = names_for(&state, &ids).await;
+    Ok(SrpPrefillView {
+        pilot: km.victim.character_id.map(|c| named(&names, c)).unwrap_or_default(),
+        ship: named(&names, km.victim.ship_type_id),
+        loss_value: kref.total_value,
+        location: named(&names, km.solar_system_id),
+    })
+}
+
+/// A reconstructed enemy fit from a killmail link, as EFT for the simulator.
+#[derive(Debug, Serialize)]
+pub struct ReconstructedFitView {
+    pub eft: String,
+    pub ship: String,
+    pub pilot: String,
+}
+
+/// Rebuild the victim's fit from a zKillboard link (slot flags → EFT). Paste
+/// the result into the fitting simulator to size it up and plan a counter.
+#[tauri::command]
+pub async fn reconstruct_fit(
+    state: State<'_, AppState>,
+    url: String,
+) -> CmdResult<ReconstructedFitView> {
+    let kill_id = eve_core::intel::parse_kill_id(&url)
+        .ok_or_else(|| "not a zKillboard kill link".to_string())?;
+    let kref = state.zkill.kill_ref(kill_id).await.map_err(|e| e.to_string())?;
+    let km = eve_core::killmail::KillmailClient::new(state.esi.clone())
+        .killmail(kref.killmail_id, &kref.hash)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Resolve every fitted item's name in one batch.
+    let mut ids: Vec<i64> = vec![km.victim.ship_type_id];
+    if let Some(c) = km.victim.character_id {
+        ids.push(c);
+    }
+    let slotted: Vec<(eve_core::killmail::Slot, i64, i64)> = km
+        .victim
+        .items
+        .iter()
+        .filter_map(|i| eve_core::killmail::slot_of(i.flag).map(|s| (s, i.item_type_id, i.quantity())))
+        .collect();
+    ids.extend(slotted.iter().map(|(_, t, _)| *t));
+    let names = names_for(&state, &ids).await;
+
+    let mut named_items: Vec<(eve_core::killmail::Slot, String, i64)> = slotted
+        .into_iter()
+        .map(|(s, t, q)| (s, named(&names, t), q))
+        .collect();
+    named_items.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+
+    let ship = named(&names, km.victim.ship_type_id);
+    let pilot = km.victim.character_id.map(|c| named(&names, c)).unwrap_or_default();
+    let eft = eve_core::killmail::build_eft(&ship, &format!("Killmail {kill_id}"), &named_items);
+    Ok(ReconstructedFitView { eft, ship, pilot })
 }
 
 /// Submit an SRP claim (status pending).

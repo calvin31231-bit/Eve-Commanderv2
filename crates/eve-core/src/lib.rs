@@ -49,6 +49,7 @@ pub mod industry;
 pub mod industry_plan;
 pub mod intel;
 pub mod insurance;
+pub mod killmail;
 pub mod logs;
 pub mod loot;
 pub mod lp;

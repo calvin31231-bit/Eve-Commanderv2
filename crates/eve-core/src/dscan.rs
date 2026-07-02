@@ -141,6 +141,48 @@ fn contains_ci(haystack: &str, needle: &str) -> bool {
     haystack.to_lowercase().contains(&needle.to_lowercase())
 }
 
+/// What changed between two scans of the same spot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DscanDiff {
+    /// Types with more contacts than before (count = how many more).
+    pub appeared: Vec<DscanGroup>,
+    /// Types with fewer contacts than before (count = how many fewer).
+    pub disappeared: Vec<DscanGroup>,
+    /// Danger callouts for what just arrived.
+    pub warnings: Vec<String>,
+}
+
+/// Diff two D-scan pastes: which types appeared or disappeared (per-type count
+/// deltas), with danger callouts derived from the newcomers — the hunter's
+/// "what just landed on grid" readout. Pure.
+pub fn diff_scans(previous: &str, current: &str) -> DscanDiff {
+    let old = parse_dscan(previous);
+    let new = parse_dscan(current);
+    let count = |groups: &[DscanGroup], name: &str| -> i64 {
+        groups.iter().find(|g| g.type_name == name).map(|g| g.count).unwrap_or(0)
+    };
+
+    let mut appeared: Vec<DscanGroup> = Vec::new();
+    for g in &new.groups {
+        let delta = g.count - count(&old.groups, &g.type_name);
+        if delta > 0 {
+            appeared.push(DscanGroup { type_name: g.type_name.clone(), count: delta });
+        }
+    }
+    let mut disappeared: Vec<DscanGroup> = Vec::new();
+    for g in &old.groups {
+        let delta = g.count - count(&new.groups, &g.type_name);
+        if delta > 0 {
+            disappeared.push(DscanGroup { type_name: g.type_name.clone(), count: delta });
+        }
+    }
+    appeared.sort_by(|a, b| b.count.cmp(&a.count).then(a.type_name.cmp(&b.type_name)));
+    disappeared.sort_by(|a, b| b.count.cmp(&a.count).then(a.type_name.cmp(&b.type_name)));
+
+    let warnings = derive_warnings(&appeared);
+    DscanDiff { appeared, disappeared, warnings }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,5 +225,21 @@ mod tests {
         let r = parse_dscan("Capsule");
         assert_eq!(r.total, 1);
         assert_eq!(r.groups[0].type_name, "Capsule");
+    }
+
+    #[test]
+    fn diff_reports_arrivals_departures_and_new_threats() {
+        let before = "1\tA\tLoki\t1 AU\n2\tB\tLoki\t1 AU\n3\tC\tShuttle\t- ";
+        let after = "1\tA\tLoki\t1 AU\n4\tD\tSabre\t14 km\n5\tE\tSabre\t14 km";
+        let d = diff_scans(before, after);
+        // Two Sabres arrived; one Loki and the Shuttle left.
+        assert_eq!(d.appeared, vec![DscanGroup { type_name: "Sabre".into(), count: 2 }]);
+        assert!(d.disappeared.iter().any(|g| g.type_name == "Loki" && g.count == 1));
+        assert!(d.disappeared.iter().any(|g| g.type_name == "Shuttle" && g.count == 1));
+        // The arrivals drive the warnings (interdictors on grid).
+        assert!(d.warnings.iter().any(|w| w.contains("Sabre")));
+        // Identical scans → clean diff.
+        let clean = diff_scans(after, after);
+        assert!(clean.appeared.is_empty() && clean.disappeared.is_empty());
     }
 }

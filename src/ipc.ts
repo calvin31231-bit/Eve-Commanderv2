@@ -63,6 +63,10 @@ import type {
   FitGatekeeperView,
   DoctrineView,
   DscanResult,
+  DscanDiff,
+  SrpPrefillView,
+  ReconstructedFitView,
+  DoctrineComplianceView,
   ThreatScanView,
   PilotBackgroundView,
   GateCampView,
@@ -191,6 +195,13 @@ export const api = {
     call<FitGatekeeperView>("fit_gatekeeper", { characterId, eft }),
   doctrineCheck: (eft: string) => call<DoctrineView>("doctrine_check", { eft }),
   parseDscan: (text: string) => call<DscanResult>("parse_dscan", { text }),
+  dscanDiff: (previous: string, current: string) =>
+    call<DscanDiff>("dscan_diff", { previous, current }),
+  srpPrefill: (url: string) => call<SrpPrefillView>("srp_prefill", { url }),
+  reconstructFit: (url: string) =>
+    call<ReconstructedFitView>("reconstruct_fit", { url }),
+  doctrineCompliance: (fitId: number) =>
+    call<DoctrineComplianceView>("doctrine_compliance", { fitId }),
   scanPilots: (names: string[]) => call<ThreatScanView>("scan_pilots", { names }),
   pilotBackground: (name: string) =>
     call<PilotBackgroundView>("pilot_background", { name }),

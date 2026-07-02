@@ -490,6 +490,39 @@ export interface DscanGroup {
   count: number;
 }
 
+export interface DscanDiff {
+  appeared: DscanGroup[];
+  disappeared: DscanGroup[];
+  warnings: string[];
+}
+
+export interface SrpPrefillView {
+  pilot: string;
+  ship: string;
+  loss_value: number;
+  location: string;
+}
+
+export interface ReconstructedFitView {
+  eft: string;
+  ship: string;
+  pilot: string;
+}
+
+export interface ComplianceRow {
+  character_id: number;
+  character_name: string;
+  can_fly: boolean;
+  missing_count: number;
+  train_seconds: number;
+}
+
+export interface DoctrineComplianceView {
+  fit_name: string;
+  ship: string;
+  rows: ComplianceRow[];
+}
+
 export interface DscanResult {
   total: number;
   groups: DscanGroup[];

@@ -359,11 +359,82 @@ impl ZkillClient {
             .unwrap_or(0);
         Ok(kills)
     }
+
+    /// Look up one killmail's zKill record: its ESI hash + appraised value.
+    /// (`/api/killID/{id}/` returns a one-element array.)
+    pub async fn kill_ref(&self, kill_id: i64) -> Result<KillRef> {
+        let url = format!("https://zkillboard.com/api/killID/{kill_id}/");
+        let resp = self
+            .http
+            .get(&url)
+            .header(reqwest::header::USER_AGENT, &self.user_agent)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(|e| crate::error::Error::other(format!("zkill request: {e}")))?;
+        let rows: Vec<RawKillRef> = resp
+            .json()
+            .await
+            .map_err(|e| crate::error::Error::other(format!("zkill killmail parse: {e}")))?;
+        let row = rows
+            .into_iter()
+            .next()
+            .ok_or_else(|| crate::error::Error::other("killmail not found on zKillboard"))?;
+        Ok(KillRef {
+            killmail_id: row.killmail_id,
+            hash: row.zkb.hash,
+            total_value: row.zkb.total_value,
+        })
+    }
+}
+
+/// A killmail reference from zKill: the id + ESI hash + appraised ISK value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct KillRef {
+    pub killmail_id: i64,
+    pub hash: String,
+    pub total_value: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawKillRef {
+    killmail_id: i64,
+    zkb: RawZkb,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawZkb {
+    #[serde(default)]
+    hash: String,
+    #[serde(rename = "totalValue", default)]
+    total_value: f64,
+}
+
+/// Extract a kill id from a zKillboard link ("…/kill/129382777/…") or a bare
+/// number. Pure.
+pub fn parse_kill_id(input: &str) -> Option<i64> {
+    let s = input.trim();
+    if let Ok(id) = s.parse::<i64>() {
+        return (id > 0).then_some(id);
+    }
+    let idx = s.find("/kill/")?;
+    let rest = &s[idx + 6..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse::<i64>().ok().filter(|&id| id > 0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_kill_ids_from_links_and_numbers() {
+        assert_eq!(parse_kill_id("https://zkillboard.com/kill/129382777/"), Some(129382777));
+        assert_eq!(parse_kill_id("zkillboard.com/kill/42"), Some(42));
+        assert_eq!(parse_kill_id("  129382777 "), Some(129382777));
+        assert_eq!(parse_kill_id("https://zkillboard.com/character/93/"), None);
+        assert_eq!(parse_kill_id("not a link"), None);
+    }
 
     #[test]
     fn no_kills_is_safe() {
