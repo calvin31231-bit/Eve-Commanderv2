@@ -75,6 +75,7 @@ import type {
   UpdateStatus,
   TelemetryEventView,
   PluginView,
+  EsiHealthView,
   MemoryNoteView,
   SavedPlanView,
   SavedFitView,
@@ -108,6 +109,92 @@ export const HUBS: Hub[] = [
   { id: "corp", label: "Corp & Fleet", icon: "⛨" },
   { id: "tools", label: "Tools", icon: "⚙" },
 ];
+
+// Every place the command palette can jump to: each hub plus its sub-tabs
+// (deep-linked via the "hub/sub" hash format). Kept as one static registry so
+// the palette never drifts from the real tab lists by more than a code review.
+export const PALETTE_TARGETS: { hub: string; sub?: string; label: string }[] = [
+  ...HUBS.map((h) => ({ hub: h.id, label: h.label })),
+  { hub: "character", sub: "wallet", label: "Character · Wallet" },
+  { hub: "character", sub: "assets", label: "Character · Assets" },
+  { hub: "character", sub: "skills", label: "Character · Skill Plan" },
+  { hub: "character", sub: "implants", label: "Character · Implants" },
+  { hub: "character", sub: "mail", label: "Character · Mail" },
+  { hub: "economy", sub: "market", label: "Economy · Market" },
+  { hub: "economy", sub: "industry", label: "Economy · Industry" },
+  { hub: "economy", sub: "contracts", label: "Economy · Contracts" },
+  { hub: "economy", sub: "planets", label: "Economy · Planets" },
+  { hub: "combat", sub: "fitting", label: "Combat · Fitting" },
+  { hub: "combat", sub: "dscan", label: "Combat · D-Scan" },
+  { hub: "combat", sub: "map", label: "Combat · Intel Map" },
+  { hub: "combat", sub: "threat", label: "Combat · Threat Scanner" },
+  { hub: "combat", sub: "aar", label: "Combat · Combat Log" },
+  { hub: "combat", sub: "pve", label: "Combat · PvE / Agent Finder" },
+  { hub: "combat", sub: "abyss", label: "Combat · Abyss Tracker" },
+  { hub: "corp", sub: "groups", label: "Corp · Groups" },
+  { hub: "corp", sub: "structures", label: "Corp · Structures" },
+  { hub: "corp", sub: "moons", label: "Corp · Moon Extractions" },
+  { hub: "corp", sub: "members", label: "Corp · Members & Vetting" },
+  { hub: "corp", sub: "fleet", label: "Corp · Fleet" },
+  { hub: "corp", sub: "srp", label: "Corp · SRP" },
+  { hub: "corp", sub: "recruit", label: "Corp · Recruitment" },
+  { hub: "corp", sub: "timers", label: "Corp · Timerboard" },
+  { hub: "tools", sub: "settings", label: "Tools · Settings" },
+  { hub: "tools", sub: "lp", label: "Tools · LP Optimizer" },
+  { hub: "tools", sub: "income", label: "Tools · Income Optimizer" },
+  { hub: "tools", sub: "appraisal", label: "Tools · Appraisal" },
+  { hub: "tools", sub: "ai", label: "Tools · AI Assistant" },
+  { hub: "tools", sub: "plugins", label: "Tools · Plugins" },
+];
+
+/// Navigate to a hub (and optionally a sub-tab) via the hash router.
+export function navigateTo(hub: string, sub?: string): void {
+  window.location.hash = sub ? `${hub}/${sub}` : hub;
+}
+
+// UI density (comfortable/compact), persisted locally and applied as a root
+// data-attribute the stylesheet keys off. Applied on module load so there's no
+// flash of the wrong density.
+const DENSITY_KEY = "eve-commander-density";
+export function getDensity(): "comfortable" | "compact" {
+  try {
+    return localStorage.getItem(DENSITY_KEY) === "compact" ? "compact" : "comfortable";
+  } catch {
+    return "comfortable";
+  }
+}
+export function setDensity(d: "comfortable" | "compact"): void {
+  try {
+    localStorage.setItem(DENSITY_KEY, d);
+  } catch {
+    // best-effort persistence
+  }
+  document.documentElement.dataset.density = d;
+}
+setDensity(getDensity());
+
+/// The sub-tab part of the current hash ("corp/srp" → "srp").
+function subFromHash(): string | null {
+  const h = window.location.hash.replace(/^#/, "");
+  const i = h.indexOf("/");
+  return i >= 0 && h.length > i + 1 ? h.slice(i + 1) : null;
+}
+
+/// Sub-tab state that honors "hub/sub" hash deep links: initializes from the
+/// hash and follows hash changes (the command palette's jump path), while plain
+/// clicks keep working through the returned setter.
+function useSubTab(defaultId: string): [string, (id: string) => void] {
+  const [sub, setSub] = useState(subFromHash() ?? defaultId);
+  useEffect(() => {
+    const onHash = () => {
+      const s = subFromHash();
+      if (s) setSub(s);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  return [sub, setSub];
+}
 
 interface SubTab {
   id: string;
@@ -509,7 +596,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
   const [calendar, setCalendar] = useState<CalendarEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sub, setSub] = useState("overview");
+  const [sub, setSub] = useSubTab("overview");
 
   useEffect(() => {
     setSheet(null);
@@ -1946,7 +2033,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loadedAt, setLoadedAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [sub, setSub] = useState("market");
+  const [sub, setSub] = useSubTab("market");
   const [, forceTick] = useState(0);
 
   useEffect(() => {
@@ -2504,7 +2591,7 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
   const [groups, setGroups] = useState<CharacterGroup[]>([]);
   const [roster, setRoster] = useState<Character[]>([]);
   const [newName, setNewName] = useState("");
-  const [sub, setSub] = useState("groups");
+  const [sub, setSub] = useSubTab("groups");
 
   function reload() {
     api.listGroups().then(setGroups).catch(() => undefined);
@@ -3443,7 +3530,18 @@ function ToolsHub(): ReactNode {
   useLang();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState(false);
-  const [sub, setSub] = useState("settings");
+  const [sub, setSub] = useSubTab("settings");
+  const [density, setDensityState] = useState(getDensity());
+  const [esiHealth, setEsiHealth] = useState<EsiHealthView | null>(null);
+
+  // Live ESI health meter while the settings tab is open (cheap local read).
+  useEffect(() => {
+    if (!isTauri() || sub !== "settings") return;
+    const load = () => api.getEsiHealth().then(setEsiHealth).catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 10000);
+    return () => window.clearInterval(timer);
+  }, [sub]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -3503,6 +3601,23 @@ function ToolsHub(): ReactNode {
           </label>
           <label className="setting-row">
             <div>
+              <div className="setting-name">Density</div>
+              <div className="setting-help">Compact tightens paddings and type for dense, multi-table workflows.</div>
+            </div>
+            <select
+              value={density}
+              onChange={(e) => {
+                const d = e.target.value as "comfortable" | "compact";
+                setDensity(d);
+                setDensityState(d);
+              }}
+            >
+              <option value="comfortable">Comfortable</option>
+              <option value="compact">Compact</option>
+            </select>
+          </label>
+          <label className="setting-row">
+            <div>
               <div className="setting-name">Data freshness</div>
               <div className="setting-help">How aggressively background polling refreshes. Never beats ESI cache timers.</div>
             </div>
@@ -3536,6 +3651,30 @@ function ToolsHub(): ReactNode {
               onChange={(e) => update({ discord_webhook: e.target.value })}
             />
           </label>
+          {esiHealth && (
+            <div className="setting-row" style={{ alignItems: "center" }}>
+              <div>
+                <div className="setting-name">ESI health</div>
+                <div className="setting-help">
+                  Error-budget headroom (100 = healthy; polling pauses near 20).
+                  {esiHealth.backoff_seconds > 0 ? ` Backing off ${esiHealth.backoff_seconds}s.` : ""}
+                </div>
+              </div>
+              <span
+                className="mono"
+                style={{
+                  color:
+                    esiHealth.budget_remaining > 50
+                      ? "var(--safe)"
+                      : esiHealth.budget_remaining > 20
+                        ? "var(--caution)"
+                        : "var(--danger)",
+                }}
+              >
+                {esiHealth.budget_remaining}/100
+              </span>
+            </div>
+          )}
           <div className="setting-saved" style={{ opacity: saved ? 1 : 0 }}>Saved ✓</div>
         </div>
       ))}
@@ -4313,7 +4452,7 @@ function AbyssTracker(): ReactNode {
 }
 
 function CombatHub({ character }: { character: Character | null }): ReactNode {
-  const [sub, setSub] = useState("fitting");
+  const [sub, setSub] = useSubTab("fitting");
   return (
     <>
       <h1>Combat &amp; Intel</h1>

@@ -714,6 +714,12 @@ export interface FleetMemberView {
   ship: string;
   system: string;
   role: string;
+  jumps: number | null;
+}
+
+export interface EsiHealthView {
+  budget_remaining: number;
+  backoff_seconds: number;
 }
 
 export interface FleetView {

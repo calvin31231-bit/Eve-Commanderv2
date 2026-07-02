@@ -24,6 +24,7 @@ use eve_core::config::Intensity;
 use eve_core::corp::CorpClient;
 use eve_core::db::Database;
 use eve_core::esi::{all_jobs, plan_fetches, EsiClient, Scheduler};
+use eve_core::names::NameResolver;
 use eve_core::notify::{fuel_alert, skill_queue_alert, Notification, Severity};
 
 use crate::tray::{self, SharedCenter};
@@ -53,6 +54,7 @@ pub fn spawn(
     db: Database,
     intensity: Arc<RwLock<Intensity>>,
     notifications: SharedCenter,
+    names: NameResolver,
 ) {
     tauri::async_runtime::spawn(async move {
         let mut last_runs: HashMap<(i64, &'static str), u64> = HashMap::new();
@@ -72,7 +74,7 @@ pub fn spawn(
             let now = now_epoch();
             if now.saturating_sub(last_alert_eval) >= ALERT_EVAL_INTERVAL {
                 last_alert_eval = now;
-                evaluate_alerts(&app, &esi, &tokens, &db, &notifications).await;
+                evaluate_alerts(&app, &esi, &tokens, &db, &notifications, &names).await;
             }
         }
     });
@@ -167,6 +169,7 @@ async fn evaluate_alerts(
     tokens: &TokenManager,
     db: &Database,
     notifications: &SharedCenter,
+    names: &NameResolver,
 ) {
     let Ok(characters) = db.list_characters().await else { return };
     let character = CharacterClient::new(esi.clone(), tokens.clone());
@@ -189,13 +192,23 @@ async fn evaluate_alerts(
         if c.active {
             if let Ok(public) = character.public_info(c.id).await {
                 if let Ok(structures) = corp.structure_status(c.id, public.corporation_id).await {
+                    // Resolve structure names in one pass (auth'd endpoint,
+                    // best-effort); fall back to the raw id.
+                    let ids: Vec<i64> = structures.iter().map(|s| s.structure_id).collect();
+                    let resolved = match tokens.access_token(c.id).await {
+                        Ok(token) => names.resolve_structures(&ids, &token).await,
+                        Err(_) => HashMap::new(),
+                    };
                     for s in structures {
                         if s.fuel_expires.is_none() {
                             continue;
                         }
                         let expires =
                             now + Duration::from_secs(s.fuel_seconds_remaining.max(0) as u64);
-                        let name = format!("Structure {}", s.structure_id);
+                        let name = resolved
+                            .get(&s.structure_id)
+                            .cloned()
+                            .unwrap_or_else(|| format!("Structure {}", s.structure_id));
                         if let Some(note) = fuel_alert(s.structure_id, &name, expires, now, FUEL_WARN)
                         {
                             tray::dispatch(app, notifications, note);

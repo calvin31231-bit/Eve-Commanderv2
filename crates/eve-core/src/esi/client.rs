@@ -68,6 +68,12 @@ impl EsiClient {
         })
     }
 
+    /// Remaining ESI error budget (100 = healthy; the breaker trips near 20).
+    /// Drives the user-facing health meter.
+    pub fn error_budget_remaining(&self) -> i64 {
+        self.budget.lock().map(|b| b.remaining()).unwrap_or(100)
+    }
+
     /// Current backoff requested by the error-budget breaker.
     pub fn backoff(&self) -> Duration {
         self.budget.lock().map(|b| b.backoff()).unwrap_or(Duration::ZERO)

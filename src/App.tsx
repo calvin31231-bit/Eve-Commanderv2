@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, isTauri } from "./ipc";
-import { HUBS, renderHub, portraitUrl } from "./hubs";
+import { HUBS, PALETTE_TARGETS, navigateTo, renderHub, portraitUrl } from "./hubs";
 import { t, useLang } from "./i18n";
 import { Starfield } from "./Starfield";
 import { AgentAvatar, type Mood } from "./AgentAvatar";
@@ -27,27 +27,128 @@ function fmtIsk(v: number): string {
   return `${Math.round(v)}`;
 }
 
-// Hubs are deep-linkable via the URL hash (e.g. #combat) so a view can be
-// restored on launch, linked to, or popped into its own window later.
-function initialHub(): string {
-  const fromHash = window.location.hash.replace(/^#/, "");
+// Hubs are deep-linkable via the URL hash (e.g. #combat or #corp/srp — the
+// part before "/" picks the hub, the rest the sub-tab) so a view can be
+// restored on launch, linked to, or jumped to from the command palette.
+function hubFromHash(): string {
+  const fromHash = window.location.hash.replace(/^#/, "").split("/")[0];
   return HUBS.some((h) => h.id === fromHash) ? fromHash : "home";
+}
+
+// Simple subsequence fuzzy match: every query char must appear in order.
+// Earlier + tighter matches score higher; null = no match.
+function fuzzyScore(query: string, target: string): number | null {
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  let ti = 0;
+  let score = 0;
+  for (const c of q) {
+    const found = t.indexOf(c, ti);
+    if (found === -1) return null;
+    score += found - ti; // gaps cost; contiguous runs are free
+    ti = found + 1;
+  }
+  return score + t.length * 0.01; // prefer shorter targets on ties
+}
+
+// Command palette (Ctrl/⌘-K): fuzzy-jump to any hub or sub-tab.
+function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const [sel, setSel] = useState(0);
+
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setSel(0);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const matches = PALETTE_TARGETS
+    .map((tgt) => ({ tgt, score: query ? fuzzyScore(query, tgt.label) : 0 }))
+    .filter((m): m is { tgt: (typeof PALETTE_TARGETS)[number]; score: number } => m.score !== null)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 12);
+  const clamped = Math.min(sel, Math.max(0, matches.length - 1));
+
+  function go(i: number) {
+    const m = matches[i];
+    if (!m) return;
+    navigateTo(m.tgt.hub, m.tgt.sub);
+    onClose();
+  }
+
+  return (
+    <div className="palette-overlay" onClick={onClose}>
+      <div className="palette" onClick={(e) => e.stopPropagation()}>
+        <input
+          autoFocus
+          value={query}
+          placeholder="Jump to… (type to filter)"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSel(0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onClose();
+            else if (e.key === "ArrowDown") setSel((s) => Math.min(s + 1, matches.length - 1));
+            else if (e.key === "ArrowUp") setSel((s) => Math.max(s - 1, 0));
+            else if (e.key === "Enter") go(clamped);
+          }}
+        />
+        <ul>
+          {matches.map((m, i) => (
+            <li
+              key={m.tgt.label}
+              className={i === clamped ? "active" : ""}
+              onMouseEnter={() => setSel(i)}
+              onClick={() => go(i)}
+            >
+              {m.tgt.label}
+            </li>
+          ))}
+          {matches.length === 0 && <li className="empty">No matches.</li>}
+        </ul>
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
   useLang(); // re-render the chrome when the UI language changes
-  const [activeHub, setActiveHub] = useState(initialHub);
+  const [activeHub, setActiveHub] = useState(hubFromHash);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   function selectHub(id: string) {
     setActiveHub(id);
     window.location.hash = id;
   }
+
+  // Follow hash changes (palette jumps, back/forward) and own the Ctrl/⌘-K
+  // shortcut globally.
+  useEffect(() => {
+    const onHash = () => setActiveHub(hubFromHash());
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("hashchange", onHash);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [alerts, setAlerts] = useState<Notification[]>([]);
+  const refreshAlerts = () => api.listNotifications().then(setAlerts).catch(() => undefined);
   const [localIntel, setLocalIntel] = useState<LocalIntel | null>(null);
   const [safety, setSafety] = useState<SystemSafetyView | null>(null);
   const [podRisk, setPodRisk] = useState<PodRiskView | null>(null);
@@ -66,7 +167,7 @@ export default function App() {
     // Poll the notification center + local-log intel for the rail. Both are
     // cheap local reads, so a tight 5s cadence keeps the rail feeling live.
     const refresh = () => {
-      api.listNotifications().then(setAlerts).catch(() => undefined);
+      refreshAlerts();
       api.getLocalIntel().then(setLocalIntel).catch(() => undefined);
     };
     refresh();
@@ -309,26 +410,57 @@ export default function App() {
             </div>
           ) : (
             <ul className="local-list">
-              {fleet.members.slice(0, 20).map((m) => (
-                <li key={m.character_id}>
-                  <span>{m.name}</span>
-                  <span style={{ color: "var(--text-dim)", fontSize: 11, marginLeft: 6 }}>
-                    {m.system}{m.ship ? ` · ${m.ship}` : ""}
-                  </span>
-                </li>
-              ))}
+              {[...fleet.members]
+                .sort((a, b) => (a.jumps ?? 999) - (b.jumps ?? 999))
+                .slice(0, 20)
+                .map((m) => (
+                  <li key={m.character_id}>
+                    <span>{m.name}</span>
+                    <span style={{ color: "var(--text-dim)", fontSize: 11, marginLeft: 6 }}>
+                      {m.jumps != null && (
+                        <strong style={{ color: m.jumps === 0 ? "var(--safe)" : "var(--text)" }}>
+                          {m.jumps === 0 ? "here" : `${m.jumps}j`}{" · "}
+                        </strong>
+                      )}
+                      {m.system}{m.ship ? ` · ${m.ship}` : ""}
+                    </span>
+                  </li>
+                ))}
             </ul>
           )}
         </div>
         <div className="sa-section">
-          <h3>Alerts</h3>
+          <h3>
+            Alerts
+            {unread.length > 0 && <span className="badge caution" style={{ marginLeft: 6 }}>{unread.length}</span>}
+            {alerts.length > 0 && (
+              <button
+                className="sa-action"
+                title="Mark all read"
+                onClick={() => api.markNotificationsRead().then(refreshAlerts).catch(() => undefined)}
+              >
+                ✓ all
+              </button>
+            )}
+          </h3>
           {alerts.length === 0 ? (
-            <div className="sa-empty">Fuel timers, job completions, intel pings (Phase 4).</div>
+            <div className="sa-empty">
+              Skill-queue and structure-fuel alerts collect here (evaluated every minute).
+            </div>
           ) : (
             <ul className="alert-list">
               {alerts.map((a) => (
                 <li key={a.key} className={`alert sev-${a.severity.toLowerCase()}${a.read ? " read" : ""}`}>
-                  <span className="alert-title">{a.title}</span>
+                  <span className="alert-title">
+                    {a.title}
+                    <button
+                      className="sa-action"
+                      title="Dismiss"
+                      onClick={() => api.dismissNotification(a.key).then(refreshAlerts).catch(() => undefined)}
+                    >
+                      ×
+                    </button>
+                  </span>
                   <span className="alert-body">{a.body}</span>
                 </li>
               ))}
@@ -336,6 +468,7 @@ export default function App() {
           )}
         </div>
       </aside>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }

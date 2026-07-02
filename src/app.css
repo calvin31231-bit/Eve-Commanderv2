@@ -652,3 +652,69 @@ ul.market-results button:hover { background: var(--bg-panel); color: var(--accen
 .market-quote { margin-top: 14px; }
 .market-name { font-weight: 600; margin-bottom: 6px; }
 .sparkline { margin-top: 8px; width: 100%; height: 36px; }
+
+/* ---- Command palette (Ctrl/⌘-K) ---- */
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 10, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  z-index: 200;
+}
+.palette {
+  width: min(520px, 90vw);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.palette input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 15px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  outline: none;
+  box-sizing: border-box;
+}
+.palette ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.palette li {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.palette li.active { background: var(--bg-panel); color: var(--accent); }
+.palette li.empty { color: var(--text-dim); cursor: default; }
+
+/* ---- SA-rail inline action buttons (dismiss / mark-read) ---- */
+.sa-action {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 4px;
+  float: right;
+}
+.sa-action:hover { color: var(--accent); }
+
+/* ---- Density: compact mode tightens paddings + type across the app ---- */
+[data-density="compact"] { font-size: 13px; }
+[data-density="compact"] .card { padding: 10px 12px; }
+[data-density="compact"] .holdings td { padding: 2px 6px; }
+[data-density="compact"] .sa-section { padding: 8px 10px; }
+[data-density="compact"] h1 { font-size: 20px; }
+[data-density="compact"] h3 { font-size: 13px; }

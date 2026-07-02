@@ -339,6 +339,7 @@ pub fn run() {
                 state.db.clone(),
                 state.intensity.clone(),
                 state.notifications.clone(),
+                state.names.clone(),
             );
 
             // Periodically persist net-worth / SP snapshots for portfolio history.
@@ -440,6 +441,7 @@ pub fn run() {
             commands::unread_notifications,
             commands::mark_notifications_read,
             commands::dismiss_notification,
+            commands::get_esi_health,
             commands::get_ai_settings,
             commands::set_ai_settings,
             commands::ai_detect_endpoints,

@@ -21,6 +21,7 @@ import type {
   ExtractionView,
   FleetView,
   FleetWingView,
+  EsiHealthView,
   LpStoreView,
   Contract,
   CharacterAttributes,
@@ -382,6 +383,7 @@ export const api = {
   markNotificationsRead: () => call<void>("mark_notifications_read"),
   dismissNotification: (key: string) =>
     call<void>("dismiss_notification", { key }),
+  getEsiHealth: () => call<EsiHealthView>("get_esi_health"),
   getAiSettings: () => call<AiSettingsView>("get_ai_settings"),
   setAiSettings: (
     enabled: boolean,

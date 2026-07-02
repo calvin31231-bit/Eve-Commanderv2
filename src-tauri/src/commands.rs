@@ -1728,6 +1728,8 @@ pub struct FleetMemberView {
     pub ship: String,
     pub system: String,
     pub role: String,
+    /// Stargate jumps from the requesting character (None = unknown/unreachable).
+    pub jumps: Option<i64>,
 }
 
 /// Live fleet composition for the active character.
@@ -1759,6 +1761,37 @@ pub async fn get_fleet(state: State<'_, AppState>, character_id: i64) -> CmdResu
     }
     let names = names_for(&state, &ids).await;
 
+    // Jumps-from-you: route from the requesting character's system to each
+    // member's, computed once per distinct destination (the route endpoint is
+    // public and cached for a day, so a fleet refresh costs at most a handful of
+    // cheap reads). Best-effort — unknown systems (WH space) stay None.
+    let origin = members
+        .iter()
+        .find(|m| m.character_id == character_id)
+        .map(|m| m.solar_system_id)
+        .filter(|&s| s != 0);
+    let mut jump_cache: std::collections::HashMap<i64, Option<i64>> =
+        std::collections::HashMap::new();
+    if let Some(origin) = origin {
+        let mut systems: Vec<i64> =
+            members.iter().map(|m| m.solar_system_id).filter(|&s| s != 0).collect();
+        systems.sort_unstable();
+        systems.dedup();
+        for dest in systems.into_iter().take(24) {
+            let jumps = if dest == origin {
+                Some(0)
+            } else {
+                state
+                    .navigation
+                    .route(origin, dest, eve_core::navigation::RouteFlag::Shortest)
+                    .await
+                    .ok()
+                    .map(|r| (r.len() as i64 - 1).max(0))
+            };
+            jump_cache.insert(dest, jumps);
+        }
+    }
+
     Ok(FleetView {
         in_fleet: true,
         member_count: members.len() as i64,
@@ -1770,9 +1803,26 @@ pub async fn get_fleet(state: State<'_, AppState>, character_id: i64) -> CmdResu
                 ship: named(&names, m.ship_type_id),
                 system: named(&names, m.solar_system_id),
                 role: m.role_name.replace('_', " "),
+                jumps: jump_cache.get(&m.solar_system_id).copied().flatten(),
             })
             .collect(),
     })
+}
+
+/// ESI connection health for the settings meter: the remaining error budget
+/// (100 = healthy; the breaker trips near 20) and any active backoff.
+#[derive(Debug, Serialize)]
+pub struct EsiHealthView {
+    pub budget_remaining: i64,
+    pub backoff_seconds: u64,
+}
+
+#[tauri::command]
+pub fn get_esi_health(state: State<'_, AppState>) -> EsiHealthView {
+    EsiHealthView {
+        budget_remaining: state.esi.error_budget_remaining(),
+        backoff_seconds: state.esi.backoff().as_secs(),
+    }
 }
 
 /// Update the active fleet's MOTD and free-move flag (the character must be the
