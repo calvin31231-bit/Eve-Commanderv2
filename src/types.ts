@@ -752,6 +752,14 @@ export interface FleetMemberView {
   jumps: number | null;
 }
 
+export interface LiveKillView {
+  killmail_id: number;
+  system_name: string;
+  ship_name: string;
+  total_value: number;
+  age_seconds: number;
+}
+
 export interface EsiHealthView {
   budget_remaining: number;
   backoff_seconds: number;

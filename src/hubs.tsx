@@ -175,6 +175,28 @@ export function setDensity(d: "comfortable" | "compact"): void {
 }
 setDensity(getDensity());
 
+// Theme (dark default / light / colorblind-safe), persisted like density.
+export type Theme = "dark" | "light" | "colorblind";
+const THEME_KEY = "eve-commander-theme";
+export function getTheme(): Theme {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === "light" || v === "colorblind" ? v : "dark";
+  } catch {
+    return "dark";
+  }
+}
+export function setTheme(t: Theme): void {
+  try {
+    localStorage.setItem(THEME_KEY, t);
+  } catch {
+    // best-effort persistence
+  }
+  if (t === "dark") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+}
+setTheme(getTheme());
+
 /// The sub-tab part of the current hash ("corp/srp" → "srp").
 function subFromHash(): string | null {
   const h = window.location.hash.replace(/^#/, "");
@@ -277,6 +299,80 @@ function LoginFeedback({ busy, error }: { busy?: boolean; error?: string | null 
   return null;
 }
 
+// Entity hover-card: hover any item name → its Jita split, fetched lazily and
+// memoized for the session. Advisory glance data, never blocking the row.
+const hoverCache = new Map<string, { sell: number | null; buy: number | null } | null>();
+function ItemHover({ name, children }: { name: string; children?: ReactNode }): ReactNode {
+  const [card, setCard] = useState<{ sell: number | null; buy: number | null } | null>(null);
+  const [show, setShow] = useState(false);
+
+  function enter() {
+    setShow(true);
+    if (hoverCache.has(name)) {
+      setCard(hoverCache.get(name) ?? null);
+      return;
+    }
+    if (!isTauri()) return;
+    api
+      .searchItems(name, 1)
+      .then((hits) => {
+        const hit = hits[0];
+        if (!hit || hit.name.toLowerCase() !== name.toLowerCase()) throw new Error("no match");
+        return api.getMarketBrowse(hit.type_id);
+      })
+      .then((b) => {
+        const v = { sell: b.quote.best_sell, buy: b.quote.best_buy };
+        hoverCache.set(name, v);
+        setCard(v);
+      })
+      .catch(() => hoverCache.set(name, null));
+  }
+
+  return (
+    <span className="hovercard-anchor" onMouseEnter={enter} onMouseLeave={() => setShow(false)}>
+      {children ?? name}
+      {show && card && (card.sell != null || card.buy != null) && (
+        <span className="hovercard mono">
+          {card.sell != null && <>sell {ISK.format(card.sell)}</>}
+          {card.sell != null && card.buy != null && " · "}
+          {card.buy != null && <>buy {ISK.format(card.buy)}</>}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// First-run role presets: each names the hubs that matter most for a playstyle
+// so the picker can point new users somewhere useful immediately.
+const ROLE_PRESETS: { id: string; label: string; hubs: { hub: string; sub?: string; label: string }[] }[] = [
+  { id: "explorer", label: "Explorer", hubs: [
+    { hub: "navigation", label: "Navigation" },
+    { hub: "combat", sub: "dscan", label: "D-Scan" },
+    { hub: "combat", sub: "map", label: "Intel Map" },
+  ] },
+  { id: "industrialist", label: "Industrialist", hubs: [
+    { hub: "economy", sub: "industry", label: "Industry" },
+    { hub: "economy", sub: "market", label: "Market" },
+    { hub: "tools", sub: "income", label: "Income Optimizer" },
+  ] },
+  { id: "trader", label: "Trader", hubs: [
+    { hub: "economy", sub: "market", label: "Market" },
+    { hub: "character", sub: "wallet", label: "Wallet" },
+    { hub: "tools", sub: "appraisal", label: "Appraisal" },
+  ] },
+  { id: "pvper", label: "PvPer", hubs: [
+    { hub: "combat", sub: "threat", label: "Threat Scanner" },
+    { hub: "combat", sub: "fitting", label: "Fitting" },
+    { hub: "combat", sub: "dscan", label: "D-Scan" },
+  ] },
+  { id: "director", label: "FC / Director", hubs: [
+    { hub: "corp", sub: "fleet", label: "Fleet" },
+    { hub: "corp", sub: "timers", label: "Timerboard" },
+    { hub: "corp", sub: "srp", label: "SRP" },
+  ] },
+];
+const ROLE_KEY = "eve-commander-role";
+
 // The home dashboard's widgets, in their default order. The saved layout
 // (order + visibility) is reconciled against this list on the backend, so
 // adding a widget here makes it appear for everyone on next launch.
@@ -294,6 +390,21 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter, log
     HOME_WIDGETS.map((w) => ({ id: w.id, visible: true })),
   );
   const [editing, setEditing] = useState(false);
+  const [role, setRole] = useState<string>(() => {
+    try {
+      return localStorage.getItem(ROLE_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  function pickRole(id: string) {
+    try {
+      localStorage.setItem(ROLE_KEY, id);
+    } catch {
+      // best-effort persistence
+    }
+    setRole(id);
+  }
 
   useEffect(() => {
     if (!isTauri() || characters.length === 0) {
@@ -453,6 +564,40 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter, log
         </button>
       </div>
 
+      {!role ? (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <h3 style={{ marginTop: 0 }}>What kind of capsuleer are you?</h3>
+          <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+            Pick a playstyle to get quick links to the hubs that matter for it. Everything stays
+            reachable — this only sets your shortcuts.
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {ROLE_PRESETS.map((r) => (
+              <button key={r.id} onClick={() => pickRole(r.id)}>{r.label}</button>
+            ))}
+            <button onClick={() => pickRole("everything")} style={{ color: "var(--text-dim)" }}>
+              A bit of everything
+            </button>
+          </div>
+        </div>
+      ) : (
+        (() => {
+          const preset = ROLE_PRESETS.find((r) => r.id === role);
+          return preset ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{preset.label} shortcuts:</span>
+              {preset.hubs.map((h) => (
+                <button key={h.label} style={{ fontSize: 12 }} onClick={() => navigateTo(h.hub, h.sub)}>
+                  {h.label}
+                </button>
+              ))}
+              <button style={{ fontSize: 11, color: "var(--text-dim)" }} onClick={() => pickRole("")}>
+                change
+              </button>
+            </div>
+          ) : null;
+        })()
+      )}
       {editing && (
         <div className="card" style={{ marginBottom: 12 }}>
           <h3 style={{ marginTop: 0 }}>Dashboard layout</h3>
@@ -768,6 +913,21 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
                 {clones.active_implant_count === 1 ? "" : "s"}
                 {clones.home_location_name ? ` · home: ${clones.home_location_name}` : ""}
               </p>
+              {clones.last_jump_date && (() => {
+                // Clone jump cooldown: 24h from the last jump (skills can lower
+                // it — this shows the conservative base timer).
+                const readyAt = new Date(clones.last_jump_date).getTime() + 24 * 3600 * 1000;
+                const left = Math.floor((readyAt - Date.now()) / 1000);
+                return (
+                  <p style={{ fontSize: 12, margin: "2px 0 0" }}>
+                    {left <= 0 ? (
+                      <span className="badge safe">clone jump ready</span>
+                    ) : (
+                      <span style={{ color: "var(--caution)" }}>next clone jump in {formatDuration(left)}</span>
+                    )}
+                  </p>
+                );
+              })()}
               {clones.implants.length > 0 && (
                 <>
                   <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 2px" }}>Active clone</p>
@@ -2154,7 +2314,8 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
                 {market.orders.map((o) => (
                   <tr key={o.order_id}>
                     <td>
-                      <span className={o.is_buy_order ? "neg" : "pos"}>{o.is_buy_order ? "BUY" : "SELL"}</span> {o.item_name}
+                      <span className={o.is_buy_order ? "neg" : "pos"}>{o.is_buy_order ? "BUY" : "SELL"}</span>{" "}
+                      <ItemHover name={o.item_name} />
                       {o.undercut && (
                         <span
                           className="badge caution"
@@ -3563,6 +3724,7 @@ function ToolsHub(): ReactNode {
   const [saved, setSaved] = useState(false);
   const [sub, setSub] = useSubTab("settings");
   const [density, setDensityState] = useState(getDensity());
+  const [theme, setThemeState] = useState<Theme>(getTheme());
   const [esiHealth, setEsiHealth] = useState<EsiHealthView | null>(null);
 
   // Live ESI health meter while the settings tab is open (cheap local read).
@@ -3628,6 +3790,24 @@ function ToolsHub(): ReactNode {
               {LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>{l.label}</option>
               ))}
+            </select>
+          </label>
+          <label className="setting-row">
+            <div>
+              <div className="setting-name">Theme</div>
+              <div className="setting-help">Dark cockpit (default), light, or a deuteranopia-safe palette (blue=safe, orange=caution).</div>
+            </div>
+            <select
+              value={theme}
+              onChange={(e) => {
+                const v = e.target.value as Theme;
+                setTheme(v);
+                setThemeState(v);
+              }}
+            >
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="colorblind">Colorblind-safe</option>
             </select>
           </label>
           <label className="setting-row">
@@ -5483,7 +5663,7 @@ function DscanPanel(): ReactNode {
             <tbody>
               {result.groups.map((g) => (
                 <tr key={g.type_name}>
-                  <td>{g.type_name}</td>
+                  <td><ItemHover name={g.type_name} /></td>
                   <td className="mono num">×{g.count}</td>
                 </tr>
               ))}

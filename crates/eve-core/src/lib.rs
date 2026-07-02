@@ -67,6 +67,7 @@ pub mod plugin;
 pub mod prices;
 pub mod pve;
 pub mod recruit;
+pub mod redisq;
 pub mod remap;
 pub mod reprocess;
 pub mod research;

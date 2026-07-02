@@ -4,7 +4,7 @@ import { HUBS, PALETTE_TARGETS, navigateTo, renderHub, portraitUrl } from "./hub
 import { t, useLang } from "./i18n";
 import { Starfield } from "./Starfield";
 import { AgentAvatar, type Mood } from "./AgentAvatar";
-import type { Character, CharacterStatusView, FleetView, LocalIntel, Notification, PodRiskView, ServerStatus, Severity, SystemSafetyView } from "./types";
+import type { Character, CharacterStatusView, FleetView, LiveKillView, LocalIntel, Notification, PodRiskView, ServerStatus, Severity, SystemSafetyView } from "./types";
 import "./app.css";
 
 function fmtDuration(seconds: number): string {
@@ -148,6 +148,7 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [alerts, setAlerts] = useState<Notification[]>([]);
+  const [liveKills, setLiveKills] = useState<LiveKillView[]>([]);
   const refreshAlerts = () => api.listNotifications().then(setAlerts).catch(() => undefined);
   const [localIntel, setLocalIntel] = useState<LocalIntel | null>(null);
   const [safety, setSafety] = useState<SystemSafetyView | null>(null);
@@ -169,6 +170,7 @@ export default function App() {
     const refresh = () => {
       refreshAlerts();
       api.getLocalIntel().then(setLocalIntel).catch(() => undefined);
+      api.getLiveKills(8).then(setLiveKills).catch(() => undefined);
     };
     refresh();
     const timer = window.setInterval(refresh, 5000);
@@ -366,6 +368,29 @@ export default function App() {
                 ))}
               </ul>
             </div>
+          )}
+        </div>
+        <div className="sa-section">
+          <h3>Live Kills <span style={{ fontWeight: 400, color: "var(--text-dim)", fontSize: 10 }}>zKill RedisQ</span></h3>
+          {liveKills.length === 0 ? (
+            <div className="sa-empty">Kills stream in live from zKillboard as they happen.</div>
+          ) : (
+            <ul className="local-list">
+              {liveKills.map((k) => {
+                const here = charStatus?.system_name && k.system_name === charStatus.system_name;
+                return (
+                  <li key={k.killmail_id} style={here ? { color: "var(--danger)", fontWeight: 600 } : undefined}>
+                    <span>{k.system_name}</span>
+                    <span style={{ color: here ? "var(--danger)" : "var(--text-dim)", fontSize: 11, marginLeft: 6 }}>
+                      {k.ship_name}
+                      {k.total_value >= 1_000_000 ? ` · ${(k.total_value / 1_000_000).toFixed(0)}M` : ""}
+                      {" · "}
+                      {k.age_seconds < 90 ? `${k.age_seconds}s` : `${Math.floor(k.age_seconds / 60)}m`}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
         {podRisk && podRisk.found && podRisk.implant_count > 0 && (

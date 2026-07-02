@@ -2756,6 +2756,45 @@ pub async fn doctrine_compliance(
     Ok(DoctrineComplianceView { fit_name: fit.name, ship: fit.ship, rows })
 }
 
+/// One live kill for the SA rail (names resolved).
+#[derive(Debug, Serialize)]
+pub struct LiveKillView {
+    pub killmail_id: i64,
+    pub system_name: String,
+    pub ship_name: String,
+    pub total_value: f64,
+    /// Seconds ago (computed here so the rail needn't parse timestamps).
+    pub age_seconds: i64,
+}
+
+/// The most recent kills from the RedisQ live feed, newest first. Empty until
+/// the feed has delivered its first kill (or if zKill is unreachable).
+#[tauri::command]
+pub async fn get_live_kills(state: State<'_, AppState>, limit: Option<usize>) -> CmdResult<Vec<LiveKillView>> {
+    let kills: Vec<eve_core::redisq::LiveKill> = state
+        .live_kills
+        .lock()
+        .map(|buf| buf.iter().take(limit.unwrap_or(12)).cloned().collect())
+        .unwrap_or_default();
+    let mut ids: Vec<i64> = Vec::new();
+    for k in &kills {
+        ids.push(k.solar_system_id);
+        ids.push(k.ship_type_id);
+    }
+    let names = names_for(&state, &ids).await;
+    let now = now_epoch_secs();
+    Ok(kills
+        .into_iter()
+        .map(|k| LiveKillView {
+            killmail_id: k.killmail_id,
+            system_name: named(&names, k.solar_system_id),
+            ship_name: named(&names, k.ship_type_id),
+            total_value: k.total_value,
+            age_seconds: (now - k.time_epoch).max(0),
+        })
+        .collect())
+}
+
 /// Diff two D-scan pastes: what appeared/disappeared, with danger callouts for
 /// the arrivals (the hunter's "what just landed" readout).
 #[tauri::command]

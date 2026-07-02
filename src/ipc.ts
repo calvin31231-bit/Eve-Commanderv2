@@ -22,6 +22,7 @@ import type {
   FleetView,
   FleetWingView,
   EsiHealthView,
+  LiveKillView,
   LpStoreView,
   Contract,
   CharacterAttributes,
@@ -208,6 +209,8 @@ export const api = {
   // Reads the OS clipboard via the clipboard-manager plugin (for the threat
   // scanner's "watch" mode — copy Local in-game to auto-rescan).
   readClipboard: () => call<string>("plugin:clipboard-manager|read_text"),
+  getLiveKills: (limit?: number) =>
+    call<LiveKillView[]>("get_live_kills", { limit }),
   gateCampCheck: (system: string) => call<GateCampView>("gate_camp_check", { system }),
   getSystemSafety: () => call<SystemSafetyView>("get_system_safety"),
   getPodRisk: () => call<PodRiskView>("get_pod_risk"),

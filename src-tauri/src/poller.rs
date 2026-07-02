@@ -317,6 +317,38 @@ async fn evaluate_alerts(
     }
 }
 
+/// Spawn the RedisQ killfeed drain: one long-poll loop feeding the shared
+/// rolling buffer (newest first, capped). Push, not poll — no ESI cost. On
+/// errors it backs off a minute so a zKill outage never spins.
+pub fn spawn_killfeed(
+    user_agent: String,
+    queue_id: String,
+    buffer: Arc<std::sync::Mutex<std::collections::VecDeque<eve_core::redisq::LiveKill>>>,
+) {
+    const CAP: usize = 50;
+    tauri::async_runtime::spawn(async move {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_default();
+        loop {
+            match eve_core::redisq::poll_once(&http, &user_agent, &queue_id).await {
+                Ok(Some(kill)) => {
+                    if let Ok(mut buf) = buffer.lock() {
+                        buf.push_front(kill);
+                        buf.truncate(CAP);
+                    }
+                }
+                Ok(None) => {} // keep-alive; immediately poll again
+                Err(e) => {
+                    tracing::debug!("redisq poll failed: {e}");
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            }
+        }
+    });
+}
+
 /// Whole seconds since the Unix epoch (the scheduler's time base).
 fn now_epoch() -> u64 {
     SystemTime::now()

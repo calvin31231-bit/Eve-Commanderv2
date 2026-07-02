@@ -123,6 +123,8 @@ pub struct AppState {
     pub intensity: std::sync::Arc<std::sync::RwLock<eve_core::config::Intensity>>,
     /// Optional Discord webhook URL; interrupting notifications mirror here.
     pub discord_webhook: std::sync::Arc<std::sync::RwLock<Option<String>>>,
+    /// Rolling buffer of live kills from zKillboard RedisQ (newest first).
+    pub live_kills: Arc<Mutex<std::collections::VecDeque<eve_core::redisq::LiveKill>>>,
 }
 
 /// Build the app config from environment / defaults. The ESI `client_id` and
@@ -296,6 +298,7 @@ fn build_state() -> AppState {
         notifications,
         intensity,
         discord_webhook,
+        live_kills: Arc::new(Mutex::new(std::collections::VecDeque::new())),
     }
 }
 
@@ -340,6 +343,24 @@ pub fn run() {
                 state.intensity.clone(),
                 state.notifications.clone(),
                 state.names.clone(),
+            );
+
+            // Live killfeed from zKillboard RedisQ (stable per-install queue id
+            // so the cursor survives restarts).
+            let queue_id = tauri::async_runtime::block_on(async {
+                match state.db.get_setting("redisq_queue_id").await {
+                    Ok(Some(id)) if !id.is_empty() => id,
+                    _ => {
+                        let id = format!("evecommander-{}", std::process::id() as u64 ^ 0x5eed);
+                        let _ = state.db.set_setting("redisq_queue_id", &id).await;
+                        id
+                    }
+                }
+            });
+            poller::spawn_killfeed(
+                state.config.user_agent.clone(),
+                queue_id,
+                state.live_kills.clone(),
             );
 
             // Periodically persist net-worth / SP snapshots for portfolio history.
@@ -389,6 +410,7 @@ pub fn run() {
             commands::parse_dscan,
             commands::dscan_diff,
             commands::doctrine_compliance,
+            commands::get_live_kills,
             commands::scan_pilots,
             commands::pilot_background,
             commands::gate_camp_check,
