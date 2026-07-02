@@ -24,8 +24,9 @@ use eve_core::config::Intensity;
 use eve_core::corp::CorpClient;
 use eve_core::db::Database;
 use eve_core::esi::{all_jobs, plan_fetches, EsiClient, Scheduler};
+use eve_core::industry::IndustryClient;
 use eve_core::names::NameResolver;
-use eve_core::notify::{fuel_alert, skill_queue_alert, Notification, Severity};
+use eve_core::notify::{fuel_alert, job_done_alert, skill_queue_alert, Notification, Severity};
 
 use crate::tray::{self, SharedCenter};
 
@@ -174,6 +175,7 @@ async fn evaluate_alerts(
     let Ok(characters) = db.list_characters().await else { return };
     let character = CharacterClient::new(esi.clone(), tokens.clone());
     let corp = CorpClient::new(esi.clone(), tokens.clone());
+    let industry = IndustryClient::new(esi.clone(), tokens.clone());
     let now = SystemTime::now();
 
     for c in &characters {
@@ -184,6 +186,24 @@ async fn evaluate_alerts(
             });
             if let Some(note) = skill_queue_alert(c.id, &c.name, finish, now, SKILL_WARN) {
                 tray::dispatch(app, notifications, note);
+            }
+        }
+
+        // Industry jobs: Info the moment a job's countdown hits zero. Only
+        // finished jobs pay for a name resolution.
+        if let Ok(summary) = industry.summary(c.id).await {
+            for job in summary.jobs.iter().filter(|j| j.seconds_remaining <= 0) {
+                let product = names.name_or_id(job.display_type_id).await;
+                if let Some(note) = job_done_alert(
+                    job.job_id,
+                    &c.name,
+                    &job.activity,
+                    &product,
+                    job.seconds_remaining,
+                    now,
+                ) {
+                    tray::dispatch(app, notifications, note);
+                }
             }
         }
 

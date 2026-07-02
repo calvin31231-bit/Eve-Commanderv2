@@ -445,7 +445,8 @@ export default function App() {
           </h3>
           {alerts.length === 0 ? (
             <div className="sa-empty">
-              Skill-queue and structure-fuel alerts collect here (evaluated every minute).
+              Skill-queue, industry job-completion, and structure-fuel alerts collect here
+              (evaluated every minute).
             </div>
           ) : (
             <ul className="alert-list">

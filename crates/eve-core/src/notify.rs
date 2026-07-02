@@ -284,6 +284,29 @@ pub fn skill_queue_alert(
     }
 }
 
+/// Rule: industry job completion. Info once a job's countdown reaches zero
+/// (finished, ready to deliver); keyed by job id so it fires once. Pure.
+pub fn job_done_alert(
+    job_id: i64,
+    character_name: &str,
+    activity: &str,
+    product_name: &str,
+    seconds_remaining: i64,
+    now: SystemTime,
+) -> Option<Notification> {
+    if seconds_remaining > 0 {
+        return None;
+    }
+    Some(Notification::new(
+        format!("job:{job_id}"),
+        format!("{activity} complete"),
+        format!("{product_name} is ready to deliver ({character_name})."),
+        Severity::Info,
+        "industry",
+        now,
+    ))
+}
+
 fn to_epoch(t: SystemTime) -> u64 {
     t.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -304,6 +327,17 @@ mod tests {
     fn severity_orders_info_warning_critical() {
         assert!(Severity::Info < Severity::Warning);
         assert!(Severity::Warning < Severity::Critical);
+    }
+
+    #[test]
+    fn job_done_fires_only_at_zero() {
+        // Still running → nothing.
+        assert!(job_done_alert(1, "Cap", "Manufacturing", "Rifter", 300, now()).is_none());
+        // Finished → Info, keyed by the job id.
+        let n = job_done_alert(1, "Cap", "Manufacturing", "Rifter", 0, now()).unwrap();
+        assert_eq!(n.key, "job:1");
+        assert_eq!(n.severity, Severity::Info);
+        assert!(n.body.contains("Rifter"));
     }
 
     #[test]
