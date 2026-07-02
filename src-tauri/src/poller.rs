@@ -24,6 +24,9 @@ use eve_core::config::Intensity;
 use eve_core::corp::CorpClient;
 use eve_core::db::Database;
 use eve_core::esi::{all_jobs, plan_fetches, EsiClient, Scheduler};
+use eve_core::esi_notifications::{
+    classify, reinforcement_exit, timestamp_epoch, NotificationsClient,
+};
 use eve_core::industry::IndustryClient;
 use eve_core::names::NameResolver;
 use eve_core::notify::{fuel_alert, job_done_alert, skill_queue_alert, Notification, Severity};
@@ -176,7 +179,9 @@ async fn evaluate_alerts(
     let character = CharacterClient::new(esi.clone(), tokens.clone());
     let corp = CorpClient::new(esi.clone(), tokens.clone());
     let industry = IndustryClient::new(esi.clone(), tokens.clone());
+    let esi_notifs = NotificationsClient::new(esi.clone(), tokens.clone());
     let now = SystemTime::now();
+    let now_secs = now_epoch() as i64;
 
     for c in &characters {
         // Skill queue: empty → Warning, ending within a day → Info.
@@ -203,6 +208,56 @@ async fn evaluate_alerts(
                     now,
                 ) {
                     tray::dispatch(app, notifications, note);
+                }
+            }
+        }
+
+        // In-game ESI notifications: structure attacks, reinforcements, wars.
+        // Recent ones (48h) surface as alerts; reinforcement notifications with
+        // a timeLeft auto-create a timerboard entry (de-duped by notification id
+        // stamped in the notes).
+        if let Ok(notifs) = esi_notifs.notifications(c.id).await {
+            let existing_notes: Vec<String> = db
+                .list_timers()
+                .await
+                .map(|ts| ts.into_iter().map(|t| t.notes).collect())
+                .unwrap_or_default();
+            for n in notifs {
+                let Some(cls) = classify(&n.kind) else { continue };
+                let ts = timestamp_epoch(&n.timestamp).unwrap_or(0);
+                if now_secs - ts > 48 * 3600 {
+                    continue;
+                }
+                tray::dispatch(
+                    app,
+                    notifications,
+                    Notification::new(
+                        format!("esinotif:{}", n.notification_id),
+                        cls.title,
+                        format!("{} ({})", n.kind, c.name),
+                        cls.severity,
+                        "game",
+                        now,
+                    ),
+                );
+                if cls.makes_timer {
+                    if let Some(exit) = reinforcement_exit(&n.timestamp, &n.text) {
+                        let tag = format!("esi-notification {}", n.notification_id);
+                        if !existing_notes.iter().any(|note| note.contains(&tag)) {
+                            let _ = db
+                                .add_timer(
+                                    now_secs,
+                                    cls.title,
+                                    "",
+                                    "",
+                                    "reinforcement",
+                                    "defense",
+                                    exit.unix_timestamp(),
+                                    &format!("Auto-created from {tag}"),
+                                )
+                                .await;
+                        }
+                    }
                 }
             }
         }

@@ -100,6 +100,8 @@ export interface MarketOrderView {
   volume_remain: number;
   volume_total: number;
   seconds_remaining: number;
+  undercut: boolean;
+  best_competing: number | null;
 }
 
 export interface MarketView {

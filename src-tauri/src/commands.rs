@@ -49,6 +49,7 @@ const BASE_SCOPES: &[&str] = &[
     "esi-corporations.track_members.v1",
     "esi-corporations.read_container_logs.v1",
     "esi-industry.read_corporation_mining.v1",
+    "esi-characters.read_notifications.v1",
     "esi-location.read_location.v1",
     "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
@@ -697,6 +698,10 @@ pub struct MarketOrderView {
     pub volume_remain: i64,
     pub volume_total: i64,
     pub seconds_remaining: i64,
+    /// True when a strictly better competing region price beats this order.
+    pub undercut: bool,
+    /// The competing best price on this order's side, when known.
+    pub best_competing: Option<f64>,
 }
 
 /// A character's open market orders: buy/sell rollup plus named per-order rows.
@@ -719,20 +724,52 @@ pub async fn get_market_orders(
         .summary(character_id)
         .await
         .map_err(|e| e.to_string())?;
+    // Raw orders again (cache-served) for the region ids the undercut check needs.
+    let raw = state.market.orders(character_id).await.unwrap_or_default();
+
+    // Undercut/outbid detection: one region quote per distinct (region, type)
+    // pair (cache-served ~5 min), capped to bound a pathological order count.
+    let mut pairs: Vec<(i64, i64)> =
+        raw.iter().filter(|o| o.region_id != 0).map(|o| (o.region_id, o.type_id)).collect();
+    pairs.sort_unstable();
+    pairs.dedup();
+    let mut quotes: std::collections::HashMap<(i64, i64), (Option<f64>, Option<f64>)> =
+        std::collections::HashMap::new();
+    for (region, type_id) in pairs.into_iter().take(40) {
+        if let Ok(q) = state.marketdata.quote(region, type_id).await {
+            quotes.insert((region, type_id), (q.best_sell, q.best_buy));
+        }
+    }
+    let beaten: std::collections::HashMap<i64, (bool, Option<f64>)> = raw
+        .iter()
+        .map(|o| {
+            let (best_sell, best_buy) =
+                quotes.get(&(o.region_id, o.type_id)).copied().unwrap_or((None, None));
+            let flag = eve_core::market::is_beaten(o, best_sell, best_buy);
+            let best = if o.is_buy_order { best_buy } else { best_sell };
+            (o.order_id, (flag, best))
+        })
+        .collect();
 
     let ids: Vec<i64> = summary.orders.iter().map(|o| o.type_id).collect();
     let names = names_for(&state, &ids).await;
     let orders = summary
         .orders
         .into_iter()
-        .map(|o| MarketOrderView {
-            order_id: o.order_id,
-            item_name: named(&names, o.type_id),
-            is_buy_order: o.is_buy_order,
-            price: o.price,
-            volume_remain: o.volume_remain,
-            volume_total: o.volume_total,
-            seconds_remaining: o.seconds_remaining,
+        .map(|o| {
+            let (undercut, best_competing) =
+                beaten.get(&o.order_id).copied().unwrap_or((false, None));
+            MarketOrderView {
+                order_id: o.order_id,
+                item_name: named(&names, o.type_id),
+                is_buy_order: o.is_buy_order,
+                price: o.price,
+                volume_remain: o.volume_remain,
+                volume_total: o.volume_total,
+                seconds_remaining: o.seconds_remaining,
+                undercut,
+                best_competing,
+            }
         })
         .collect();
     Ok(MarketView {

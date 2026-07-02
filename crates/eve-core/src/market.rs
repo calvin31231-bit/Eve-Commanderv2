@@ -114,6 +114,18 @@ pub fn summarize_orders(orders: &[MarketOrder], now: OffsetDateTime) -> MarketSu
     }
 }
 
+/// Whether a competing best price beats this order: a sell order is undercut by
+/// a strictly lower region best-sell; a buy order is outbid by a strictly
+/// higher region best-buy. (The region best may include our own order — a tie
+/// therefore never flags, only a strictly better competitor does.) Pure.
+pub fn is_beaten(order: &MarketOrder, best_sell: Option<f64>, best_buy: Option<f64>) -> bool {
+    if order.is_buy_order {
+        best_buy.is_some_and(|b| b > order.price)
+    } else {
+        best_sell.is_some_and(|b| b < order.price)
+    }
+}
+
 /// Typed, authenticated market-order reads over the cache-first ESI client.
 #[derive(Clone)]
 pub struct MarketClient {
@@ -212,5 +224,19 @@ mod tests {
         let orders = vec![order(1, false, 1.0, 1, 1, "2026-06-20T00:00:00Z", None)];
         let s = summarize_orders(&orders, now);
         assert_eq!(s.orders[0].seconds_remaining, 0);
+    }
+
+    #[test]
+    fn undercut_and_outbid_detection() {
+        let sell = order(1, false, 100.0, 5, 10, "2026-06-20T00:00:00Z", None);
+        // A strictly cheaper competing sell undercuts; a tie (our own order) doesn't.
+        assert!(is_beaten(&sell, Some(99.9), None));
+        assert!(!is_beaten(&sell, Some(100.0), None));
+        assert!(!is_beaten(&sell, None, None));
+
+        let buy = order(2, true, 50.0, 5, 10, "2026-06-20T00:00:00Z", Some(250.0));
+        // A strictly higher competing buy outbids; a tie doesn't.
+        assert!(is_beaten(&buy, None, Some(50.1)));
+        assert!(!is_beaten(&buy, None, Some(50.0)));
     }
 }

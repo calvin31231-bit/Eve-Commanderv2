@@ -2153,6 +2153,15 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
                   <tr key={o.order_id}>
                     <td>
                       <span className={o.is_buy_order ? "neg" : "pos"}>{o.is_buy_order ? "BUY" : "SELL"}</span> {o.item_name}
+                      {o.undercut && (
+                        <span
+                          className="badge caution"
+                          style={{ marginLeft: 6 }}
+                          title={o.best_competing != null ? `Best competing: ${ISK.format(o.best_competing)} ISK` : undefined}
+                        >
+                          {o.is_buy_order ? "outbid" : "undercut"}
+                        </span>
+                      )}
                     </td>
                     <td className="mono num">{ISK.format(o.price)}</td>
                     <td className="loc">{countdown(o.seconds_remaining)}</td>

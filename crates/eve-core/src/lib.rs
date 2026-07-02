@@ -39,6 +39,7 @@ pub mod dogma;
 pub mod dscan;
 pub mod error;
 pub mod esi;
+pub mod esi_notifications;
 pub mod eve_scout;
 pub mod fitting;
 pub mod fleet;
