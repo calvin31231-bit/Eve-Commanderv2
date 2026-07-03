@@ -55,6 +55,7 @@ import type {
   DscanDiff,
   DoctrineComplianceView,
   GameFitView,
+  ContactView,
   ThreatScanView,
   PilotBackgroundView,
   IncursionView,
@@ -123,6 +124,7 @@ export const PALETTE_TARGETS: { hub: string; sub?: string; label: string }[] = [
   { hub: "character", sub: "skills", label: "Character · Skill Plan" },
   { hub: "character", sub: "implants", label: "Character · Implants" },
   { hub: "character", sub: "mail", label: "Character · Mail" },
+  { hub: "character", sub: "contacts", label: "Character · Contacts & Standings" },
   { hub: "economy", sub: "market", label: "Economy · Market" },
   { hub: "economy", sub: "industry", label: "Economy · Industry" },
   { hub: "economy", sub: "contracts", label: "Economy · Contracts" },
@@ -730,6 +732,104 @@ function MailCard({ character }: { character: Character }): ReactNode {
   );
 }
 
+// Contacts & standings editor: view/red/blue/remove contacts (ESI writes,
+// user-initiated). Standings feed the threat scanner's friend-or-foe logic.
+function ContactsPanel({ character }: { character: Character | null }): ReactNode {
+  const [rows, setRows] = useState<ContactView[] | null>(null);
+  const [name, setName] = useState("");
+  const [standing, setStanding] = useState("-10");
+  const [msg, setMsg] = useState("");
+
+  function load() {
+    if (!character || !isTauri()) return;
+    api.getContacts(character.id).then(setRows).catch(() => setRows([]));
+  }
+  useEffect(() => {
+    setRows(null);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [character?.id]);
+
+  function add() {
+    if (!character || !name.trim()) return;
+    setMsg("Adding…");
+    api
+      .addContact(character.id, name.trim(), Number(standing))
+      .then(() => { setMsg(`Added ${name.trim()}.`); setName(""); load(); })
+      .catch((e) => setMsg(String(e)));
+  }
+  function setStandingFor(id: number, s: number) {
+    if (!character) return;
+    api.setContactStanding(character.id, id, s).then(load).catch((e) => setMsg(String(e)));
+  }
+  function remove(id: number) {
+    if (!character) return;
+    api.deleteContact(character.id, id).then(load).catch((e) => setMsg(String(e)));
+  }
+  const standingColor = (s: number) =>
+    s < 0 ? "var(--danger)" : s > 0 ? "var(--accent)" : "var(--text-dim)";
+
+  if (!character) return <div className="sub">Select a character to manage contacts.</div>;
+  return (
+    <div className="card" style={{ maxWidth: 720 }}>
+      <h3>Contacts {rows && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· {rows.length}</span>}</h3>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Pilot name…" style={{ flex: 1, minWidth: 160 }} />
+        <select value={standing} onChange={(e) => setStanding(e.target.value)}>
+          <option value="-10">−10 (red)</option>
+          <option value="-5">−5</option>
+          <option value="0">0 (neutral)</option>
+          <option value="5">+5</option>
+          <option value="10">+10 (blue)</option>
+        </select>
+        <button onClick={add} disabled={!name.trim()}>Add contact</button>
+        {msg && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{msg}</span>}
+      </div>
+      {!rows ? (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>Loading…</p>
+      ) : rows.length === 0 ? (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No contacts (or the contacts scope isn't granted yet — re-login to add it).
+        </p>
+      ) : (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <tbody>
+            {rows.slice(0, 200).map((c) => (
+              <tr key={c.contact_id}>
+                <td>
+                  {c.name}
+                  <span style={{ fontSize: 11, color: "var(--text-dim)" }}> · {c.contact_type}</span>
+                  {c.is_watched && <span className="badge safe" style={{ marginLeft: 6 }}>watched</span>}
+                  {c.is_blocked && <span className="badge danger" style={{ marginLeft: 6 }}>blocked</span>}
+                </td>
+                <td className="mono num" style={{ color: standingColor(c.standing) }}>
+                  {c.standing > 0 ? "+" : ""}{c.standing.toFixed(1)}
+                </td>
+                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                  <select
+                    value=""
+                    onChange={(e) => e.target.value && setStandingFor(c.contact_id, Number(e.target.value))}
+                    style={{ fontSize: 11 }}
+                    title="Change standing"
+                  >
+                    <option value="">Set…</option>
+                    {[-10, -5, 0, 5, 10].map((s) => (
+                      <option key={s} value={s}>{s > 0 ? `+${s}` : s}</option>
+                    ))}
+                  </select>
+                  <button style={{ fontSize: 11, marginLeft: 4 }} onClick={() => remove(c.contact_id)}>
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function CharacterHub({ character }: { character: Character | null }): ReactNode {
   const [sheet, setSheet] = useState<CharacterSheet | null>(null);
   const [holdings, setHoldings] = useState<HoldingsView | null>(null);
@@ -841,6 +941,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           { id: "skills", label: "Skill Plan" },
           { id: "implants", label: "Implants" },
           { id: "mail", label: "Mail" },
+          { id: "contacts", label: "Contacts" },
         ]}
         active={sub}
         onSelect={setSub}
@@ -1076,6 +1177,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
       )}
       {sub === "implants" && <ImplantFitter />}
       {sub === "mail" && <MailCard character={character} />}
+      {sub === "contacts" && <ContactsPanel character={character} />}
     </>
   );
 }

@@ -323,40 +323,49 @@ async fn evaluate_alerts(
             }
 
             if let Ok(public) = character.public_info(c.id).await {
+                let extractions =
+                    corp.extraction_status(c.id, public.corporation_id).await.unwrap_or_default();
+                let structures =
+                    corp.structure_status(c.id, public.corporation_id).await.unwrap_or_default();
+
+                // Resolve every structure name in one pass (auth'd endpoint,
+                // best-effort); fall back to the raw id.
+                let mut ids: Vec<i64> = structures.iter().map(|s| s.structure_id).collect();
+                ids.extend(extractions.iter().map(|e| e.structure_id));
+                ids.sort_unstable();
+                ids.dedup();
+                let resolved = match tokens.access_token(c.id).await {
+                    Ok(token) => names.resolve_structures(&ids, &token).await,
+                    Err(_) => HashMap::new(),
+                };
+                let label = |id: i64| {
+                    resolved.get(&id).cloned().unwrap_or_else(|| format!("Structure {id}"))
+                };
+
                 // Moon extractions: ping the moment a chunk is ready to fracture.
-                if let Ok(extractions) = corp.extraction_status(c.id, public.corporation_id).await {
-                    for e in &extractions {
-                        let arrival = e.chunk_arrival_time.clone().unwrap_or_default();
-                        let label = format!("Structure {}", e.structure_id);
-                        if let Some(note) =
-                            moon_chunk_alert(e.structure_id, &label, &arrival, e.ready, now)
-                        {
-                            tray::dispatch(app, notifications, note);
-                        }
+                for e in &extractions {
+                    let arrival = e.chunk_arrival_time.clone().unwrap_or_default();
+                    if let Some(note) = moon_chunk_alert(
+                        e.structure_id,
+                        &label(e.structure_id),
+                        &arrival,
+                        e.ready,
+                        now,
+                    ) {
+                        tray::dispatch(app, notifications, note);
                     }
                 }
-                if let Ok(structures) = corp.structure_status(c.id, public.corporation_id).await {
-                    // Resolve structure names in one pass (auth'd endpoint,
-                    // best-effort); fall back to the raw id.
-                    let ids: Vec<i64> = structures.iter().map(|s| s.structure_id).collect();
-                    let resolved = match tokens.access_token(c.id).await {
-                        Ok(token) => names.resolve_structures(&ids, &token).await,
-                        Err(_) => HashMap::new(),
-                    };
-                    for s in structures {
-                        if s.fuel_expires.is_none() {
-                            continue;
-                        }
-                        let expires =
-                            now + Duration::from_secs(s.fuel_seconds_remaining.max(0) as u64);
-                        let name = resolved
-                            .get(&s.structure_id)
-                            .cloned()
-                            .unwrap_or_else(|| format!("Structure {}", s.structure_id));
-                        if let Some(note) = fuel_alert(s.structure_id, &name, expires, now, FUEL_WARN)
-                        {
-                            tray::dispatch(app, notifications, note);
-                        }
+
+                for s in structures {
+                    if s.fuel_expires.is_none() {
+                        continue;
+                    }
+                    let expires =
+                        now + Duration::from_secs(s.fuel_seconds_remaining.max(0) as u64);
+                    if let Some(note) =
+                        fuel_alert(s.structure_id, &label(s.structure_id), expires, now, FUEL_WARN)
+                    {
+                        tray::dispatch(app, notifications, note);
                     }
                 }
             }

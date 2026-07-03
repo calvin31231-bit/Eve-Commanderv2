@@ -29,6 +29,7 @@ pub mod calendar;
 pub mod character;
 pub mod clones;
 pub mod config;
+pub mod contacts;
 pub mod contracts;
 pub mod corp;
 pub mod courier;

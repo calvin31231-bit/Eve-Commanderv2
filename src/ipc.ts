@@ -24,6 +24,7 @@ import type {
   EsiHealthView,
   LiveKillView,
   GameFitView,
+  ContactView,
   LpStoreView,
   Contract,
   CharacterAttributes,
@@ -214,6 +215,14 @@ export const api = {
     call<LiveKillView[]>("get_live_kills", { limit }),
   listGameFits: (characterId: number) =>
     call<GameFitView[]>("list_game_fits", { characterId }),
+  getContacts: (characterId: number) =>
+    call<ContactView[]>("get_contacts", { characterId }),
+  addContact: (characterId: number, name: string, standing: number) =>
+    call<number>("add_contact", { characterId, name, standing }),
+  setContactStanding: (characterId: number, contactId: number, standing: number) =>
+    call<void>("set_contact_standing", { characterId, contactId, standing }),
+  deleteContact: (characterId: number, contactId: number) =>
+    call<void>("delete_contact", { characterId, contactId }),
   pushFitToGame: (characterId: number, eft: string) =>
     call<number>("push_fit_to_game", { characterId, eft }),
   gateCampCheck: (system: string) => call<GateCampView>("gate_camp_check", { system }),

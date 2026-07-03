@@ -752,6 +752,15 @@ export interface FleetMemberView {
   jumps: number | null;
 }
 
+export interface ContactView {
+  contact_id: number;
+  name: string;
+  contact_type: string;
+  standing: number;
+  is_blocked: boolean;
+  is_watched: boolean;
+}
+
 export interface GameFitView {
   fitting_id: number;
   name: string;

@@ -52,6 +52,8 @@ const BASE_SCOPES: &[&str] = &[
     "esi-characters.read_notifications.v1",
     "esi-fittings.read_fittings.v1",
     "esi-fittings.write_fittings.v1",
+    "esi-characters.read_contacts.v1",
+    "esi-characters.write_contacts.v1",
     "esi-location.read_location.v1",
     "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
@@ -2756,6 +2758,99 @@ pub async fn doctrine_compliance(
     // Compliant pilots first, then shortest training gap.
     rows.sort_by(|a, b| b.can_fly.cmp(&a.can_fly).then(a.train_seconds.cmp(&b.train_seconds)));
     Ok(DoctrineComplianceView { fit_name: fit.name, ship: fit.ship, rows })
+}
+
+/// One contact with its name resolved.
+#[derive(Debug, Serialize)]
+pub struct ContactView {
+    pub contact_id: i64,
+    pub name: String,
+    pub contact_type: String,
+    pub standing: f64,
+    pub is_blocked: bool,
+    pub is_watched: bool,
+}
+
+fn contacts_client(state: &AppState) -> eve_core::contacts::ContactsClient {
+    eve_core::contacts::ContactsClient::new(state.esi.clone(), state.token_manager.clone())
+}
+
+/// The character's contacts, hostiles first (needs `read_contacts`).
+#[tauri::command]
+pub async fn get_contacts(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<ContactView>> {
+    let mut contacts = contacts_client(&state)
+        .contacts(character_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    contacts.sort_by(|a, b| a.standing.partial_cmp(&b.standing).unwrap_or(std::cmp::Ordering::Equal));
+    let ids: Vec<i64> = contacts.iter().map(|c| c.contact_id).collect();
+    let names = names_for(&state, &ids).await;
+    Ok(contacts
+        .into_iter()
+        .map(|c| ContactView {
+            contact_id: c.contact_id,
+            name: named(&names, c.contact_id),
+            contact_type: c.contact_type,
+            standing: c.standing,
+            is_blocked: c.is_blocked.unwrap_or(false),
+            is_watched: c.is_watched.unwrap_or(false),
+        })
+        .collect())
+}
+
+/// Add a contact by exact character name at `standing` (−10..=10). ESI write —
+/// user-initiated only. Returns the resolved contact id.
+#[tauri::command]
+pub async fn add_contact(
+    state: State<'_, AppState>,
+    character_id: i64,
+    name: String,
+    standing: f64,
+) -> CmdResult<i64> {
+    let resolved = state
+        .names
+        .character_ids(&[name.trim().to_string()])
+        .await
+        .map_err(|e| e.to_string())?;
+    let id = *resolved
+        .values()
+        .next()
+        .ok_or_else(|| format!("no character named \"{}\"", name.trim()))?;
+    contacts_client(&state)
+        .add(character_id, &[id], standing)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// Change one contact's standing (−10..=10). ESI write.
+#[tauri::command]
+pub async fn set_contact_standing(
+    state: State<'_, AppState>,
+    character_id: i64,
+    contact_id: i64,
+    standing: f64,
+) -> CmdResult<()> {
+    contacts_client(&state)
+        .edit(character_id, &[contact_id], standing)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Remove one contact. ESI write.
+#[tauri::command]
+pub async fn delete_contact(
+    state: State<'_, AppState>,
+    character_id: i64,
+    contact_id: i64,
+) -> CmdResult<()> {
+    contacts_client(&state)
+        .delete(character_id, &[contact_id])
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// One in-game saved fitting rebuilt as EFT for the library.
