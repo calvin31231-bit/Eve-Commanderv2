@@ -23,6 +23,7 @@ import type {
   FleetWingView,
   EsiHealthView,
   LiveKillView,
+  GameFitView,
   LpStoreView,
   Contract,
   CharacterAttributes,
@@ -211,6 +212,10 @@ export const api = {
   readClipboard: () => call<string>("plugin:clipboard-manager|read_text"),
   getLiveKills: (limit?: number) =>
     call<LiveKillView[]>("get_live_kills", { limit }),
+  listGameFits: (characterId: number) =>
+    call<GameFitView[]>("list_game_fits", { characterId }),
+  pushFitToGame: (characterId: number, eft: string) =>
+    call<number>("push_fit_to_game", { characterId, eft }),
   gateCampCheck: (system: string) => call<GateCampView>("gate_camp_check", { system }),
   getSystemSafety: () => call<SystemSafetyView>("get_system_safety"),
   getPodRisk: () => call<PodRiskView>("get_pod_risk"),

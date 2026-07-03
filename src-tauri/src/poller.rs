@@ -28,9 +28,12 @@ use eve_core::esi_notifications::{
     classify, reinforcement_exit, timestamp_epoch, NotificationsClient,
 };
 use eve_core::industry::IndustryClient;
+use eve_core::market::MarketClient;
+use eve_core::marketdata::MarketDataClient;
 use eve_core::names::NameResolver;
 use eve_core::notify::{
-    fuel_alert, job_done_alert, pi_extractor_alert, skill_queue_alert, Notification, Severity,
+    fuel_alert, job_done_alert, moon_chunk_alert, order_beaten_alert, pi_extractor_alert,
+    skill_queue_alert, Notification, Severity,
 };
 use eve_core::planets::PlanetsClient;
 
@@ -287,7 +290,51 @@ async fn evaluate_alerts(
         // Structure fuel for the active character's corp (needs a director role +
         // scope; 403s for everyone else and is skipped).
         if c.active {
+            // Market orders: warn when a competing order strictly beats yours.
+            // One cache-served quote per distinct (region, type), capped.
+            let market = MarketClient::new(esi.clone(), tokens.clone());
+            let marketdata = MarketDataClient::new(esi.clone());
+            if let Ok(orders) = market.orders(c.id).await {
+                let mut pairs: Vec<(i64, i64)> = orders
+                    .iter()
+                    .filter(|o| o.region_id != 0)
+                    .map(|o| (o.region_id, o.type_id))
+                    .collect();
+                pairs.sort_unstable();
+                pairs.dedup();
+                let mut quotes: HashMap<(i64, i64), (Option<f64>, Option<f64>)> = HashMap::new();
+                for (region, type_id) in pairs.into_iter().take(25) {
+                    if let Ok(q) = marketdata.quote(region, type_id).await {
+                        quotes.insert((region, type_id), (q.best_sell, q.best_buy));
+                    }
+                }
+                for o in &orders {
+                    let (bs, bb) =
+                        quotes.get(&(o.region_id, o.type_id)).copied().unwrap_or((None, None));
+                    if eve_core::market::is_beaten(o, bs, bb) {
+                        let item = names.name_or_id(o.type_id).await;
+                        if let Some(note) =
+                            order_beaten_alert(o.order_id, &item, o.is_buy_order, true, now)
+                        {
+                            tray::dispatch(app, notifications, note);
+                        }
+                    }
+                }
+            }
+
             if let Ok(public) = character.public_info(c.id).await {
+                // Moon extractions: ping the moment a chunk is ready to fracture.
+                if let Ok(extractions) = corp.extraction_status(c.id, public.corporation_id).await {
+                    for e in &extractions {
+                        let arrival = e.chunk_arrival_time.clone().unwrap_or_default();
+                        let label = format!("Structure {}", e.structure_id);
+                        if let Some(note) =
+                            moon_chunk_alert(e.structure_id, &label, &arrival, e.ready, now)
+                        {
+                            tray::dispatch(app, notifications, note);
+                        }
+                    }
+                }
                 if let Ok(structures) = corp.structure_status(c.id, public.corporation_id).await {
                     // Resolve structure names in one pass (auth'd endpoint,
                     // best-effort); fall back to the raw id.

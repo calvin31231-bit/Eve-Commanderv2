@@ -752,6 +752,13 @@ export interface FleetMemberView {
   jumps: number | null;
 }
 
+export interface GameFitView {
+  fitting_id: number;
+  name: string;
+  ship: string;
+  eft: string;
+}
+
 export interface LiveKillView {
   killmail_id: number;
   system_name: string;

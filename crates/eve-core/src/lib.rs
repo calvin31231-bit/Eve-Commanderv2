@@ -41,6 +41,7 @@ pub mod error;
 pub mod esi;
 pub mod esi_notifications;
 pub mod eve_scout;
+pub mod fitsync;
 pub mod fitting;
 pub mod fleet;
 pub mod implants;

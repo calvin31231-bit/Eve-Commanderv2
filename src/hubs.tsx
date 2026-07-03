@@ -54,6 +54,7 @@ import type {
   DscanResult,
   DscanDiff,
   DoctrineComplianceView,
+  GameFitView,
   ThreatScanView,
   PilotBackgroundView,
   IncursionView,
@@ -4202,6 +4203,21 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
   const [saved, setSaved] = useState<SavedFitView[] | null>(null);
   const [kmUrl, setKmUrl] = useState("");
   const [compliance, setCompliance] = useState<DoctrineComplianceView | null>(null);
+  const [gameFits, setGameFits] = useState<GameFitView[] | null>(null);
+
+  function loadGameFits() {
+    if (!isTauri() || !character) return;
+    api.listGameFits(character.id).then(setGameFits).catch(() => setGameFits([]));
+  }
+
+  function pushToGame() {
+    if (!isTauri() || !character || !eft.trim()) return;
+    setError("Pushing fit to the in-game fitting window…");
+    api
+      .pushFitToGame(character.id, eft)
+      .then(() => setError("Saved to your in-game fittings."))
+      .catch((e) => setError(String(e)));
+  }
 
   function fromKillmail() {
     if (!isTauri() || !kmUrl.trim()) return;
@@ -4309,7 +4325,39 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
         <button onClick={() => (saved ? setSaved(null) : loadLibrary())}>
           {saved ? "Hide library" : "Library"}
         </button>
+        {character && (
+          <button onClick={pushToGame} disabled={!eft.trim()} title="Save this fit to your in-game fitting window (ESI write)">
+            Push to game
+          </button>
+        )}
+        {character && (
+          <button onClick={() => (gameFits ? setGameFits(null) : loadGameFits())}>
+            {gameFits ? "Hide game fits" : "Game fits"}
+          </button>
+        )}
       </div>
+      {gameFits && (
+        <div style={{ marginTop: 8 }}>
+          {gameFits.length === 0 && (
+            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
+              No in-game fittings (or the fittings scope isn't granted yet — re-login to add it).
+            </span>
+          )}
+          {gameFits.map((f) => (
+            <div key={f.fitting_id} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 3 }}>
+              <button style={{ fontSize: 11 }} onClick={() => { setEft(f.eft); setGameFits(null); }}>Load</button>
+              <span style={{ fontSize: 13 }}>{f.name}</span>
+              <span style={{ fontSize: 11, color: "var(--text-dim)" }}>· {f.ship}</span>
+              <button
+                style={{ fontSize: 11, marginLeft: "auto" }}
+                onClick={() => api.saveFit(f.name, f.eft).then(() => setError(`Imported "${f.name}" to your library.`)).catch((e) => setError(String(e)))}
+              >
+                Import to library
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {saved && (
         <div style={{ marginTop: 8 }}>
           {saved.length === 0 && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>No saved fits yet.</span>}

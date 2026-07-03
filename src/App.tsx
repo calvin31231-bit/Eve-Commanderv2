@@ -149,6 +149,7 @@ export default function App() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [alerts, setAlerts] = useState<Notification[]>([]);
   const [liveKills, setLiveKills] = useState<LiveKillView[]>([]);
+  const [killsNearby, setKillsNearby] = useState(false);
   const refreshAlerts = () => api.listNotifications().then(setAlerts).catch(() => undefined);
   const [localIntel, setLocalIntel] = useState<LocalIntel | null>(null);
   const [safety, setSafety] = useState<SystemSafetyView | null>(null);
@@ -212,6 +213,18 @@ export default function App() {
 
   // Aura's mood reflects the app state: unread alert severity, connection, roster.
   const unread = alerts.filter((a) => !a.read);
+
+  // "Nearby" killfeed filter: your current system + its neighbours (from the
+  // System Safety data). Falls back to the full feed when location is unknown.
+  const nearbySystems = new Set<string>([
+    ...(charStatus?.system_name ? [charStatus.system_name] : []),
+    ...(safety?.found && safety.current ? [safety.current.name] : []),
+    ...(safety?.found ? safety.neighbors.map((n) => n.name) : []),
+  ]);
+  const visibleKills =
+    killsNearby && nearbySystems.size > 0
+      ? liveKills.filter((k) => nearbySystems.has(k.system_name))
+      : liveKills;
   const topSev = unread.reduce((m, a) => Math.max(m, SEV_RANK[a.severity]), 0);
   let mood: Mood = "calm";
   let auraStatus = "All systems nominal.";
@@ -371,12 +384,25 @@ export default function App() {
           )}
         </div>
         <div className="sa-section">
-          <h3>Live Kills <span style={{ fontWeight: 400, color: "var(--text-dim)", fontSize: 10 }}>zKill RedisQ</span></h3>
-          {liveKills.length === 0 ? (
-            <div className="sa-empty">Kills stream in live from zKillboard as they happen.</div>
+          <h3>
+            Live Kills <span style={{ fontWeight: 400, color: "var(--text-dim)", fontSize: 10 }}>zKill RedisQ</span>
+            <button
+              className="sa-action"
+              title={killsNearby ? "Showing kills in your system + neighbours only" : "Showing all of New Eden"}
+              onClick={() => setKillsNearby((v) => !v)}
+            >
+              {killsNearby ? "nearby" : "all"}
+            </button>
+          </h3>
+          {visibleKills.length === 0 ? (
+            <div className="sa-empty">
+              {killsNearby
+                ? "No kills near you yet — switch to \"all\" for the New Eden firehose."
+                : "Kills stream in live from zKillboard as they happen."}
+            </div>
           ) : (
             <ul className="local-list">
-              {liveKills.map((k) => {
+              {visibleKills.map((k) => {
                 const here = charStatus?.system_name && k.system_name === charStatus.system_name;
                 return (
                   <li key={k.killmail_id} style={here ? { color: "var(--danger)", fontWeight: 600 } : undefined}>

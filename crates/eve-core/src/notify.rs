@@ -331,6 +331,53 @@ pub fn pi_extractor_alert(
     ))
 }
 
+/// Rule: moon extraction. Info once a chunk has arrived (ready to fracture);
+/// keyed by structure + arrival time so each cycle fires once. Pure.
+pub fn moon_chunk_alert(
+    structure_id: i64,
+    structure_label: &str,
+    arrival_time: &str,
+    ready: bool,
+    now: SystemTime,
+) -> Option<Notification> {
+    if !ready {
+        return None;
+    }
+    Some(Notification::new(
+        format!("moon:{structure_id}:{arrival_time}"),
+        "Moon chunk ready",
+        format!("{structure_label} — fracture before the chunk decays."),
+        Severity::Info,
+        "moon",
+        now,
+    ))
+}
+
+/// Rule: market order beaten. Warning when a competing order strictly beats
+/// yours (undercut sell / outbid buy); keyed by order id. Pure.
+pub fn order_beaten_alert(
+    order_id: i64,
+    item_name: &str,
+    is_buy: bool,
+    beaten: bool,
+    now: SystemTime,
+) -> Option<Notification> {
+    if !beaten {
+        return None;
+    }
+    Some(Notification::new(
+        format!("undercut:{order_id}"),
+        if is_buy { "Buy order outbid" } else { "Sell order undercut" },
+        format!(
+            "{item_name}: a competing {} now beats your order.",
+            if is_buy { "bid" } else { "price" }
+        ),
+        Severity::Warning,
+        "market",
+        now,
+    ))
+}
+
 fn to_epoch(t: SystemTime) -> u64 {
     t.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -351,6 +398,22 @@ mod tests {
     fn severity_orders_info_warning_critical() {
         assert!(Severity::Info < Severity::Warning);
         assert!(Severity::Warning < Severity::Critical);
+    }
+
+    #[test]
+    fn moon_and_undercut_rules_gate_correctly() {
+        // Chunk still travelling → quiet; arrived → Info keyed per cycle.
+        assert!(moon_chunk_alert(1, "Refinery", "2026-07-04T00:00:00Z", false, now()).is_none());
+        let m = moon_chunk_alert(1, "Refinery", "2026-07-04T00:00:00Z", true, now()).unwrap();
+        assert_eq!(m.key, "moon:1:2026-07-04T00:00:00Z");
+
+        // Not beaten → quiet; beaten → Warning with side-specific wording.
+        assert!(order_beaten_alert(9, "Tritanium", false, false, now()).is_none());
+        let u = order_beaten_alert(9, "Tritanium", false, true, now()).unwrap();
+        assert_eq!(u.key, "undercut:9");
+        assert!(u.title.contains("undercut"));
+        let b = order_beaten_alert(10, "Tritanium", true, true, now()).unwrap();
+        assert!(b.title.contains("outbid"));
     }
 
     #[test]

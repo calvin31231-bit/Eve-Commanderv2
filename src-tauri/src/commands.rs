@@ -50,6 +50,8 @@ const BASE_SCOPES: &[&str] = &[
     "esi-corporations.read_container_logs.v1",
     "esi-industry.read_corporation_mining.v1",
     "esi-characters.read_notifications.v1",
+    "esi-fittings.read_fittings.v1",
+    "esi-fittings.write_fittings.v1",
     "esi-location.read_location.v1",
     "esi-location.read_ship_type.v1",
     "esi-location.read_online.v1",
@@ -2754,6 +2756,122 @@ pub async fn doctrine_compliance(
     // Compliant pilots first, then shortest training gap.
     rows.sort_by(|a, b| b.can_fly.cmp(&a.can_fly).then(a.train_seconds.cmp(&b.train_seconds)));
     Ok(DoctrineComplianceView { fit_name: fit.name, ship: fit.ship, rows })
+}
+
+/// One in-game saved fitting rebuilt as EFT for the library.
+#[derive(Debug, Serialize)]
+pub struct GameFitView {
+    pub fitting_id: i64,
+    pub name: String,
+    pub ship: String,
+    pub eft: String,
+}
+
+/// The character's in-game saved fittings, converted to EFT (slot flags →
+/// sections). Requires `esi-fittings.read_fittings.v1`.
+#[tauri::command]
+pub async fn list_game_fits(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<Vec<GameFitView>> {
+    let client = eve_core::fitsync::FitSyncClient::new(state.esi.clone(), state.token_manager.clone());
+    let fittings = client.fittings(character_id).await.map_err(|e| e.to_string())?;
+
+    // One batch name resolve across every ship + item.
+    let mut ids: Vec<i64> = Vec::new();
+    for f in &fittings {
+        ids.push(f.ship_type_id);
+        ids.extend(f.items.iter().map(|i| i.type_id));
+    }
+    let names = names_for(&state, &ids).await;
+
+    Ok(fittings
+        .into_iter()
+        .map(|f| {
+            let mut items: Vec<(eve_core::killmail::Slot, String, i64)> = f
+                .items
+                .iter()
+                .filter_map(|i| {
+                    eve_core::killmail::slot_of(i.flag)
+                        .map(|s| (s, named(&names, i.type_id), i.quantity))
+                })
+                .collect();
+            items.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            let ship = named(&names, f.ship_type_id);
+            GameFitView {
+                fitting_id: f.fitting_id,
+                eft: eve_core::killmail::build_eft(&ship, &f.name, &items),
+                name: f.name,
+                ship,
+            }
+        })
+        .collect())
+}
+
+/// Push an EFT fit into the character's in-game saved fittings. Section-aware:
+/// each module gets a concrete slot flag from its EFT section. Names the SDE
+/// can't resolve are reported as the error. Requires
+/// `esi-fittings.write_fittings.v1` — the EULA-sanctioned write path.
+#[tauri::command]
+pub async fn push_fit_to_game(
+    state: State<'_, AppState>,
+    character_id: i64,
+    eft: String,
+) -> CmdResult<i64> {
+    let fit = eve_core::fitsync::parse_eft_sections(&eft)
+        .ok_or_else(|| "malformed EFT (missing [Ship, Name] header)".to_string())?;
+    let sde = state.names.sde();
+    let ship_type_id = sde
+        .type_id_by_name(&fit.ship)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("unknown ship: {}", fit.ship))?;
+
+    let mut items: Vec<eve_core::fitsync::GameFitItem> = Vec::new();
+    let mut slot_index: std::collections::HashMap<eve_core::killmail::Slot, usize> =
+        std::collections::HashMap::new();
+    let mut unresolved: Vec<String> = Vec::new();
+    for (slot, name, qty) in &fit.items {
+        match sde.type_id_by_name(name).await.map_err(|e| e.to_string())? {
+            Some(type_id) => {
+                let idx = slot_index.entry(*slot).or_insert(0);
+                // Module slots hold one item per flag; bays take the stack.
+                let per_flag = matches!(
+                    slot,
+                    eve_core::killmail::Slot::Drone | eve_core::killmail::Slot::Cargo
+                );
+                if per_flag {
+                    items.push(eve_core::fitsync::GameFitItem {
+                        flag: eve_core::fitsync::flag_for(*slot, 0),
+                        quantity: (*qty).max(1),
+                        type_id,
+                    });
+                } else {
+                    for _ in 0..(*qty).max(1) {
+                        items.push(eve_core::fitsync::GameFitItem {
+                            flag: eve_core::fitsync::flag_for(*slot, *idx),
+                            quantity: 1,
+                            type_id,
+                        });
+                        *idx += 1;
+                    }
+                }
+            }
+            None => unresolved.push(name.clone()),
+        }
+    }
+    if !unresolved.is_empty() {
+        return Err(format!(
+            "unresolved item names (rebuild the SDE?): {}",
+            unresolved.join(", ")
+        ));
+    }
+
+    let client = eve_core::fitsync::FitSyncClient::new(state.esi.clone(), state.token_manager.clone());
+    client
+        .save_fitting(character_id, &fit.name, "Pushed from EVE Commander", ship_type_id, &items)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// One live kill for the SA rail (names resolved).

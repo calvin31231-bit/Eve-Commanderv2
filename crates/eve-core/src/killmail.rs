@@ -49,7 +49,7 @@ pub struct Killmail {
 }
 
 /// Fitting sections a killmail item can land in, in EFT section order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Slot {
     Low,
     Mid,
