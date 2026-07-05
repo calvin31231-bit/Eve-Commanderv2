@@ -930,6 +930,7 @@ export interface CourierView {
   collateral_ratio: number;
   lowsec_hops: number;
   kills_on_route: number;
+  suggested_reward: number;
   verdict: string;
   hops: RouteHop[];
   message: string;

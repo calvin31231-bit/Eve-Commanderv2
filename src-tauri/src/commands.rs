@@ -4134,6 +4134,8 @@ pub struct CourierView {
     pub collateral_ratio: f64,
     pub lowsec_hops: i64,
     pub kills_on_route: i64,
+    /// A fair market reward for this haul (route + cargo + collateral + risk).
+    pub suggested_reward: f64,
     pub verdict: String,
     pub hops: Vec<RouteHop>,
     pub message: String,
@@ -4172,6 +4174,7 @@ pub async fn courier_estimate(
         collateral_ratio: 0.0,
         lowsec_hops: 0,
         kills_on_route: 0,
+        suggested_reward: 0.0,
         verdict: String::new(),
         hops: Vec::new(),
         message: message.to_string(),
@@ -4225,6 +4228,8 @@ pub async fn courier_estimate(
     let jumps = (hops.len() as i64 - 1).max(0);
     let est = eve_core::courier::estimate(volume, collateral, reward, jumps);
     let verdict = eve_core::courier::verdict(&est, lowsec_hops, kills_on_route);
+    let suggested_reward =
+        eve_core::courier::suggested_reward(volume, collateral, jumps, lowsec_hops);
     Ok(CourierView {
         found: true,
         jumps,
@@ -4233,6 +4238,7 @@ pub async fn courier_estimate(
         collateral_ratio: est.collateral_ratio,
         lowsec_hops,
         kills_on_route,
+        suggested_reward,
         verdict,
         hops,
         message: String::new(),

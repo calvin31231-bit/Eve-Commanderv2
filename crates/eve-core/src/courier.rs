@@ -38,6 +38,22 @@ pub fn estimate(volume: f64, collateral: f64, reward: f64, jumps: i64) -> Courie
     }
 }
 
+/// A fair courier reward for a haul, using typical player-service rates: a base
+/// fee, a per-jump rate, a small per-m³ rate, plus a collateral premium and a
+/// low/null-sec surcharge (risk pricing). Pure — a starting figure to offer or
+/// expect, not a fixed tariff.
+pub fn suggested_reward(volume: f64, collateral: f64, jumps: i64, lowsec_hops: i64) -> f64 {
+    const BASE: f64 = 100_000.0; // flat acceptance fee
+    const PER_JUMP: f64 = 250_000.0; // per-jump haul rate
+    const PER_M3: f64 = 40.0; // small cargo-size premium
+    const COLLATERAL_PCT: f64 = 0.01; // 1% of collateral
+    const LOWSEC_JUMP: f64 = 750_000.0; // extra per low/null hop
+    BASE + PER_JUMP * jumps.max(0) as f64
+        + PER_M3 * volume.max(0.0)
+        + COLLATERAL_PCT * collateral.max(0.0)
+        + LOWSEC_JUMP * lowsec_hops.max(0) as f64
+}
+
 /// A verdict string for how attractive/risky a haul looks. Pure.
 pub fn verdict(est: &CourierEstimate, lowsec_hops: i64, kills_on_route: i64) -> String {
     let mut notes = Vec::new();
@@ -75,6 +91,17 @@ mod tests {
         assert_eq!(e.reward_per_jump, 1_000.0); // jumps clamped to 1
         assert_eq!(e.reward_per_m3, 0.0);
         assert_eq!(e.collateral_ratio, 0.0);
+    }
+
+    #[test]
+    fn suggested_reward_scales_with_route_cargo_collateral_risk() {
+        // Base 100k + 10 jumps*250k + 1000 m3*40 + 1% of 100M + 0 lowsec
+        // = 100k + 2.5M + 40k + 1M = 3.64M.
+        let r = suggested_reward(1_000.0, 100_000_000.0, 10, 0);
+        assert!((r - 3_640_000.0).abs() < 1.0);
+        // A low/null hop adds the surcharge; more jumps/collateral raise it.
+        assert!(suggested_reward(1_000.0, 100_000_000.0, 10, 1) > r);
+        assert!(suggested_reward(1_000.0, 100_000_000.0, 20, 0) > r);
     }
 
     #[test]

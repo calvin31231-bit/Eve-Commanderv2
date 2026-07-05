@@ -2016,11 +2016,25 @@ function ShoppingList(): ReactNode {
   const [text, setText] = useState("");
   const [plan, setPlan] = useState<ShoppingPlanView | null>(null);
   const [loading, setLoading] = useState(false);
+  const [dest, setDest] = useState("");
+  const [delivery, setDelivery] = useState<CourierView | null>(null);
 
   function price() {
     if (!isTauri() || !text.trim()) return;
     setLoading(true);
+    setDelivery(null);
     api.shoppingPlan(text).then((p) => { setPlan(p); setLoading(false); }).catch(() => setLoading(false));
+  }
+
+  function estimateDelivery() {
+    // Origin = the hub with the most spend; collateral = total cost, cargo =
+    // total volume. Reward 0 so the estimate returns a *suggested* fair reward.
+    if (!isTauri() || !plan || !dest.trim() || plan.by_hub.length === 0) return;
+    const origin = plan.by_hub[0][0];
+    api
+      .courierEstimate(origin, dest.trim(), plan.total_volume, plan.total_cost, 0, "secure")
+      .then(setDelivery)
+      .catch(() => setDelivery(null));
   }
 
   return (
@@ -2065,6 +2079,36 @@ function ShoppingList(): ReactNode {
               ))}
             </tbody>
           </table>
+          {plan.by_hub.length > 0 && (
+            <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Deliver from {plan.by_hub[0][0]} to</span>
+                <input
+                  value={dest}
+                  onChange={(e) => setDest(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && estimateDelivery()}
+                  placeholder="destination system…"
+                  style={{ flex: 1 }}
+                />
+                <button onClick={estimateDelivery} disabled={!dest.trim()}>Estimate haul</button>
+              </div>
+              {delivery && delivery.found && (
+                <p style={{ fontSize: 12, marginTop: 6 }}>
+                  {delivery.jumps} jumps · fair reward{" "}
+                  <strong className="pos">{ISK.format(delivery.suggested_reward)} ISK</strong>
+                  {delivery.kills_on_route > 0 && (
+                    <span style={{ color: "var(--danger)" }}> · ⚠{delivery.kills_on_route} kills on route</span>
+                  )}
+                  {delivery.lowsec_hops > 0 && (
+                    <span style={{ color: "var(--caution)" }}> · {delivery.lowsec_hops} low/null hop(s)</span>
+                  )}
+                </p>
+              )}
+              {delivery && !delivery.found && (
+                <p style={{ fontSize: 12, marginTop: 6, color: "var(--text-dim)" }}>{delivery.message}</p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -6577,6 +6621,11 @@ function CourierCalc(): ReactNode {
               {result.collateral_ratio.toFixed(1)}× collateral
             </span>
           </div>
+          {result.suggested_reward > 0 && (
+            <p style={{ margin: "4px 0", fontSize: 13 }}>
+              Fair reward for this haul: <strong className="pos">{ISK.format(result.suggested_reward)} ISK</strong>
+            </p>
+          )}
           <p style={{ marginTop: 6 }}>
             <span className={result.lowsec_hops > 0 || result.kills_on_route > 0 ? "badge caution" : "badge safe"}>
               {result.lowsec_hops > 0 || result.kills_on_route > 0 ? "Risk" : "Clean"}
