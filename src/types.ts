@@ -1059,6 +1059,9 @@ export interface FitStatsView {
   armor_rps: number;
   cap_capacity: number;
   cap_peak_recharge: number;
+  cap_load: number;
+  cap_stable: boolean;
+  cap_seconds_to_empty: number | null;
   hull_bonuses: string[];
   dps_curve: DpsPoint[];
   note: string;

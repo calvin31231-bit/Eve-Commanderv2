@@ -251,6 +251,8 @@ pub mod attr {
     pub const ROF_MS: i64 = 51;
     pub const OPTIMAL_M: i64 = 54; // turret optimal range (metres)
     pub const FALLOFF_M: i64 = 158; // turret falloff (metres)
+    pub const CAP_NEED: i64 = 6; // capacitor need per activation (GJ)
+    pub const DURATION_MS: i64 = 73; // module cycle time (ms), for non-turret modules
 }
 
 type Attrs = std::collections::HashMap<i64, f64>;
@@ -326,6 +328,31 @@ pub fn weapon_from(module: &Attrs, charge: Option<&Attrs>) -> Option<Weapon> {
     let optimal_m = module.get(&attr::OPTIMAL_M).copied().unwrap_or(0.0);
     let falloff_m = module.get(&attr::FALLOFF_M).copied().unwrap_or(0.0);
     Some(Weapon { em, thermal, kinetic, explosive, multiplier, rof_seconds, optimal_m, falloff_m })
+}
+
+/// Capacitor drain (GJ/s) from one active module: its cap need per cycle over
+/// its cycle time. Turrets/launchers cycle on rate-of-fire (attr 51); other
+/// modules on duration (attr 73). Passive modules (no cap need) draw 0. Pure.
+pub fn module_cap_load(a: &Attrs) -> f64 {
+    let need = get(a, attr::CAP_NEED);
+    if need <= 0.0 {
+        return 0.0;
+    }
+    // Prefer rate-of-fire (weapons), else duration (reps, hardeners, tackle).
+    let cycle_ms = {
+        let rof = get(a, attr::ROF_MS);
+        if rof > 0.0 { rof } else { get(a, attr::DURATION_MS) }
+    };
+    if cycle_ms <= 0.0 {
+        return 0.0;
+    }
+    need / (cycle_ms / 1000.0)
+}
+
+/// Total capacitor load (GJ/s) if every cap-using module runs continuously —
+/// the worst-case for stability. Pure.
+pub fn total_cap_load(modules: &[Attrs]) -> f64 {
+    modules.iter().map(module_cap_load).sum()
 }
 
 /// Apply a layer's resist modules to a base resonance. Each module carries a
@@ -504,6 +531,18 @@ mod tests {
         let l = |hp: f64| Layer { hp, em: 1.0, thermal: 1.0, kinetic: 1.0, explosive: 1.0 };
         let e = total_ehp(&l(1000.0), &l(2000.0), &l(500.0), &DamageProfile::uniform());
         assert!((e.total - 3500.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cap_load_sums_active_modules() {
+        // A module needing 40 GJ every 4s = 10 GJ/s; passive module draws 0.
+        let repper = map(&[(attr::CAP_NEED, 40.0), (attr::DURATION_MS, 4000.0)]);
+        let turret = map(&[(attr::CAP_NEED, 5.0), (attr::ROF_MS, 5000.0)]); // 1 GJ/s
+        let passive = map(&[(attr::SHIELD_HP, 500.0)]);
+        assert!((module_cap_load(&repper) - 10.0).abs() < 1e-6);
+        assert!((module_cap_load(&turret) - 1.0).abs() < 1e-6);
+        assert_eq!(module_cap_load(&passive), 0.0);
+        assert!((total_cap_load(&[repper, turret, passive]) - 11.0).abs() < 1e-6);
     }
 
     #[test]

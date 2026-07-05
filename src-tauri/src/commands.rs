@@ -2821,6 +2821,12 @@ pub struct FitStatsView {
     pub cap_capacity: f64,
     /// Peak passive cap recharge (GJ/s).
     pub cap_peak_recharge: f64,
+    /// Worst-case capacitor draw (GJ/s) with every cap-using module running.
+    pub cap_load: f64,
+    /// True when peak recharge covers the load (cap-stable).
+    pub cap_stable: bool,
+    /// Seconds until the capacitor empties when unstable (null when stable).
+    pub cap_seconds_to_empty: Option<f64>,
     /// The ship's trait bonuses (CCP's own text), display-only.
     pub hull_bonuses: Vec<String>,
     /// DPS-vs-range curve (turret falloff applied; transversal ignored).
@@ -2890,6 +2896,9 @@ pub(crate) async fn compute_fit_stats(
         armor_rps: 0.0,
         cap_capacity: 0.0,
         cap_peak_recharge: 0.0,
+        cap_load: 0.0,
+        cap_stable: false,
+        cap_seconds_to_empty: None,
         hull_bonuses: Vec::new(),
         dps_curve: Vec::new(),
         note: note.to_string(),
@@ -2911,7 +2920,6 @@ pub(crate) async fn compute_fit_stats(
 
     let (base_shield, base_armor, base_hull) = dogma::ship_layers(&ship_attrs);
     let (cap_capacity, recharge) = dogma::ship_cap(&ship_attrs);
-    let cap = dogma::cap_stats(cap_capacity, recharge, 0.0);
 
     // Universal weapon-damage skills, when a character is supplied. Surgical
     // Strike (3315) +3%/lvl turret damage; Warhead Upgrades (20211) +2%/lvl
@@ -2972,6 +2980,9 @@ pub(crate) async fn compute_fit_stats(
     let ehp = dogma::total_ehp(&shield, &armor, &hull, &dogma::DamageProfile::uniform());
     let dmg = dogma::fit_damage(&weapons);
     let reps = dogma::local_reps(&module_attrs);
+    // Cap stability against the worst-case load (every cap-using module running).
+    let cap_load = dogma::total_cap_load(&module_attrs);
+    let cap = dogma::cap_stats(cap_capacity, recharge, cap_load);
 
     // DPS-vs-range curve: sample out to a bit past the longest weapon's reach.
     let max_reach = weapons
@@ -3007,6 +3018,9 @@ pub(crate) async fn compute_fit_stats(
         armor_rps: reps.armor_rps,
         cap_capacity,
         cap_peak_recharge: cap.peak_recharge,
+        cap_load,
+        cap_stable: cap.stable,
+        cap_seconds_to_empty: cap.seconds_to_empty,
         hull_bonuses,
         dps_curve,
         note: "EHP includes buffer + resist modules (stacking-penalised). DPS reflects fitted \

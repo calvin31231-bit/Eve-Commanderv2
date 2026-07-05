@@ -4808,6 +4808,13 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
                   </span>
                 )}
                 <span>{Math.round(stats.cap_peak_recharge * 10) / 10} GJ/s cap</span>
+                {stats.cap_load > 0 && (
+                  <span className={stats.cap_stable ? "pos" : "neg"}>
+                    {stats.cap_stable
+                      ? "cap stable"
+                      : `cap unstable${stats.cap_seconds_to_empty ? ` · ${formatDuration(stats.cap_seconds_to_empty)}` : ""}`}
+                  </span>
+                )}
               </div>
               <table className="holdings" style={{ marginTop: 8 }}>
                 <tbody>
