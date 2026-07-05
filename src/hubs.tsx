@@ -470,6 +470,17 @@ function Home({ status, statusError, characters, onLogin, onSelectCharacter, log
                 </span>
               </div>
               <NetWorthChart points={history.networth} />
+              {history.trend_confidence > 0 && (
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4 }}>
+                  <span className={history.velocity_per_day >= 0 ? "pos" : "neg"}>
+                    {history.velocity_per_day >= 0 ? "+" : ""}{ISK.format(history.velocity_per_day)}/day
+                  </span>
+                  {" · "}forecast {ISK.format(history.forecast_value)} in {history.forecast_days}d
+                  {history.trend_confidence < 0.4 && (
+                    <span title="Low fit quality — the trend is noisy"> · ~rough</span>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             account && (

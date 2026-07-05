@@ -174,6 +174,10 @@ export interface PortfolioHistory {
   sp: HistoryPoint[];
   networth_change: number;
   networth_change_pct: number;
+  velocity_per_day: number;
+  forecast_value: number;
+  forecast_days: number;
+  trend_confidence: number;
 }
 
 export interface AccountOverview {

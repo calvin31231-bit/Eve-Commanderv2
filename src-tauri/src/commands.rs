@@ -105,6 +105,13 @@ pub struct PortfolioHistory {
     /// networth now − networth at the start of the window (0 if <2 points).
     pub networth_change: f64,
     pub networth_change_pct: f64,
+    /// Fitted ISK/day velocity across the window (negative = losing ISK).
+    pub velocity_per_day: f64,
+    /// Linear projection of net worth `forecast_days` out.
+    pub forecast_value: f64,
+    pub forecast_days: i64,
+    /// Trend fit quality 0.0–1.0 (low = noisy, treat the forecast with caution).
+    pub trend_confidence: f64,
 }
 
 /// Net-worth / SP history for a character (or account-wide when `character_id`
@@ -142,7 +149,21 @@ pub async fn get_portfolio_history(
         _ => (0.0, 0.0),
     };
 
-    Ok(PortfolioHistory { networth, sp, networth_change, networth_change_pct })
+    // Fit a velocity + forward projection over the same window.
+    let forecast_days = 30;
+    let series: Vec<(i64, f64)> = networth.iter().map(|p| (p.at, p.value)).collect();
+    let trend = eve_core::account::networth_trend(&series, forecast_days);
+
+    Ok(PortfolioHistory {
+        networth,
+        sp,
+        networth_change,
+        networth_change_pct,
+        velocity_per_day: trend.per_day,
+        forecast_value: trend.projected,
+        forecast_days,
+        trend_confidence: trend.r_squared,
+    })
 }
 
 /// Whole seconds since the Unix epoch.
