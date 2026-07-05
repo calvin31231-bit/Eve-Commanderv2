@@ -40,6 +40,7 @@ import type {
   TradingPnlView,
   ReprocessView,
   BuildPlanView,
+  BomTreeView,
   ResolvedFit,
   SkillPlanView,
   RemapView,
@@ -2486,14 +2487,22 @@ function BuildPlanner(): ReactNode {
   const [activity, setActivity] = useState("manufacturing");
   const [data, setData] = useState<BuildPlanView | null>(null);
   const [missing, setMissing] = useState(false);
+  const [bom, setBom] = useState<BomTreeView | null>(null);
 
   function run(item: ItemHit, r: number, m: number, act: string) {
     setData(null);
     setMissing(false);
+    setBom(null);
     api
       .planBuild(item.type_id, r, m, act)
       .then((p) => (p ? setData(p) : setMissing(true)))
       .catch(() => setMissing(true));
+  }
+
+  function loadBom() {
+    if (!sel) return;
+    // Quantity = one full run's output × runs, approximated by runs here.
+    api.planBomTree(sel.type_id, runs, me).then(setBom).catch(() => setBom(null));
   }
 
   return (
@@ -2579,6 +2588,37 @@ function BuildPlanner(): ReactNode {
               <span>Invention odds {(data.probability * 100).toFixed(0)}%</span>
             )}
           </div>
+          <div style={{ marginTop: 8 }}>
+            <button style={{ fontSize: 11 }} onClick={() => (bom ? setBom(null) : loadBom())}>
+              {bom ? "Hide full BOM" : "Full BOM tree (build-vs-buy)"}
+            </button>
+          </div>
+          {bom && (
+            <div style={{ marginTop: 8 }}>
+              <p style={{ fontSize: 12, margin: "0 0 4px" }}>
+                <strong>Multi-level BOM</strong> · {bom.quantity}× {bom.product_name} — building
+                intermediates only where it's cheaper than buying.
+              </p>
+              <table className="holdings">
+                <tbody>
+                  {bom.shopping_list.map((l) => (
+                    <tr key={l.type_id}>
+                      <td>{l.name}</td>
+                      <td className="mono num">{l.quantity.toLocaleString()}</td>
+                      <td className="mono num neg">{ISK.format(l.value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="cashflow-totals" style={{ marginTop: 8 }}>
+                <span className="neg">Build (buy raws) {ISK.format(bom.build_cost)}</span>
+                <span>Buy finished {ISK.format(bom.buy_cost)}</span>
+                <span className={bom.savings >= 0 ? "pos" : "neg"} title="Buy-outright cost minus build cost">
+                  {bom.savings >= 0 ? "Save" : "Costs extra"} {ISK.format(Math.abs(bom.savings))}
+                </span>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

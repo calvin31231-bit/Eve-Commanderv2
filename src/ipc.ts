@@ -54,6 +54,7 @@ import type {
   ArbitrageView,
   ReprocessView,
   BuildPlanView,
+  BomTreeView,
   ResolvedFit,
   FitStatsView,
   ImplantView,
@@ -204,6 +205,8 @@ export const api = {
     call<ReprocessView | null>("reprocess_item", { typeId, units, efficiency }),
   planBuild: (productTypeId: number, runs: number, me: number, activity?: string) =>
     call<BuildPlanView | null>("plan_build", { productTypeId, runs, me, activity }),
+  planBomTree: (productTypeId: number, quantity: number, me: number) =>
+    call<BomTreeView | null>("plan_bom_tree", { productTypeId, quantity, me }),
   parseFit: (eft: string) => call<ResolvedFit | null>("parse_fit", { eft }),
   fitStats: (eft: string, characterId: number | null) =>
     call<FitStatsView>("fit_stats", { eft, characterId }),

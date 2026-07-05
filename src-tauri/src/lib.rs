@@ -403,6 +403,7 @@ pub fn run() {
             commands::shopping_plan,
             commands::reprocess_item,
             commands::plan_build,
+            commands::plan_bom_tree,
             commands::parse_fit,
             commands::fit_stats,
             commands::list_implants,

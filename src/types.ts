@@ -371,6 +371,25 @@ export interface BuildPlanView {
   probability: number | null;
 }
 
+export interface BomLineView {
+  type_id: number;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  value: number;
+}
+
+export interface BomTreeView {
+  product_type_id: number;
+  product_name: string;
+  quantity: number;
+  build_wins: boolean;
+  shopping_list: BomLineView[];
+  build_cost: number;
+  buy_cost: number;
+  savings: number;
+}
+
 export interface ResolvedItem {
   type_id: number | null;
   name: string;

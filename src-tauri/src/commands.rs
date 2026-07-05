@@ -2088,6 +2088,80 @@ pub async fn plan_build(
     }))
 }
 
+/// A flattened raw-material line in a multi-level BOM.
+#[derive(Debug, Serialize)]
+pub struct BomLineView {
+    pub type_id: i64,
+    pub name: String,
+    pub quantity: i64,
+    pub unit_price: f64,
+    pub value: f64,
+}
+
+/// A multi-level bill of materials: what to actually acquire after deciding
+/// build-vs-buy at every intermediate tier, plus the headline comparison.
+#[derive(Debug, Serialize)]
+pub struct BomTreeView {
+    pub product_type_id: i64,
+    pub product_name: String,
+    pub quantity: i64,
+    /// The finished product is cheaper to build than to buy outright.
+    pub build_wins: bool,
+    /// Raw + bought-intermediate shopping list, most expensive first.
+    pub shopping_list: Vec<BomLineView>,
+    /// Cost of buying the shopping list.
+    pub build_cost: f64,
+    /// Cost of buying the finished product outright.
+    pub buy_cost: f64,
+    /// buy_cost − build_cost (positive = building saves ISK).
+    pub savings: f64,
+}
+
+/// Expand a full multi-level bill of materials for `quantity` units, deciding
+/// build-vs-buy at every tier and flattening to one shopping list. Returns
+/// `null` when the SDE has no blueprint for the product (seed-only SDE).
+#[tauri::command]
+pub async fn plan_bom_tree(
+    state: State<'_, AppState>,
+    product_type_id: i64,
+    quantity: i64,
+    me: i64,
+) -> CmdResult<Option<BomTreeView>> {
+    let prices = state.prices.price_map().await.map_err(|e| e.to_string())?;
+    let tree = state
+        .industry_plan
+        .bom_tree(product_type_id, quantity.max(1), me, &prices)
+        .await
+        .map_err(|e| e.to_string())?;
+    // Not buildable at all → no tree to show.
+    if !tree.root.buildable {
+        return Ok(None);
+    }
+    let mut ids: Vec<i64> = tree.shopping_list.iter().map(|l| l.type_id).collect();
+    ids.push(product_type_id);
+    let names = names_for(&state, &ids).await;
+    Ok(Some(BomTreeView {
+        product_type_id,
+        product_name: named(&names, product_type_id),
+        quantity: quantity.max(1),
+        build_wins: tree.build_cost < tree.buy_cost && tree.buy_cost > 0.0,
+        shopping_list: tree
+            .shopping_list
+            .into_iter()
+            .map(|l| BomLineView {
+                type_id: l.type_id,
+                name: named(&names, l.type_id),
+                quantity: l.quantity,
+                unit_price: l.unit_price,
+                value: l.value,
+            })
+            .collect(),
+        build_cost: tree.build_cost,
+        buy_cost: tree.buy_cost,
+        savings: tree.buy_cost - tree.build_cost,
+    }))
+}
+
 /// One target row of a skill plan from the UI.
 #[derive(Debug, serde::Deserialize)]
 pub struct SkillTarget {
