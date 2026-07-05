@@ -358,6 +358,14 @@ export interface ReprocessView {
   advantage: number;
 }
 
+export interface OreYieldView {
+  type_id: number;
+  name: string;
+  isk_per_unit: number;
+  isk_per_m3: number;
+  volume: number;
+}
+
 export interface PlanLineView {
   type_id: number;
   name: string;

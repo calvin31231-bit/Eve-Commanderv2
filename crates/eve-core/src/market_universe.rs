@@ -21,6 +21,28 @@ pub const MINERALS: &[i64] = &[
     11399, // Morphite
 ];
 
+/// The base variants of the main mineable ores (canonical type ids), for the
+/// "what should I mine now?" ISK/m³ ranking. Ids are stable. Only the T1 base
+/// rock of each family is listed; the +5%/+10% variants track the same minerals.
+pub const ORES: &[i64] = &[
+    1230,  // Veldspar
+    1228,  // Scordite
+    1224,  // Pyroxeres
+    18,    // Plagioclase
+    1227,  // Omber
+    20,    // Kernite
+    1226,  // Jaspet
+    1231,  // Hemorphite
+    21,    // Hedbergite
+    1229,  // Gneiss
+    1232,  // Dark Ochre
+    19,    // Spodumain
+    1225,  // Crokite
+    1223,  // Bistot
+    22,    // Arkonor
+    11396, // Mercoxit
+];
+
 /// Curated item names to price across hubs. Grouped by intent in source order.
 pub const CURATED_TRADE_ITEMS: &[&str] = &[
     // Tech II drones (high value density, always in demand).

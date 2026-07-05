@@ -39,6 +39,7 @@ import type {
   ShoppingPlanView,
   TradingPnlView,
   ReprocessView,
+  OreYieldView,
   BuildPlanView,
   BomTreeView,
   ResolvedFit,
@@ -2485,6 +2486,53 @@ function ReprocessCalc(): ReactNode {
             </span>
           </div>
         </>
+      )}
+      <OreYieldRanking eff={eff} />
+    </div>
+  );
+}
+
+// "What should I mine now?" — ranks the main ores by refined value per m³
+// (throughput is volume-limited, so ISK/m³ is what matters), at the shared
+// reprocessing efficiency from the calculator above.
+function OreYieldRanking({ eff }: { eff: number }): ReactNode {
+  const [rows, setRows] = useState<OreYieldView[] | null>(null);
+  const [open, setOpen] = useState(false);
+
+  function load() {
+    setOpen(true);
+    api.scanOreYields(eff / 100).then(setRows).catch(() => setRows([]));
+  }
+
+  return (
+    <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+      <button onClick={() => (open ? setOpen(false) : load())}>
+        {open ? "Hide ore ranking" : "What should I mine now? (ISK/m³)"}
+      </button>
+      {open && rows && rows.length === 0 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No ore refine data — needs the full prebuilt SDE.
+        </p>
+      )}
+      {open && rows && rows.length > 0 && (
+        <table className="holdings" style={{ marginTop: 8 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Ore</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>ISK/unit</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>ISK/m³</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((o) => (
+              <tr key={o.type_id}>
+                <td>{o.name}</td>
+                <td className="mono num">{ISK.format(o.isk_per_unit)}</td>
+                <td className="mono num pos">{ISK.format(o.isk_per_m3)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );

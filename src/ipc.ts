@@ -53,6 +53,7 @@ import type {
   TradeOpportunity,
   ArbitrageView,
   ReprocessView,
+  OreYieldView,
   BuildPlanView,
   BomTreeView,
   ResolvedFit,
@@ -203,6 +204,8 @@ export const api = {
     call<ArbitrageView[]>("scan_arbitrage", { typeIds, salesTax }),
   reprocessItem: (typeId: number, units: number, efficiency?: number) =>
     call<ReprocessView | null>("reprocess_item", { typeId, units, efficiency }),
+  scanOreYields: (efficiency?: number) =>
+    call<OreYieldView[]>("scan_ore_yields", { efficiency }),
   planBuild: (productTypeId: number, runs: number, me: number, activity?: string) =>
     call<BuildPlanView | null>("plan_build", { productTypeId, runs, me, activity }),
   planBomTree: (productTypeId: number, quantity: number, me: number) =>

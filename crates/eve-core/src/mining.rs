@@ -53,6 +53,23 @@ pub fn estimated_yield(by_ore: &[OreTotal], prices: &PriceMap) -> f64 {
         .sum()
 }
 
+/// The value density of an ore for the "what should I mine now?" ranking: since
+/// a mining laser fills the hold by volume, ISK per m³ is what actually decides
+/// throughput, not ISK per unit. Given the refined value of `units` and the
+/// per-unit volume, returns `(isk_per_unit, isk_per_m3)`. Pure.
+pub fn value_density(refined_value: f64, units: i64, volume_per_unit: f64) -> (f64, f64) {
+    if units <= 0 {
+        return (0.0, 0.0);
+    }
+    let per_unit = refined_value / units as f64;
+    let per_m3 = if volume_per_unit > 0.0 {
+        per_unit / volume_per_unit
+    } else {
+        0.0
+    };
+    (per_unit, per_m3)
+}
+
 /// Aggregate ledger rows by ore type, count active days, and total the units.
 /// Sorted by quantity descending. Pure → unit-tested.
 pub fn summarize_mining(entries: &[MiningEntry]) -> MiningSummary {
@@ -168,5 +185,16 @@ mod tests {
             OreTotal { type_id: 999, quantity: 50 },  // unpriced → 0
         ];
         assert_eq!(estimated_yield(&by_ore, &prices), 5000.0);
+    }
+
+    #[test]
+    fn value_density_is_per_m3() {
+        // 1000 units refine to 6000 ISK; each unit is 0.1 m³.
+        let (per_unit, per_m3) = value_density(6000.0, 1000, 0.1);
+        assert!((per_unit - 6.0).abs() < 1e-9);
+        assert!((per_m3 - 60.0).abs() < 1e-9);
+        // Guards: zero units / zero volume never divide by zero.
+        assert_eq!(value_density(6000.0, 0, 0.1), (0.0, 0.0));
+        assert_eq!(value_density(6000.0, 1000, 0.0).1, 0.0);
     }
 }

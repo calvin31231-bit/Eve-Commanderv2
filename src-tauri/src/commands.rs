@@ -2016,6 +2016,68 @@ pub async fn reprocess_item(
     }))
 }
 
+/// One ore ranked by refined-mineral value density.
+#[derive(Debug, Serialize)]
+pub struct OreYieldView {
+    pub type_id: i64,
+    pub name: String,
+    /// Refined mineral value of one unit of ore at the given efficiency.
+    pub isk_per_unit: f64,
+    /// The number that matters for a mining hold: ISK per m³.
+    pub isk_per_m3: f64,
+    /// Ore volume per unit (m³).
+    pub volume: f64,
+}
+
+/// "What should I mine now?" — rank the main ores by refined-mineral value per
+/// m³ (what a volume-limited mining hold actually cares about) at the given
+/// reprocessing `efficiency`. Uses one representative portion per ore so the
+/// per-unit figures are exact. Ores the SDE can't refine (seed-only) are
+/// skipped. Most valuable per m³ first.
+#[tauri::command]
+pub async fn scan_ore_yields(
+    state: State<'_, AppState>,
+    efficiency: Option<f64>,
+) -> CmdResult<Vec<OreYieldView>> {
+    let prices = state.prices.price_map().await.map_err(|e| e.to_string())?;
+    let eff = efficiency.unwrap_or(0.7).clamp(0.0, 1.0);
+    let sde = state.names.sde();
+
+    let mut out: Vec<OreYieldView> = Vec::new();
+    for &type_id in eve_core::market_universe::ORES {
+        // Refine one whole portion so there is no leftover to distort the value.
+        let portion = sde.portion_size(type_id).await.ok().unwrap_or(0);
+        let units = if portion > 0 { portion } else { 100 };
+        let Some(result) = state
+            .reprocess
+            .refine(type_id, units, eff, &prices)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+        let volume = sde.type_volume(type_id).await.ok().flatten().unwrap_or(0.0);
+        let (isk_per_unit, isk_per_m3) =
+            eve_core::mining::value_density(result.refined_value, units, volume);
+        if isk_per_unit <= 0.0 {
+            continue;
+        }
+        out.push(OreYieldView { type_id, name: String::new(), isk_per_unit, isk_per_m3, volume });
+    }
+
+    let ids: Vec<i64> = out.iter().map(|o| o.type_id).collect();
+    let names = names_for(&state, &ids).await;
+    for o in &mut out {
+        o.name = named(&names, o.type_id);
+    }
+    out.sort_by(|a, b| {
+        b.isk_per_m3
+            .partial_cmp(&a.isk_per_m3)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    Ok(out)
+}
+
 /// A build-plan material line with its name resolved.
 #[derive(Debug, Serialize)]
 pub struct PlanLineView {

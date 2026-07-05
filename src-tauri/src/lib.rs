@@ -402,6 +402,7 @@ pub fn run() {
             commands::scan_hub_trades,
             commands::shopping_plan,
             commands::reprocess_item,
+            commands::scan_ore_yields,
             commands::plan_build,
             commands::plan_bom_tree,
             commands::parse_fit,
