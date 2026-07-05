@@ -155,6 +155,75 @@ pub fn assess_gatecamp(kills_last_hour: i64) -> GateCampAssessment {
     GateCampAssessment { kills_last_hour, level, message }
 }
 
+/// Notorious high-sec ganking chokepoints — systems freighters/haulers are
+/// funneled through and where suicide-gank camps habitually sit. Flagged on a
+/// route regardless of the live kill count, since a quiet hour doesn't mean the
+/// camp has moved. (System ids from the SDE.)
+pub const GANK_CHOKEPOINTS: &[(i64, &str)] = &[
+    (30000119, "Uedama"),
+    (30000144, "Rancer"),
+    (30002813, "Tama"),
+    (30002053, "Hek"),
+    (30045352, "Ahbazon"),
+];
+
+/// One hop of a route with its recent kill count and threat flag.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RouteHop {
+    pub system_id: i64,
+    pub kills_last_hour: i64,
+    pub level: ThreatLevel,
+    /// True if this system is a known ganking chokepoint.
+    pub known_gank_hub: bool,
+}
+
+/// A whole route scored for danger: per-hop flags plus the roll-up.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RouteDanger {
+    pub hops: Vec<RouteHop>,
+    pub total_kills: i64,
+    pub worst_level: ThreatLevel,
+    /// System id of the single hottest hop, if any hop had kills.
+    pub hottest_system: Option<i64>,
+}
+
+/// Score each system on a route (`route` = ordered system ids) from the hourly
+/// kill heatmap (`kills`: system id → ship+pod kills) and the known-chokepoint
+/// set. A hop's flag is the gate-camp read for its kills, escalated to at least
+/// Caution when it's a known gank hub. Pure.
+pub fn assess_route(
+    route: &[i64],
+    kills: &std::collections::HashMap<i64, i64>,
+    gank_hubs: &std::collections::HashSet<i64>,
+) -> RouteDanger {
+    let mut hops = Vec::with_capacity(route.len());
+    let mut total_kills = 0;
+    let mut worst_level = ThreatLevel::Safe;
+    let mut hottest: Option<(i64, i64)> = None; // (system_id, kills)
+
+    for &system_id in route {
+        let k = kills.get(&system_id).copied().unwrap_or(0);
+        total_kills += k;
+        let known_gank_hub = gank_hubs.contains(&system_id);
+        let mut level = assess_gatecamp(k).level;
+        if known_gank_hub {
+            level = level.max(ThreatLevel::Caution);
+        }
+        worst_level = worst_level.max(level);
+        if k > 0 && hottest.map(|(_, hk)| k > hk).unwrap_or(true) {
+            hottest = Some((system_id, k));
+        }
+        hops.push(RouteHop { system_id, kills_last_hour: k, level, known_gank_hub });
+    }
+
+    RouteDanger {
+        hops,
+        total_kills,
+        worst_level,
+        hottest_system: hottest.map(|(id, _)| id),
+    }
+}
+
 /// A neighbourhood-safety read: total recent kills across a system and its
 /// neighbours mapped to a threat flag.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -658,6 +727,29 @@ mod tests {
         assert_eq!(assess_gatecamp(0).level, ThreatLevel::Safe);
         assert_eq!(assess_gatecamp(2).level, ThreatLevel::Caution);
         assert_eq!(assess_gatecamp(9).level, ThreatLevel::Danger);
+    }
+
+    #[test]
+    fn route_danger_flags_hottest_hop_and_gank_hubs() {
+        use std::collections::{HashMap, HashSet};
+        // Route: quiet → hot → known-gank-hub-but-quiet.
+        let route = vec![30000142, 30002187, 30000119];
+        let mut kills = HashMap::new();
+        kills.insert(30002187, 7); // Amarr hot this hour
+        let mut hubs = HashSet::new();
+        hubs.insert(30000119i64); // Uedama
+        let r = assess_route(&route, &kills, &hubs);
+
+        assert_eq!(r.total_kills, 7);
+        assert_eq!(r.hottest_system, Some(30002187));
+        assert_eq!(r.worst_level, ThreatLevel::Danger); // 7 kills → Danger
+        // Quiet first hop is safe.
+        assert_eq!(r.hops[0].level, ThreatLevel::Safe);
+        assert!(!r.hops[0].known_gank_hub);
+        // Uedama has no kills but is a known hub → floored to Caution.
+        assert!(r.hops[2].known_gank_hub);
+        assert_eq!(r.hops[2].kills_last_hour, 0);
+        assert_eq!(r.hops[2].level, ThreatLevel::Caution);
     }
 
     #[test]

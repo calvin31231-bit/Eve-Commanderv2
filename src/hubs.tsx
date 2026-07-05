@@ -6415,11 +6415,32 @@ function NavigationHub({ character }: { character: Character | null }): ReactNod
           <div style={{ marginTop: 10 }}>
             <p style={{ marginTop: 0, color: "var(--text-dim)", fontSize: 12 }}>
               {route.jumps} jump{route.jumps === 1 ? "" : "s"}
+              {route.route_kills > 0 && (
+                <span
+                  style={{ color: route.worst_threat === "Danger" ? "var(--danger)" : "var(--caution)" }}
+                  title="Ship+pod kills along the route this hour"
+                >
+                  {" "}· ⚠{route.route_kills} kills ({route.worst_threat})
+                </span>
+              )}
             </p>
             <ol className="route-list">
               {route.hops.map((h) => (
                 <li key={h.system_id}>
                   <span style={{ color: secColor(h.security) }}>{h.security.toFixed(1)}</span> {h.name}
+                  {h.known_gank_hub && (
+                    <span style={{ color: "var(--danger)", fontSize: 11 }} title="Known ganking chokepoint">
+                      {" "}⚑ gank hub
+                    </span>
+                  )}
+                  {h.kills_last_hour > 0 && (
+                    <span
+                      style={{ color: h.threat === "Danger" ? "var(--danger)" : "var(--caution)", fontSize: 11 }}
+                      title="Ship+pod kills here this hour"
+                    >
+                      {" "}⚠{h.kills_last_hour}
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>

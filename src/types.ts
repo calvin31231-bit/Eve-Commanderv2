@@ -705,6 +705,9 @@ export interface RouteHop {
   system_id: number;
   name: string;
   security: number;
+  kills_last_hour: number;
+  known_gank_hub: boolean;
+  threat: string;
 }
 
 export interface AgentFinderView {
@@ -945,6 +948,8 @@ export interface RouteView {
   jumps: number;
   hops: RouteHop[];
   message: string;
+  route_kills: number;
+  worst_threat: string;
 }
 
 export type Severity = "Info" | "Warning" | "Critical";

@@ -4146,6 +4146,12 @@ pub struct RouteHop {
     pub system_id: i64,
     pub name: String,
     pub security: f64,
+    /// Ship+pod kills in this system in the last hour (heatmap).
+    pub kills_last_hour: i64,
+    /// True if this is a known ganking chokepoint (Uedama, Rancer, …).
+    pub known_gank_hub: bool,
+    /// Threat flag for this hop ("Safe" | "Caution" | "Danger" | …).
+    pub threat: String,
 }
 
 /// A planned route between two systems.
@@ -4156,6 +4162,10 @@ pub struct RouteView {
     pub jumps: i64,
     pub hops: Vec<RouteHop>,
     pub message: String,
+    /// Ship+pod kills summed along the whole route this hour.
+    pub route_kills: i64,
+    /// The worst per-hop threat flag on the route.
+    pub worst_threat: String,
 }
 
 /// Plan a route between two systems by name, using ESI's solver. `flag` is
@@ -4174,6 +4184,8 @@ pub async fn plan_route(
         jumps: 0,
         hops: Vec::new(),
         message: message.to_string(),
+        route_kills: 0,
+        worst_threat: "Safe".to_string(),
     };
 
     let (origin_id, dest_id) = tokio::join!(
@@ -4196,17 +4208,40 @@ pub async fn plan_route(
         return Ok(not_found("No route found."));
     }
 
+    // Overlay the hourly kill heatmap + known gank chokepoints on the route.
+    let kills: std::collections::HashMap<i64, i64> = state
+        .universe
+        .system_kills()
+        .await
+        .map(|v| v.into_iter().map(|k| (k.system_id, k.ship_kills + k.pod_kills)).collect())
+        .unwrap_or_default();
+    let gank_hubs: std::collections::HashSet<i64> = eve_core::intel::GANK_CHOKEPOINTS
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    let danger = eve_core::intel::assess_route(&ids, &kills, &gank_hubs);
+
     let mut hops = Vec::with_capacity(ids.len());
-    for id in &ids {
+    for (id, hop) in ids.iter().zip(danger.hops.iter()) {
         let info = state.universe.system_info(*id).await.ok();
         hops.push(RouteHop {
             system_id: *id,
             name: info.as_ref().map(|i| i.name.clone()).unwrap_or_else(|| format!("System {id}")),
             security: info.as_ref().map(|i| i.security_status).unwrap_or(0.0),
+            kills_last_hour: hop.kills_last_hour,
+            known_gank_hub: hop.known_gank_hub,
+            threat: hop.level.as_str().to_string(),
         });
     }
     let jumps = (hops.len() as i64 - 1).max(0);
-    Ok(RouteView { found: true, jumps, hops, message: format!("{jumps} jumps") })
+    Ok(RouteView {
+        found: true,
+        jumps,
+        hops,
+        message: format!("{jumps} jumps"),
+        route_kills: danger.total_kills,
+        worst_threat: danger.worst_level.as_str().to_string(),
+    })
 }
 
 /// A hauling estimate: economics + route risk.
@@ -4293,10 +4328,16 @@ pub async fn courier_estimate(
         .map(|v| v.into_iter().map(|k| (k.system_id, k.ship_kills + k.pod_kills)).collect())
         .unwrap_or_default();
 
+    let gank_hubs: std::collections::HashSet<i64> = eve_core::intel::GANK_CHOKEPOINTS
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    let danger = eve_core::intel::assess_route(&ids, &kills, &gank_hubs);
+
     let mut hops = Vec::with_capacity(ids.len());
     let mut lowsec_hops = 0;
     let mut kills_on_route = 0;
-    for id in &ids {
+    for (id, hop) in ids.iter().zip(danger.hops.iter()) {
         let info = state.universe.system_info(*id).await.ok();
         let security = info.as_ref().map(|i| i.security_status).unwrap_or(0.0);
         if security < 0.45 {
@@ -4307,6 +4348,9 @@ pub async fn courier_estimate(
             system_id: *id,
             name: info.as_ref().map(|i| i.name.clone()).unwrap_or_else(|| format!("System {id}")),
             security,
+            kills_last_hour: hop.kills_last_hour,
+            known_gank_hub: hop.known_gank_hub,
+            threat: hop.level.as_str().to_string(),
         });
     }
 
