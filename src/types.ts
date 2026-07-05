@@ -758,6 +758,21 @@ export interface HubQuoteView {
   best_buy: number | null;
 }
 
+export interface HubTradeView {
+  type_id: number;
+  name: string;
+  buy_hub: string;
+  sell_hub: string;
+  buy_price: number;
+  sell_price: number;
+  profit_per_unit: number;
+  margin_pct: number;
+  volume: number;
+  units_per_trip: number;
+  trip_profit: number;
+  statement: string;
+}
+
 export interface HubBoardView {
   type_id: number;
   name: string;

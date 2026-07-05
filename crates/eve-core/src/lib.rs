@@ -57,6 +57,7 @@ pub mod loot;
 pub mod lp;
 pub mod mail;
 pub mod market;
+pub mod market_universe;
 pub mod marketdata;
 pub mod mcp;
 pub mod mining;

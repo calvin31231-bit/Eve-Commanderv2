@@ -1443,6 +1443,134 @@ pub async fn scan_arbitrage(
     Ok(out)
 }
 
+/// One ranked hub-trade opportunity across the curated universe.
+#[derive(Debug, Serialize)]
+pub struct HubTradeView {
+    pub type_id: i64,
+    pub name: String,
+    pub buy_hub: String,
+    pub sell_hub: String,
+    pub buy_price: f64,
+    /// Sell/relist price at the destination (buy order for flip, sell order for relist).
+    pub sell_price: f64,
+    pub profit_per_unit: f64,
+    pub margin_pct: f64,
+    pub volume: f64,
+    /// Units that fit in the given cargo (0 when no cargo/volume supplied).
+    pub units_per_trip: i64,
+    /// Total profit for one full cargo (0 when no cargo/volume supplied).
+    pub trip_profit: f64,
+    /// Plain-language statement, e.g. "Buy in Jita, sell in Amarr".
+    pub statement: String,
+}
+
+/// The curated-universe Top-N hub-trade scan — the spreadsheet's headline: rank
+/// the best trades right now across a hand-picked liquid item list, in either
+/// **flip** mode (sell into buy orders) or **relist** mode (buy low, list a
+/// sell order at a dearer hub). With `cargo_m3`, ranks by total per-trip profit
+/// and reports units-per-trip; without it, ranks by ISK/m³. `items` overrides
+/// the curated list (item names). `top_n` caps the result (default 20).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn scan_hub_trades(
+    state: State<'_, AppState>,
+    items: Option<Vec<String>>,
+    relist: Option<bool>,
+    cargo_m3: Option<f64>,
+    sales_tax: Option<f64>,
+    broker_fee: Option<f64>,
+    top_n: Option<usize>,
+) -> CmdResult<Vec<HubTradeView>> {
+    let sde = state.names.sde();
+    let relist = relist.unwrap_or(false);
+    let cargo = cargo_m3.unwrap_or(0.0).max(0.0);
+    let mut fees = eve_core::marketdata::TradeFees::default();
+    if let Some(t) = sales_tax {
+        fees.sales_tax = t;
+    }
+    if let Some(b) = broker_fee {
+        fees.broker_fee = b;
+    }
+
+    // Resolve the item universe (supplied names, else the curated list) → ids.
+    let names_in: Vec<String> = match items {
+        Some(v) => v,
+        None => eve_core::market_universe::CURATED_TRADE_ITEMS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+    };
+    let mut type_ids: Vec<i64> = Vec::new();
+    for n in &names_in {
+        match sde.type_id_by_name(n.trim()).await.map_err(|e| e.to_string())? {
+            Some(id) => type_ids.push(id),
+            None => {
+                if let Ok(id) = n.trim().parse::<i64>() {
+                    type_ids.push(id);
+                }
+            }
+        }
+    }
+    type_ids.sort_unstable();
+    type_ids.dedup();
+
+    let mut out: Vec<HubTradeView> = Vec::new();
+    for type_id in type_ids {
+        let Ok(hubs) = state.marketdata.compare(type_id).await else { continue };
+        // Pick the per-item best trade for the chosen mode.
+        let (buy_hub, sell_hub, buy_price, sell_price, profit, margin) = if relist {
+            match eve_core::marketdata::best_sell_to_sell(&hubs, fees) {
+                Some(s) => (s.buy_hub, s.sell_hub, s.buy_price, s.list_price, s.profit_per_unit, s.margin_pct),
+                None => continue,
+            }
+        } else {
+            match eve_core::marketdata::best_arbitrage(&hubs, fees) {
+                Some(f) => (f.buy_hub, f.sell_hub, f.buy_price, f.sell_price, f.profit_per_unit, f.margin_pct),
+                None => continue,
+            }
+        };
+        let volume = sde.type_volume(type_id).await.ok().flatten().unwrap_or(0.0);
+        let units_per_trip = if cargo > 0.0 && volume > 0.0 {
+            (cargo / volume).floor() as i64
+        } else {
+            0
+        };
+        out.push(HubTradeView {
+            type_id,
+            name: String::new(), // filled after batch name resolve
+            statement: format!("Buy in {buy_hub}, {} in {sell_hub}", if relist { "list a sell order" } else { "sell" }),
+            buy_hub,
+            sell_hub,
+            buy_price,
+            sell_price,
+            profit_per_unit: profit,
+            margin_pct: margin,
+            volume,
+            units_per_trip,
+            trip_profit: units_per_trip as f64 * profit,
+        });
+    }
+
+    // Rank: by total trip profit when cargo is given, else by ISK/m³.
+    out.sort_by(|a, b| {
+        let (ka, kb) = if cargo > 0.0 {
+            (a.trip_profit, b.trip_profit)
+        } else {
+            let m = |t: &HubTradeView| if t.volume > 0.0 { t.profit_per_unit / t.volume } else { t.profit_per_unit };
+            (m(a), m(b))
+        };
+        kb.partial_cmp(&ka).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    out.truncate(top_n.unwrap_or(20));
+
+    // Resolve names for the survivors only.
+    let names = names_for(&state, &out.iter().map(|t| t.type_id).collect::<Vec<_>>()).await;
+    for t in &mut out {
+        t.name = named(&names, t.type_id);
+    }
+    Ok(out)
+}
+
 /// One hub's best buy/sell for an item, with a per-hub sell/buy volume.
 #[derive(Debug, Serialize)]
 pub struct HubQuoteView {

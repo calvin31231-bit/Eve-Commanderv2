@@ -34,8 +34,8 @@ import type {
   ResearchAgentView,
   ServerStatus,
   TradeOpportunity,
-  ArbitrageView,
   HubBoardView,
+  HubTradeView,
   TradingPnlView,
   ReprocessView,
   BuildPlanView,
@@ -2060,59 +2060,75 @@ function HubAnalyzer(): ReactNode {
   );
 }
 
-function ArbitrageScanner(): ReactNode {
-  const [rows, setRows] = useState<ArbitrageView[] | null>(null);
+// The spreadsheet's headline: rank the best hub trades right now across the
+// curated universe, in flip or relist mode, cargo-aware (units + trip profit).
+function HubTradeScanner(): ReactNode {
+  const [rows, setRows] = useState<HubTradeView[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [relist, setRelist] = useState(false);
+  const [cargo, setCargo] = useState("");
+  const cargoM3 = parseFloat(cargo) || 0;
 
   function scan() {
     if (!isTauri()) return;
     setLoading(true);
     api
-      .scanArbitrage()
-      .then(setRows)
-      .catch(() => setRows([]))
-      .finally(() => setLoading(false));
+      .scanHubTrades({ relist, cargoM3: cargoM3 > 0 ? cargoM3 : undefined, topN: 25 })
+      .then((r) => { setRows(r); setLoading(false); })
+      .catch(() => { setRows([]); setLoading(false); });
   }
 
   return (
-    <div className="card station-scanner">
-      <h3>
-        Hub Arbitrage{" "}
-        <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· hauling</span>
-      </h3>
+    <div className="card">
+      <h3>Top Hub Trades <span style={{ color: "var(--text-dim)", fontWeight: 400, fontSize: 12 }}>· curated universe</span></h3>
       <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
-        Best buy-low / sell-high haul across the five major hubs, net of 4.5% tax. Ranked by
-        ISK per m³ of cargo — what actually fills a hauler.
+        Ranks the best cross-hub trades right now across a curated liquid item list. Enter a cargo
+        size to rank by total per-trip profit and see how many units fit.
       </p>
-      <button onClick={scan} disabled={loading}>
-        {loading ? "Scanning…" : rows ? "Rescan" : "Scan"}
-      </button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12, display: "flex", gap: 4, alignItems: "center" }}>
+          <input type="checkbox" checked={relist} onChange={(e) => setRelist(e.target.checked)} />
+          Sell-to-sell (relist)
+        </label>
+        <input
+          value={cargo}
+          onChange={(e) => setCargo(e.target.value)}
+          placeholder="cargo m³ (optional)"
+          style={{ width: 130 }}
+        />
+        <button onClick={scan} disabled={loading}>{loading ? "Scanning hubs…" : "Scan"}</button>
+      </div>
+      {rows && rows.length === 0 && !loading && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No profitable trades found right now.</p>
+      )}
       {rows && rows.length > 0 && (
         <table className="holdings" style={{ marginTop: 10 }}>
           <thead>
             <tr>
               <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Item</th>
               <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Route</th>
-              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Profit/u</th>
-              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>ISK/m³</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>{cargoM3 > 0 ? "Trip profit" : "ISK/unit"}</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Margin</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((o) => (
-              <tr key={o.type_id}>
-                <td>{o.name}</td>
-                <td style={{ fontSize: 12 }}>
-                  {o.buy_hub} → {o.sell_hub}
+            {rows.map((t) => (
+              <tr key={t.type_id}>
+                <td>
+                  <ItemHover name={t.name} />
+                  {cargoM3 > 0 && t.units_per_trip > 0 && (
+                    <span style={{ color: "var(--text-dim)", fontSize: 11 }}> · {ISK.format(t.units_per_trip)}u</span>
+                  )}
                 </td>
-                <td className="mono num">{ISK.format(o.profit_per_unit)}</td>
-                <td className="mono num pos">{o.profit_per_m3 > 0 ? ISK.format(o.profit_per_m3) : "—"}</td>
+                <td className="loc">{t.buy_hub} → {t.sell_hub}</td>
+                <td className="mono num pos">
+                  {cargoM3 > 0 && t.trip_profit > 0 ? ISK.format(t.trip_profit) : ISK.format(t.profit_per_unit)}
+                </td>
+                <td className="mono num" style={{ color: "var(--text-dim)" }}>{(t.margin_pct * 100).toFixed(0)}%</td>
               </tr>
             ))}
           </tbody>
         </table>
-      )}
-      {rows && rows.length === 0 && !loading && (
-        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No profitable hauls found.</p>
       )}
     </div>
   );
@@ -2531,8 +2547,8 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
         <>
           <MarketBrowser />
           <HubAnalyzer />
+          <HubTradeScanner />
           <StationScanner />
-          <ArbitrageScanner />
         </>
       )}
       {sub === "industry" && (

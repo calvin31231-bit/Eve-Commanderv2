@@ -399,6 +399,7 @@ pub fn run() {
             commands::scan_station_trades,
             commands::scan_arbitrage,
             commands::get_hub_board,
+            commands::scan_hub_trades,
             commands::reprocess_item,
             commands::plan_build,
             commands::parse_fit,

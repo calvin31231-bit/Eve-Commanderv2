@@ -43,6 +43,7 @@ import type {
   MailView,
   MarketView,
   HubBoardView,
+  HubTradeView,
   TradingPnlView,
   MiningView,
   ResearchAgentView,
@@ -179,6 +180,14 @@ export const api = {
     call<TradeOpportunity[]>("scan_station_trades", { typeIds, brokerFee, salesTax }),
   getHubBoard: (query: string, salesTax?: number, brokerFee?: number) =>
     call<HubBoardView>("get_hub_board", { query, salesTax, brokerFee }),
+  scanHubTrades: (opts: {
+    items?: string[];
+    relist?: boolean;
+    cargoM3?: number;
+    salesTax?: number;
+    brokerFee?: number;
+    topN?: number;
+  }) => call<HubTradeView[]>("scan_hub_trades", opts),
   getTradingPnl: (characterId: number) =>
     call<TradingPnlView>("get_trading_pnl", { characterId }),
   scanArbitrage: (typeIds?: number[], salesTax?: number) =>
