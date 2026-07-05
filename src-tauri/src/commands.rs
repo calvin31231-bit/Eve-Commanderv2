@@ -2815,7 +2815,16 @@ pub struct FitStatsView {
     pub cap_peak_recharge: f64,
     /// The ship's trait bonuses (CCP's own text), display-only.
     pub hull_bonuses: Vec<String>,
+    /// DPS-vs-range curve (turret falloff applied; transversal ignored).
+    pub dps_curve: Vec<DpsPoint>,
     pub note: String,
+}
+
+/// One point on the DPS-vs-range curve.
+#[derive(Debug, Serialize)]
+pub struct DpsPoint {
+    pub range_km: f64,
+    pub dps: f64,
 }
 
 /// Format one ship-trait row into a display line. `unit_id` 105 is a percentage.
@@ -2874,6 +2883,7 @@ pub(crate) async fn compute_fit_stats(
         cap_capacity: 0.0,
         cap_peak_recharge: 0.0,
         hull_bonuses: Vec::new(),
+        dps_curve: Vec::new(),
         note: note.to_string(),
     };
 
@@ -2955,6 +2965,17 @@ pub(crate) async fn compute_fit_stats(
     let dmg = dogma::fit_damage(&weapons);
     let reps = dogma::local_reps(&module_attrs);
 
+    // DPS-vs-range curve: sample out to a bit past the longest weapon's reach.
+    let max_reach = weapons
+        .iter()
+        .map(|w| w.optimal_m + 3.0 * w.falloff_m)
+        .fold(0.0_f64, f64::max);
+    let max_range = if max_reach > 0.0 { max_reach } else { 50_000.0 };
+    let dps_curve: Vec<DpsPoint> = dogma::dps_curve(&weapons, max_range, 24)
+        .into_iter()
+        .map(|(r, d)| DpsPoint { range_km: r / 1000.0, dps: d })
+        .collect();
+
     // The ship's trait bonuses, shown verbatim (CCP's text). Display-only — not
     // auto-applied to DPS, which needs the full dogma-effect engine.
     let hull_bonuses: Vec<String> = sde
@@ -2979,6 +3000,7 @@ pub(crate) async fn compute_fit_stats(
         cap_capacity,
         cap_peak_recharge: cap.peak_recharge,
         hull_bonuses,
+        dps_curve,
         note: "EHP includes buffer + resist modules (stacking-penalised). DPS reflects fitted \
                weapons + your turret/missile damage skills; ship hull bonuses and specialisations \
                not yet modelled. Cap is base-hull peak recharge."

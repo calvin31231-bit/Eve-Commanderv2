@@ -112,6 +112,11 @@ pub struct Weapon {
     pub explosive: f64,
     pub multiplier: f64,
     pub rof_seconds: f64,
+    /// Optimal range in metres (0 = unknown; treated as a flat-DPS weapon like
+    /// a missile launcher with no falloff curve).
+    pub optimal_m: f64,
+    /// Falloff in metres (0 = a hard range cliff at optimal).
+    pub falloff_m: f64,
 }
 
 impl Weapon {
@@ -126,6 +131,44 @@ impl Weapon {
         }
         self.volley() / self.rof_seconds
     }
+
+    /// Sustained DPS at `range_m`, applying the turret hit-quality falloff curve
+    /// (transversal ignored — this is the standard "sitting duck" range graph).
+    /// Weapons with no range data (optimal 0) return flat DPS. Pure.
+    pub fn dps_at_range(&self, range_m: f64) -> f64 {
+        self.dps() * hit_fraction(range_m, self.optimal_m, self.falloff_m)
+    }
+}
+
+/// Turret hit-quality fraction at `range` given `optimal` + `falloff` (all
+/// metres): 1.0 within optimal, decaying as `0.5^((over/falloff)^2)` beyond it.
+/// With no range data (optimal 0) it's a flat 1.0. Pure.
+pub fn hit_fraction(range: f64, optimal: f64, falloff: f64) -> f64 {
+    if optimal <= 0.0 {
+        return 1.0; // no range model (e.g. missiles) → flat DPS
+    }
+    let over = (range - optimal).max(0.0);
+    if over <= 0.0 {
+        return 1.0;
+    }
+    if falloff <= 0.0 {
+        return 0.0; // hard cliff at optimal
+    }
+    let x = over / falloff;
+    0.5f64.powf(x * x)
+}
+
+/// A DPS-vs-range curve: `(range_m, total_dps)` samples across a fit's weapons,
+/// from 0 out to `max_range_m` in `steps` points. Pure.
+pub fn dps_curve(weapons: &[Weapon], max_range_m: f64, steps: usize) -> Vec<(f64, f64)> {
+    let steps = steps.max(2);
+    (0..steps)
+        .map(|i| {
+            let r = max_range_m * (i as f64) / ((steps - 1) as f64);
+            let dps = weapons.iter().map(|w| w.dps_at_range(r)).sum();
+            (r, dps)
+        })
+        .collect()
 }
 
 /// Aggregate DPS + alpha (volley) across a fit's weapons. Pure.
@@ -206,6 +249,8 @@ pub mod attr {
     pub const DMG_EXP: i64 = 116;
     pub const DAMAGE_MULTIPLIER: i64 = 64;
     pub const ROF_MS: i64 = 51;
+    pub const OPTIMAL_M: i64 = 54; // turret optimal range (metres)
+    pub const FALLOFF_M: i64 = 158; // turret falloff (metres)
 }
 
 type Attrs = std::collections::HashMap<i64, f64>;
@@ -277,7 +322,10 @@ pub fn weapon_from(module: &Attrs, charge: Option<&Attrs>) -> Option<Weapon> {
     if rof_seconds <= 0.0 {
         return None;
     }
-    Some(Weapon { em, thermal, kinetic, explosive, multiplier, rof_seconds })
+    // Range attributes live on the module (turret), not the charge.
+    let optimal_m = module.get(&attr::OPTIMAL_M).copied().unwrap_or(0.0);
+    let falloff_m = module.get(&attr::FALLOFF_M).copied().unwrap_or(0.0);
+    Some(Weapon { em, thermal, kinetic, explosive, multiplier, rof_seconds, optimal_m, falloff_m })
 }
 
 /// Apply a layer's resist modules to a base resonance. Each module carries a
@@ -461,12 +509,24 @@ mod tests {
     #[test]
     fn dps_and_volley() {
         // 100 total damage/shot, x2 multiplier, 2s rof → volley 200, dps 100.
-        let w = Weapon { em: 25.0, thermal: 25.0, kinetic: 25.0, explosive: 25.0, multiplier: 2.0, rof_seconds: 2.0 };
+        let w = Weapon { em: 25.0, thermal: 25.0, kinetic: 25.0, explosive: 25.0, multiplier: 2.0, rof_seconds: 2.0, optimal_m: 10_000.0, falloff_m: 5_000.0 };
         assert!((w.volley() - 200.0).abs() < 1e-6);
         assert!((w.dps() - 100.0).abs() < 1e-6);
         let agg = fit_damage(&[w, w]);
         assert!((agg.dps - 200.0).abs() < 1e-6);
         assert!((agg.volley - 400.0).abs() < 1e-6);
+
+        // Range curve: full DPS inside optimal, ~half a falloff out, ~0 far off.
+        assert!((w.dps_at_range(5_000.0) - 100.0).abs() < 1e-6);
+        assert!((w.dps_at_range(15_000.0) - 50.0).abs() < 1e-6); // one falloff → 0.5^1
+        assert!(w.dps_at_range(40_000.0) < 1.0);
+        // A weapon with no range data is flat (missile-like).
+        let missile = Weapon { optimal_m: 0.0, falloff_m: 0.0, ..w };
+        assert!((missile.dps_at_range(100_000.0) - 100.0).abs() < 1e-6);
+        // Curve spans 0..max and is monotonically non-increasing for one turret.
+        let curve = dps_curve(&[w], 40_000.0, 9);
+        assert_eq!(curve.len(), 9);
+        assert!(curve.windows(2).all(|p| p[1].1 <= p[0].1 + 1e-9));
     }
 
     #[test]

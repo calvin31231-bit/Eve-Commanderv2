@@ -1059,7 +1059,13 @@ export interface FitStatsView {
   cap_capacity: number;
   cap_peak_recharge: number;
   hull_bonuses: string[];
+  dps_curve: DpsPoint[];
   note: string;
+}
+
+export interface DpsPoint {
+  range_km: number;
+  dps: number;
 }
 
 export interface ImplantView {

@@ -1845,6 +1845,32 @@ function NetWorthChart({ points }: { points: { at: number; value: number }[] }):
   );
 }
 
+// DPS-vs-range line chart (turret falloff applied). Range on x, DPS on y.
+function DpsRangeChart({ curve }: { curve: { range_km: number; dps: number }[] }): ReactNode {
+  const W = 260;
+  const H = 70;
+  const pad = 4;
+  const maxDps = Math.max(...curve.map((p) => p.dps), 1);
+  const maxRange = Math.max(...curve.map((p) => p.range_km), 1);
+  const pts = curve
+    .map((p) => {
+      const x = pad + (p.range_km / maxRange) * (W - 2 * pad);
+      const y = H - pad - (p.dps / maxDps) * (H - 2 * pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <div style={{ marginTop: 8 }}>
+      <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 2px" }}>
+        DPS vs range · peak {Math.round(maxDps)} dps · to {Math.round(maxRange)} km
+      </p>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ background: "rgba(10,14,22,0.5)", borderRadius: 6 }}>
+        <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="1.5" />
+      </svg>
+    </div>
+  );
+}
+
 function Sparkline({ values }: { values: number[] }): ReactNode {
   const w = 240;
   const h = 36;
@@ -4788,6 +4814,9 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
                   <tr><td>Capacitor</td><td className="mono num">{Math.round(stats.cap_capacity).toLocaleString()} GJ</td></tr>
                 </tbody>
               </table>
+              {stats.dps_curve.length > 1 && stats.dps_curve.some((p) => p.dps > 0) && (
+                <DpsRangeChart curve={stats.dps_curve} />
+              )}
               {stats.hull_bonuses.length > 0 && (
                 <>
                   <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 2px" }}>Hull bonuses</p>

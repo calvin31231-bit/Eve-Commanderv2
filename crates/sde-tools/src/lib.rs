@@ -465,6 +465,7 @@ impl Converter {
             482, 55, // capacitor capacity, recharge time (ms)
             114, 118, 117, 116, // em/th/kin/exp damage (charges, drones)
             64, 51, // damage multiplier, rate-of-fire/activation time (ms)
+            54, 158, // turret optimal range (m), falloff (m) — for the DPS-range curve
             72, 1159, // shield-extender + armor-plate flat HP bonuses
             68, 84, 73, // shield-boost, armor-repair amounts, module cycle time (ms)
             331, // implant slot (1-10) — marks a type as an implant
