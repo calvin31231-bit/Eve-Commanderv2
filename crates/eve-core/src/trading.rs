@@ -55,6 +55,15 @@ pub struct TradingPnl {
     pub items: Vec<ItemPnl>,
 }
 
+/// Net realized profit after fees: broker fee is paid placing both the buy and
+/// the sell order; sales tax is paid on the sale value. `broker`/`tax` are
+/// fractions (0.03 = 3%). Pure.
+pub fn net_after_fees(revenue: f64, cost: f64, broker: f64, tax: f64) -> f64 {
+    let sell_side = revenue * (1.0 - broker - tax);
+    let buy_side = cost * (1.0 + broker);
+    sell_side - buy_side
+}
+
 /// A FIFO lot of un-sold buys: (remaining units, unit price).
 struct Lot {
     qty: i64,
@@ -174,6 +183,16 @@ mod tests {
         assert_eq!(it.units_open, 50);
         assert!((it.open_cost - 350.0).abs() < 1e-6);
         assert!((pnl.total_profit - 650.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn net_after_fees_charges_both_sides() {
+        // Revenue 1500, cost 850, 3% broker, 4.5% tax.
+        // sell side = 1500*(1-0.075) = 1387.5; buy side = 850*1.03 = 875.5.
+        let net = net_after_fees(1500.0, 850.0, 0.03, 0.045);
+        assert!((net - (1387.5 - 875.5)).abs() < 1e-6);
+        // Zero fees → gross.
+        assert!((net_after_fees(1500.0, 850.0, 0.0, 0.0) - 650.0).abs() < 1e-9);
     }
 
     #[test]

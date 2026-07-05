@@ -1979,7 +1979,10 @@ function TradingPnlCard({ character }: { character: Character }): ReactNode {
             <span className="pos">{ISK.format(pnl.total_revenue)} revenue</span>
             <span className="neg">{ISK.format(pnl.total_cost)} cost</span>
             <span className={pnl.total_profit >= 0 ? "pos" : "neg"}>
-              {ISK.format(pnl.total_profit)} profit
+              {ISK.format(pnl.total_profit)} gross
+            </span>
+            <span className={pnl.total_net >= 0 ? "pos" : "neg"} title="After 3% broker + 4.5% sales tax">
+              {ISK.format(pnl.total_net)} net
             </span>
           </div>
           <table className="holdings" style={{ marginTop: 8 }}>

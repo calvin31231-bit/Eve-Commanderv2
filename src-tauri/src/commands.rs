@@ -1059,7 +1059,10 @@ pub struct ItemPnlView {
 pub struct TradingPnlView {
     pub total_revenue: f64,
     pub total_cost: f64,
+    /// Gross profit (revenue − cost), before fees.
     pub total_profit: f64,
+    /// Profit after broker fee (both sides) + sales tax (sell side).
+    pub total_net: f64,
     pub items: Vec<ItemPnlView>,
 }
 
@@ -1072,7 +1075,11 @@ pub struct TradingPnlView {
 pub async fn get_trading_pnl(
     state: State<'_, AppState>,
     character_id: i64,
+    broker_fee: Option<f64>,
+    sales_tax: Option<f64>,
 ) -> CmdResult<TradingPnlView> {
+    let broker = broker_fee.unwrap_or(0.03);
+    let tax = sales_tax.unwrap_or(0.045);
     let txns = state.wallet.transactions(character_id).await.map_err(|e| e.to_string())?;
     let trades: Vec<eve_core::trading::Trade> = txns
         .iter()
@@ -1092,6 +1099,7 @@ pub async fn get_trading_pnl(
         total_revenue: pnl.total_revenue,
         total_cost: pnl.total_cost,
         total_profit: pnl.total_profit,
+        total_net: eve_core::trading::net_after_fees(pnl.total_revenue, pnl.total_cost, broker, tax),
         items: pnl
             .items
             .into_iter()

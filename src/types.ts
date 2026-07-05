@@ -816,6 +816,7 @@ export interface TradingPnlView {
   total_revenue: number;
   total_cost: number;
   total_profit: number;
+  total_net: number;
   items: ItemPnlView[];
 }
 
