@@ -666,6 +666,9 @@ export interface IncursionView {
   influence_pct: number;
   has_boss: boolean;
   system_count: number;
+  band: string;
+  isk_hr_low_m: number;
+  isk_hr_high_m: number;
 }
 
 export interface FwSystemView {

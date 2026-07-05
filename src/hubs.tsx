@@ -5908,6 +5908,7 @@ function IncursionsPanel(): ReactNode {
               <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Staging</th>
               <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>State</th>
               <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Influence</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Est. ISK/hr</th>
             </tr>
           </thead>
           <tbody>
@@ -5916,11 +5917,14 @@ function IncursionsPanel(): ReactNode {
                 <td>
                   {r.staging_system}
                   <div style={{ color: "var(--text-dim)", fontSize: 11 }}>
-                    {r.faction} · {r.system_count} systems{r.has_boss ? " · boss up" : ""}
+                    {r.band}-sec · {r.faction} · {r.system_count} systems{r.has_boss ? " · boss up" : ""}
                   </div>
                 </td>
                 <td className="loc">{r.state}</td>
                 <td className="mono num">{r.influence_pct.toFixed(0)}%</td>
+                <td className="mono num" title="Community per-pilot estimate; varies with site type & fleet">
+                  {r.isk_hr_low_m.toFixed(0)}–{r.isk_hr_high_m.toFixed(0)}M
+                </td>
               </tr>
             ))}
           </tbody>

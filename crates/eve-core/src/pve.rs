@@ -56,6 +56,62 @@ impl FwSystem {
     }
 }
 
+/// Security band an incursion is staged in — the dominant driver of the fleet
+/// people run there and therefore the ISK/hr, per community MER/fleet lore.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IncursionBand {
+    HighSec,
+    LowSec,
+    NullSec,
+}
+
+impl IncursionBand {
+    /// Classify by the staging system's security status.
+    pub fn from_security(security: f64) -> Self {
+        if security >= 0.45 {
+            IncursionBand::HighSec
+        } else if security > 0.0 {
+            IncursionBand::LowSec
+        } else {
+            IncursionBand::NullSec
+        }
+    }
+}
+
+/// A community ISK/hr estimate for running an incursion, expressed as a range
+/// (payout swings with site type, fleet quality, and how farmed the pocket is).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct IncursionEstimate {
+    pub band: IncursionBand,
+    /// Low end of the per-pilot ISK/hr range (millions).
+    pub low_m: f64,
+    /// High end of the per-pilot ISK/hr range (millions).
+    pub high_m: f64,
+}
+
+/// Rough per-pilot ISK/hr for an incursion, keyed off its staging-system band
+/// and dampened as the constellation gets farmed (falling influence lengthens
+/// spawns). Deterministic reference numbers — the real payout is the site
+/// bounty + shared corp payout, which the community tracks by band.
+///
+/// Highsec HQ fleets sit around 130–180M/hr fresh; lowsec and nullsec pay more
+/// per site but carry travel + risk overhead, so the working ranges are wider.
+pub fn incursion_estimate(band: IncursionBand, influence: f64) -> IncursionEstimate {
+    let (base_low, base_high) = match band {
+        IncursionBand::HighSec => (100.0, 180.0),
+        IncursionBand::LowSec => (120.0, 220.0),
+        IncursionBand::NullSec => (150.0, 300.0),
+    };
+    // Influence 1.0 = untouched (full payout); it decays toward ~0.6× as the
+    // pocket is farmed out and spawns slow down.
+    let farm = 0.6 + 0.4 * influence.clamp(0.0, 1.0);
+    IncursionEstimate {
+        band,
+        low_m: base_low * farm,
+        high_m: base_high * farm,
+    }
+}
+
 /// Reads public PvE-content endpoints.
 #[derive(Clone)]
 pub struct PveClient {
@@ -125,6 +181,28 @@ mod tests {
             victory_points_threshold: 0,
         };
         assert_eq!(s.progress(), 0.0);
+    }
+
+    #[test]
+    fn band_classifies_by_security() {
+        assert_eq!(IncursionBand::from_security(0.9), IncursionBand::HighSec);
+        assert_eq!(IncursionBand::from_security(0.45), IncursionBand::HighSec);
+        assert_eq!(IncursionBand::from_security(0.3), IncursionBand::LowSec);
+        assert_eq!(IncursionBand::from_security(0.0), IncursionBand::NullSec);
+        assert_eq!(IncursionBand::from_security(-0.5), IncursionBand::NullSec);
+    }
+
+    #[test]
+    fn estimate_scales_with_influence() {
+        let fresh = incursion_estimate(IncursionBand::HighSec, 1.0);
+        let farmed = incursion_estimate(IncursionBand::HighSec, 0.0);
+        assert!((fresh.high_m - 180.0).abs() < 1e-9);
+        assert!(farmed.high_m < fresh.high_m);
+        // Farmed floor is 0.6× the fresh payout.
+        assert!((farmed.high_m - 180.0 * 0.6).abs() < 1e-9);
+        // Nullsec pays more than highsec at the same influence.
+        let null = incursion_estimate(IncursionBand::NullSec, 1.0);
+        assert!(null.high_m > fresh.high_m);
     }
 
     #[test]

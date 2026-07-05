@@ -2258,12 +2258,19 @@ pub struct IncursionView {
     pub influence_pct: f64,
     pub has_boss: bool,
     pub system_count: i64,
+    /// Security band of the staging system ("High" / "Low" / "Null").
+    pub band: String,
+    /// Community per-pilot ISK/hr estimate, low end (millions).
+    pub isk_hr_low_m: f64,
+    /// Community per-pilot ISK/hr estimate, high end (millions).
+    pub isk_hr_high_m: f64,
 }
 
 /// Active incursions (public), freshest first, with staging-system + faction
-/// names resolved.
+/// names resolved and a community ISK/hr estimate per staging band.
 #[tauri::command]
 pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<IncursionView>> {
+    use eve_core::pve::{incursion_estimate, IncursionBand};
     let incursions = state.pve.incursions().await.map_err(|e| e.to_string())?;
     let mut ids: Vec<i64> = Vec::new();
     for i in &incursions {
@@ -2271,17 +2278,37 @@ pub async fn get_incursions(state: State<'_, AppState>) -> CmdResult<Vec<Incursi
         ids.push(i.faction_id);
     }
     let names = names_for(&state, &ids).await;
-    Ok(incursions
-        .into_iter()
-        .map(|i| IncursionView {
+    let mut out = Vec::with_capacity(incursions.len());
+    for i in incursions {
+        let security = state
+            .names
+            .sde()
+            .solar_system(i.staging_solar_system_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| s.security)
+            .unwrap_or(1.0);
+        let band = IncursionBand::from_security(security);
+        let est = incursion_estimate(band, i.influence);
+        let band_label = match band {
+            IncursionBand::HighSec => "High",
+            IncursionBand::LowSec => "Low",
+            IncursionBand::NullSec => "Null",
+        };
+        out.push(IncursionView {
             staging_system: named(&names, i.staging_solar_system_id),
             faction: named(&names, i.faction_id),
             state: i.state.replace('_', " "),
             influence_pct: i.influence * 100.0,
             has_boss: i.has_boss,
             system_count: i.infested_solar_systems.len() as i64,
-        })
-        .collect())
+            band: band_label.to_string(),
+            isk_hr_low_m: est.low_m,
+            isk_hr_high_m: est.high_m,
+        });
+    }
+    Ok(out)
 }
 
 /// One fleet member, named.
