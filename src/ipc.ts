@@ -74,6 +74,7 @@ import type {
   SrpPrefillView,
   ReconstructedFitView,
   DoctrineComplianceView,
+  FleetReadinessView,
   ThreatScanView,
   PilotBackgroundView,
   GateCampView,
@@ -227,6 +228,8 @@ export const api = {
     call<ReconstructedFitView>("reconstruct_fit", { url }),
   doctrineCompliance: (fitId: number) =>
     call<DoctrineComplianceView>("doctrine_compliance", { fitId }),
+  fleetReadiness: (fitIds?: number[]) =>
+    call<FleetReadinessView>("fleet_readiness", { fitIds: fitIds ?? null }),
   scanPilots: (names: string[]) => call<ThreatScanView>("scan_pilots", { names }),
   pilotBackground: (name: string) =>
     call<PilotBackgroundView>("pilot_background", { name }),

@@ -3364,6 +3364,87 @@ pub async fn doctrine_compliance(
     Ok(DoctrineComplianceView { fit_name: fit.name, ship: fit.ship, rows })
 }
 
+/// A doctrine fit's identity for the readiness matrix header.
+#[derive(Debug, Serialize)]
+pub struct DoctrineFitRef {
+    pub fit_id: i64,
+    pub name: String,
+    pub ship: String,
+}
+
+/// One character's flyable/not cell for a single doctrine fit.
+#[derive(Debug, Serialize)]
+pub struct ReadinessCell {
+    pub fit_id: i64,
+    pub can_fly: bool,
+    /// Training time to close the gap (seconds; 0 when flyable).
+    pub train_seconds: i64,
+}
+
+/// One character's row across the whole doctrine set.
+#[derive(Debug, Serialize)]
+pub struct ReadinessRow {
+    pub character_id: i64,
+    pub character_name: String,
+    /// How many of the doctrine fits this character can fly right now.
+    pub flyable: usize,
+    pub cells: Vec<ReadinessCell>,
+}
+
+/// The fleet-readiness matrix: every saved doctrine fit × every character, so an
+/// FC can see at a glance who covers which hulls. Rows are ranked by coverage.
+#[derive(Debug, Serialize)]
+pub struct FleetReadinessView {
+    pub fits: Vec<DoctrineFitRef>,
+    pub rows: Vec<ReadinessRow>,
+}
+
+/// Build the doctrine readiness matrix over the saved fits (all of them, or the
+/// subset in `fit_ids`) against your character roster. Own characters only —
+/// ESI exposes no other pilots' skills.
+#[tauri::command]
+pub async fn fleet_readiness(
+    state: State<'_, AppState>,
+    fit_ids: Option<Vec<i64>>,
+) -> CmdResult<FleetReadinessView> {
+    let mut fits = state.db.list_fits().await.map_err(|e| e.to_string())?;
+    if let Some(ids) = &fit_ids {
+        fits.retain(|f| ids.contains(&f.id));
+    }
+    let characters = state.db.list_characters().await.map_err(|e| e.to_string())?;
+
+    let fit_refs: Vec<DoctrineFitRef> = fits
+        .iter()
+        .map(|f| DoctrineFitRef { fit_id: f.id, name: f.name.clone(), ship: f.ship.clone() })
+        .collect();
+
+    let mut rows = Vec::with_capacity(characters.len());
+    for c in &characters {
+        let mut cells = Vec::with_capacity(fits.len());
+        let mut flyable = 0;
+        for f in &fits {
+            let (can_fly, train_seconds) = match can_fly_fit(state.clone(), c.id, f.eft.clone()).await
+            {
+                Ok(v) if v.parsed => (v.can_fly, v.total_seconds),
+                _ => (false, 0),
+            };
+            if can_fly {
+                flyable += 1;
+            }
+            cells.push(ReadinessCell { fit_id: f.id, can_fly, train_seconds });
+        }
+        rows.push(ReadinessRow {
+            character_id: c.id,
+            character_name: c.name.clone(),
+            flyable,
+            cells,
+        });
+    }
+    // Best-covered pilots first.
+    rows.sort_by(|a, b| b.flyable.cmp(&a.flyable).then(a.character_name.cmp(&b.character_name)));
+    Ok(FleetReadinessView { fits: fit_refs, rows })
+}
+
 /// One contact with its name resolved.
 #[derive(Debug, Serialize)]
 pub struct ContactView {

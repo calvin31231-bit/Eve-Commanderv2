@@ -57,6 +57,7 @@ import type {
   DscanResult,
   DscanDiff,
   DoctrineComplianceView,
+  FleetReadinessView,
   GameFitView,
   ContactView,
   ThreatScanView,
@@ -4791,6 +4792,7 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
   const [saved, setSaved] = useState<SavedFitView[] | null>(null);
   const [kmUrl, setKmUrl] = useState("");
   const [compliance, setCompliance] = useState<DoctrineComplianceView | null>(null);
+  const [readiness, setReadiness] = useState<FleetReadinessView | null>(null);
   const [gameFits, setGameFits] = useState<GameFitView[] | null>(null);
 
   function loadGameFits() {
@@ -4913,6 +4915,12 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
         <button onClick={() => (saved ? setSaved(null) : loadLibrary())}>
           {saved ? "Hide library" : "Library"}
         </button>
+        <button
+          title="Which of your characters can fly each saved doctrine fit"
+          onClick={() => (readiness ? setReadiness(null) : api.fleetReadiness().then(setReadiness).catch(() => setReadiness(null)))}
+        >
+          {readiness ? "Hide readiness" : "Fleet readiness"}
+        </button>
         {character && (
           <button onClick={pushToGame} disabled={!eft.trim()} title="Save this fit to your in-game fitting window (ESI write)">
             Push to game
@@ -5006,6 +5014,52 @@ function FitImporter({ character }: { character: Character | null }): ReactNode 
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {readiness && (
+        <div style={{ marginTop: 10, overflowX: "auto" }}>
+          <p style={{ fontSize: 12, margin: "0 0 4px" }}>
+            <strong>Fleet readiness</strong> · {readiness.fits.length} doctrine fit{readiness.fits.length === 1 ? "" : "s"} × {readiness.rows.length} pilot{readiness.rows.length === 1 ? "" : "s"}
+            <button style={{ fontSize: 11, marginLeft: 8 }} onClick={() => setReadiness(null)}>Hide</button>
+          </p>
+          {readiness.fits.length === 0 ? (
+            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Save some fits to build a doctrine.</span>
+          ) : (
+            <table className="holdings" style={{ fontSize: 12 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", color: "var(--text-dim)" }}>Pilot</th>
+                  <th style={{ textAlign: "right", color: "var(--text-dim)" }}>Cover</th>
+                  {readiness.fits.map((f) => (
+                    <th key={f.fit_id} style={{ textAlign: "center", color: "var(--text-dim)" }} title={f.ship}>
+                      {f.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {readiness.rows.map((r) => (
+                  <tr key={r.character_id}>
+                    <td>{r.character_name}</td>
+                    <td className="mono num">{r.flyable}/{readiness.fits.length}</td>
+                    {r.cells.map((c) => (
+                      <td
+                        key={c.fit_id}
+                        style={{ textAlign: "center" }}
+                        title={c.can_fly ? "Can fly" : `~${formatDuration(c.train_seconds)} to train`}
+                      >
+                        {c.can_fly ? (
+                          <span style={{ color: "var(--accent)" }}>✓</span>
+                        ) : (
+                          <span style={{ color: "var(--text-dim)" }}>·</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
       {stats && (

@@ -414,6 +414,7 @@ pub fn run() {
             commands::parse_dscan,
             commands::dscan_diff,
             commands::doctrine_compliance,
+            commands::fleet_readiness,
             commands::get_live_kills,
             commands::list_game_fits,
             commands::push_fit_to_game,

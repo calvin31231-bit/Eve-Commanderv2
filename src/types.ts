@@ -534,6 +534,30 @@ export interface DoctrineComplianceView {
   rows: ComplianceRow[];
 }
 
+export interface DoctrineFitRef {
+  fit_id: number;
+  name: string;
+  ship: string;
+}
+
+export interface ReadinessCell {
+  fit_id: number;
+  can_fly: boolean;
+  train_seconds: number;
+}
+
+export interface ReadinessRow {
+  character_id: number;
+  character_name: string;
+  flyable: number;
+  cells: ReadinessCell[];
+}
+
+export interface FleetReadinessView {
+  fits: DoctrineFitRef[];
+  rows: ReadinessRow[];
+}
+
 export interface DscanResult {
   total: number;
   groups: DscanGroup[];
