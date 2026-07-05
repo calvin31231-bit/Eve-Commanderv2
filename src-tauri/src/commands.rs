@@ -1041,6 +1041,74 @@ pub async fn get_transactions(
         .collect())
 }
 
+/// One item's FIFO realized P&L (name resolved).
+#[derive(Debug, Serialize)]
+pub struct ItemPnlView {
+    pub name: String,
+    pub units_sold: i64,
+    pub revenue: f64,
+    pub cost: f64,
+    pub profit: f64,
+    pub margin_pct: Option<f64>,
+    pub units_open: i64,
+    pub open_cost: f64,
+}
+
+/// FIFO realized trading P&L over the character's transaction history.
+#[derive(Debug, Serialize)]
+pub struct TradingPnlView {
+    pub total_revenue: f64,
+    pub total_cost: f64,
+    pub total_profit: f64,
+    pub items: Vec<ItemPnlView>,
+}
+
+/// Realized trading profit reconstructed by matching each sale against the
+/// oldest un-sold buys of that item (FIFO) — gross margin per item, ranked most
+/// profitable first. Fees aren't deducted (they live on journal entries, not
+/// transactions), and sales of pre-window inventory show cost-free (inflated
+/// margin) since their buy predates the history ESI returns.
+#[tauri::command]
+pub async fn get_trading_pnl(
+    state: State<'_, AppState>,
+    character_id: i64,
+) -> CmdResult<TradingPnlView> {
+    let txns = state.wallet.transactions(character_id).await.map_err(|e| e.to_string())?;
+    let trades: Vec<eve_core::trading::Trade> = txns
+        .iter()
+        .map(|t| eve_core::trading::Trade {
+            type_id: t.type_id,
+            quantity: t.quantity,
+            unit_price: t.unit_price,
+            is_buy: t.is_buy,
+            date: t.date.clone(),
+        })
+        .collect();
+    let pnl = eve_core::trading::fifo_pnl(&trades);
+
+    let ids: Vec<i64> = pnl.items.iter().map(|i| i.type_id).collect();
+    let names = names_for(&state, &ids).await;
+    Ok(TradingPnlView {
+        total_revenue: pnl.total_revenue,
+        total_cost: pnl.total_cost,
+        total_profit: pnl.total_profit,
+        items: pnl
+            .items
+            .into_iter()
+            .map(|i| ItemPnlView {
+                name: named(&names, i.type_id),
+                units_sold: i.units_sold,
+                revenue: i.revenue,
+                cost: i.cost,
+                profit: i.profit,
+                margin_pct: i.margin_pct,
+                units_open: i.units_open,
+                open_cost: i.open_cost,
+            })
+            .collect(),
+    })
+}
+
 /// Mark a mail as read (requires the organize-mail scope).
 #[tauri::command]
 pub async fn mark_mail_read(
@@ -1373,6 +1441,87 @@ pub async fn scan_arbitrage(
         kb.partial_cmp(&ka).unwrap_or(std::cmp::Ordering::Equal)
     });
     Ok(out)
+}
+
+/// One hub's best buy/sell for an item, with a per-hub sell/buy volume.
+#[derive(Debug, Serialize)]
+pub struct HubQuoteView {
+    pub hub: String,
+    pub best_sell: Option<f64>,
+    pub best_buy: Option<f64>,
+}
+
+/// The full 5-hub trade board for one item: every hub's best prices plus the
+/// best immediate flip (sell into buy orders) and best sell-to-sell relist.
+#[derive(Debug, Serialize)]
+pub struct HubBoardView {
+    pub type_id: i64,
+    pub name: String,
+    pub volume: f64,
+    pub hubs: Vec<HubQuoteView>,
+    /// Best buy-low/sell-into-buy-orders flip (immediate), if any.
+    pub flip_buy_hub: Option<String>,
+    pub flip_sell_hub: Option<String>,
+    pub flip_profit: Option<f64>,
+    pub flip_margin_pct: Option<f64>,
+    /// Best buy-low/relist-as-sell-order margin trade, if any.
+    pub sell_buy_hub: Option<String>,
+    pub sell_sell_hub: Option<String>,
+    pub sell_profit: Option<f64>,
+    pub sell_margin_pct: Option<f64>,
+}
+
+/// The 5-hub trade board for one item (by name or type id). Mirrors a hub
+/// market-analysis spreadsheet but off live ESI data: best buy/sell at Jita,
+/// Amarr, Dodixie, Rens, Hek, plus the best immediate flip and sell-to-sell
+/// relist (fees applied). `sales_tax`/`broker_fee` default to 4.5% / 3%.
+#[tauri::command]
+pub async fn get_hub_board(
+    state: State<'_, AppState>,
+    query: String,
+    sales_tax: Option<f64>,
+    broker_fee: Option<f64>,
+) -> CmdResult<HubBoardView> {
+    let sde = state.names.sde();
+    // Resolve the item: exact name (case-insensitive) else a numeric type id.
+    let type_id = match sde.type_id_by_name(query.trim()).await.map_err(|e| e.to_string())? {
+        Some(id) => id,
+        None => query
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| format!("unknown item: {}", query.trim()))?,
+    };
+    let mut fees = eve_core::marketdata::TradeFees::default();
+    if let Some(t) = sales_tax {
+        fees.sales_tax = t;
+    }
+    if let Some(b) = broker_fee {
+        fees.broker_fee = b;
+    }
+
+    let hubs = state.marketdata.compare(type_id).await.map_err(|e| e.to_string())?;
+    let flip = eve_core::marketdata::best_arbitrage(&hubs, fees);
+    let relist = eve_core::marketdata::best_sell_to_sell(&hubs, fees);
+    let volume = sde.type_volume(type_id).await.ok().flatten().unwrap_or(0.0);
+    let name = named(&names_for(&state, &[type_id]).await, type_id);
+
+    Ok(HubBoardView {
+        type_id,
+        name,
+        volume,
+        hubs: hubs
+            .into_iter()
+            .map(|h| HubQuoteView { hub: h.hub, best_sell: h.best_sell, best_buy: h.best_buy })
+            .collect(),
+        flip_buy_hub: flip.as_ref().map(|f| f.buy_hub.clone()),
+        flip_sell_hub: flip.as_ref().map(|f| f.sell_hub.clone()),
+        flip_profit: flip.as_ref().map(|f| f.profit_per_unit),
+        flip_margin_pct: flip.as_ref().map(|f| f.margin_pct),
+        sell_buy_hub: relist.as_ref().map(|s| s.buy_hub.clone()),
+        sell_sell_hub: relist.as_ref().map(|s| s.sell_hub.clone()),
+        sell_profit: relist.as_ref().map(|s| s.profit_per_unit),
+        sell_margin_pct: relist.as_ref().map(|s| s.margin_pct),
+    })
 }
 
 /// A small curated set of liquid, commonly-flipped items for the default scan

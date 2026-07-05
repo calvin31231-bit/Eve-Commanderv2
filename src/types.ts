@@ -752,6 +752,45 @@ export interface FleetMemberView {
   jumps: number | null;
 }
 
+export interface HubQuoteView {
+  hub: string;
+  best_sell: number | null;
+  best_buy: number | null;
+}
+
+export interface HubBoardView {
+  type_id: number;
+  name: string;
+  volume: number;
+  hubs: HubQuoteView[];
+  flip_buy_hub: string | null;
+  flip_sell_hub: string | null;
+  flip_profit: number | null;
+  flip_margin_pct: number | null;
+  sell_buy_hub: string | null;
+  sell_sell_hub: string | null;
+  sell_profit: number | null;
+  sell_margin_pct: number | null;
+}
+
+export interface ItemPnlView {
+  name: string;
+  units_sold: number;
+  revenue: number;
+  cost: number;
+  profit: number;
+  margin_pct: number | null;
+  units_open: number;
+  open_cost: number;
+}
+
+export interface TradingPnlView {
+  total_revenue: number;
+  total_cost: number;
+  total_profit: number;
+  items: ItemPnlView[];
+}
+
 export interface ContactView {
   contact_id: number;
   name: string;

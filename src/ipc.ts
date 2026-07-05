@@ -42,6 +42,8 @@ import type {
   MailHeader,
   MailView,
   MarketView,
+  HubBoardView,
+  TradingPnlView,
   MiningView,
   ResearchAgentView,
   Notification,
@@ -175,6 +177,10 @@ export const api = {
     salesTax?: number,
   ) =>
     call<TradeOpportunity[]>("scan_station_trades", { typeIds, brokerFee, salesTax }),
+  getHubBoard: (query: string, salesTax?: number, brokerFee?: number) =>
+    call<HubBoardView>("get_hub_board", { query, salesTax, brokerFee }),
+  getTradingPnl: (characterId: number) =>
+    call<TradingPnlView>("get_trading_pnl", { characterId }),
   scanArbitrage: (typeIds?: number[], salesTax?: number) =>
     call<ArbitrageView[]>("scan_arbitrage", { typeIds, salesTax }),
   reprocessItem: (typeId: number, units: number, efficiency?: number) =>

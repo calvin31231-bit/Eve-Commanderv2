@@ -268,6 +268,57 @@ pub fn best_arbitrage(hubs: &[HubQuote], fees: TradeFees) -> Option<HubArbitrage
     })
 }
 
+/// A cross-hub sell-order relist: buy at one hub's cheapest sell order, then
+/// **list a sell order** at another hub whose sell prices are higher (rather
+/// than dumping into its buy orders). The margin-trader's move — you skip the
+/// buy-order haircut but pay a listing broker fee and wait for the sale (and
+/// its sales tax). Distinct from [`HubArbitrage`], which sells into buy orders.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HubSellToSell {
+    pub buy_hub: String,
+    pub sell_hub: String,
+    /// Cheapest sell order at `buy_hub` (what you pay to acquire).
+    pub buy_price: f64,
+    /// Cheapest sell order at `sell_hub` (what you match/undercut to list at).
+    pub list_price: f64,
+    /// Net profit per unit after the listing broker fee + sales tax.
+    pub profit_per_unit: f64,
+    pub margin_pct: f64,
+}
+
+/// Find the best cross-hub sell-to-sell relist: buy where sell orders are
+/// cheapest, list where sell orders are dearest, netting the broker fee on the
+/// listing plus sales tax on the eventual sale. Returns `None` unless the hubs
+/// differ and it clears fees. Pure.
+pub fn best_sell_to_sell(hubs: &[HubQuote], fees: TradeFees) -> Option<HubSellToSell> {
+    let cheap = hubs
+        .iter()
+        .filter_map(|h| h.best_sell.map(|p| (h, p)))
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
+    let dear = hubs
+        .iter()
+        .filter_map(|h| h.best_sell.map(|p| (h, p)))
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
+    if cheap.0.hub == dear.0.hub {
+        return None;
+    }
+    let buy_price = cheap.1;
+    let list_price = dear.1;
+    let proceeds = list_price * (1.0 - fees.broker_fee - fees.sales_tax);
+    let profit = proceeds - buy_price;
+    if profit <= 0.0 || buy_price <= 0.0 {
+        return None;
+    }
+    Some(HubSellToSell {
+        buy_hub: cheap.0.hub.clone(),
+        sell_hub: dear.0.hub.clone(),
+        buy_price,
+        list_price,
+        profit_per_unit: profit,
+        margin_pct: profit / buy_price,
+    })
+}
+
 /// A profitable cross-hub haul candidate (type + its best flip).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ArbitrageOpportunity {
@@ -481,6 +532,22 @@ mod tests {
         assert_eq!(a.buy_hub, "Jita");
         assert_eq!(a.sell_hub, "Amarr");
         assert!((a.profit_per_unit - 24.15).abs() < 1e-6);
+    }
+
+    #[test]
+    fn sell_to_sell_buys_cheapest_lists_dearest() {
+        let hubs = vec![
+            HubQuote { hub: "Jita".into(), best_sell: Some(100.0), best_buy: Some(95.0) },
+            HubQuote { hub: "Rens".into(), best_sell: Some(150.0), best_buy: Some(120.0) },
+        ];
+        // Buy Jita @100, list Rens @150; 3% broker + 4.5% tax on the sale:
+        // 150*(1-0.075) - 100 = 138.75 - 100 = 38.75.
+        let s = best_sell_to_sell(&hubs, TradeFees::default()).unwrap();
+        assert_eq!(s.buy_hub, "Jita");
+        assert_eq!(s.sell_hub, "Rens");
+        assert!((s.profit_per_unit - 38.75).abs() < 1e-6);
+        // Same hub cheapest+dearest (one hub) → none.
+        assert!(best_sell_to_sell(&hubs[..1], TradeFees::default()).is_none());
     }
 
     #[test]

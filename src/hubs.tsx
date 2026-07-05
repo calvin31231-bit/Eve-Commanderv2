@@ -35,6 +35,8 @@ import type {
   ServerStatus,
   TradeOpportunity,
   ArbitrageView,
+  HubBoardView,
+  TradingPnlView,
   ReprocessView,
   BuildPlanView,
   ResolvedFit,
@@ -1102,6 +1104,7 @@ function CharacterHub({ character }: { character: Character | null }): ReactNode
           </table>
         </div>
       )}
+      {sub === "wallet" && character && <TradingPnlCard character={character} />}
       {sub === "wallet" && txns.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <h3>Recent transactions</h3>
@@ -1897,6 +1900,166 @@ function StationScanner(): ReactNode {
   );
 }
 
+// FIFO realized trading P&L: on demand (a full transaction pull), matches each
+// sale against the oldest un-sold buys to show realized profit per item.
+function TradingPnlCard({ character }: { character: Character }): ReactNode {
+  const [pnl, setPnl] = useState<TradingPnlView | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  function load() {
+    if (!isTauri()) return;
+    setLoading(true);
+    setErr("");
+    api
+      .getTradingPnl(character.id)
+      .then((p) => { setPnl(p); setLoading(false); })
+      .catch((e) => { setErr(String(e)); setLoading(false); });
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3>
+        Trading P&amp;L <span style={{ color: "var(--text-dim)", fontWeight: 400, fontSize: 12 }}>· FIFO realized</span>
+        <button style={{ float: "right", fontSize: 11 }} onClick={load} disabled={loading}>
+          {loading ? "Matching…" : pnl ? "Refresh" : "Compute"}
+        </button>
+      </h3>
+      {err && <p style={{ color: "var(--danger)", fontSize: 12 }}>{err}</p>}
+      {!pnl ? (
+        <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+          Reconstructs realized profit from your transaction history (fees excluded). Sales of items
+          bought before the history window show cost-free.
+        </p>
+      ) : (
+        <>
+          <div className="cashflow-totals">
+            <span className="pos">{ISK.format(pnl.total_revenue)} revenue</span>
+            <span className="neg">{ISK.format(pnl.total_cost)} cost</span>
+            <span className={pnl.total_profit >= 0 ? "pos" : "neg"}>
+              {ISK.format(pnl.total_profit)} profit
+            </span>
+          </div>
+          <table className="holdings" style={{ marginTop: 8 }}>
+            <tbody>
+              {pnl.items.slice(0, 40).map((i, idx) => (
+                <tr key={idx}>
+                  <td>
+                    {i.name}
+                    {i.units_open > 0 && (
+                      <span style={{ color: "var(--text-dim)", fontSize: 11 }}> · {ISK.format(i.units_open)} held</span>
+                    )}
+                  </td>
+                  <td className={`mono num ${i.profit >= 0 ? "pos" : "neg"}`}>{ISK.format(i.profit)}</td>
+                  <td className="mono num" style={{ color: "var(--text-dim)" }}>
+                    {i.margin_pct != null ? `${i.margin_pct.toFixed(0)}%` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Hub trade analyzer: the 5-hub board for one item (best buy/sell at Jita,
+// Amarr, Dodixie, Rens, Hek) with the best immediate flip and sell-to-sell
+// relist. Live-ESI equivalent of a hub market-analysis spreadsheet.
+function HubAnalyzer(): ReactNode {
+  const [query, setQuery] = useState("");
+  const [board, setBoard] = useState<HubBoardView | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  function analyze() {
+    if (!isTauri() || !query.trim()) return;
+    setLoading(true);
+    setErr("");
+    api
+      .getHubBoard(query.trim())
+      .then((b) => { setBoard(b); setLoading(false); })
+      .catch((e) => { setErr(String(e)); setLoading(false); });
+  }
+  const price = (p: number | null) => (p != null ? ISK.format(p) : "—");
+  const pct = (p: number | null) => (p != null ? `${(p * 100).toFixed(1)}%` : "");
+
+  return (
+    <div className="card">
+      <h3>Hub Trade Analyzer</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        The 5-hub board for one item — best buy/sell at each hub, plus the best flip (sell into buy
+        orders) and best sell-to-sell relist (fees applied).
+      </p>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && analyze()}
+          placeholder="Item name (e.g. Damage Control II)…"
+          style={{ flex: 1 }}
+        />
+        <button onClick={analyze} disabled={loading || !query.trim()}>
+          {loading ? "Reading hubs…" : "Analyze"}
+        </button>
+      </div>
+      {err && <p style={{ color: "var(--danger)", fontSize: 12 }}>{err}</p>}
+      {board && (
+        <div style={{ marginTop: 10 }}>
+          <p style={{ fontSize: 13, margin: "0 0 6px" }}>
+            <strong>{board.name}</strong>
+            {board.volume > 0 && <span style={{ color: "var(--text-dim)", fontSize: 11 }}> · {board.volume} m³</span>}
+          </p>
+          <table className="holdings">
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Hub</th>
+                <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Best sell</th>
+                <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Best buy</th>
+              </tr>
+            </thead>
+            <tbody>
+              {board.hubs.map((h) => (
+                <tr key={h.hub}>
+                  <td>{h.hub}</td>
+                  <td className="mono num">{price(h.best_sell)}</td>
+                  <td className="mono num">{price(h.best_buy)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ marginTop: 8, display: "grid", gap: 4, fontSize: 12 }}>
+            {board.flip_profit != null ? (
+              <div>
+                <span className="badge safe">Flip</span> buy <strong>{board.flip_buy_hub}</strong> → sell into buy orders at{" "}
+                <strong>{board.flip_sell_hub}</strong>:{" "}
+                <span className="pos mono">{ISK.format(board.flip_profit)}/unit</span>{" "}
+                <span style={{ color: "var(--text-dim)" }}>({pct(board.flip_margin_pct)})</span>
+                {board.volume > 0 && (
+                  <span style={{ color: "var(--text-dim)" }}> · {ISK.format(board.flip_profit / board.volume)}/m³</span>
+                )}
+              </div>
+            ) : (
+              <div style={{ color: "var(--text-dim)" }}>No profitable immediate flip.</div>
+            )}
+            {board.sell_profit != null ? (
+              <div>
+                <span className="badge caution">Relist</span> buy <strong>{board.sell_buy_hub}</strong> → list a sell order at{" "}
+                <strong>{board.sell_sell_hub}</strong>:{" "}
+                <span className="pos mono">{ISK.format(board.sell_profit)}/unit</span>{" "}
+                <span style={{ color: "var(--text-dim)" }}>({pct(board.sell_margin_pct)})</span>
+              </div>
+            ) : (
+              <div style={{ color: "var(--text-dim)" }}>No profitable sell-to-sell relist.</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ArbitrageScanner(): ReactNode {
   const [rows, setRows] = useState<ArbitrageView[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2367,6 +2530,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
       {sub === "market" && (
         <>
           <MarketBrowser />
+          <HubAnalyzer />
           <StationScanner />
           <ArbitrageScanner />
         </>
