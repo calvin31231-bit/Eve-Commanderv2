@@ -109,6 +109,14 @@ pub struct TokenManager {
     sso: SsoClient,
     store: Arc<dyn TokenStore>,
     cache: TokenCache,
+    /// Per-character refresh mutex so concurrent callers collapse into a single
+    /// network refresh. EVE SSO **rotates** the refresh token on every refresh
+    /// and invalidates the old one, so two simultaneous refreshes with the same
+    /// stored token would leave one caller holding a now-dead token — and EVE
+    /// can invalidate the whole family on reuse. Serializing per character (with
+    /// a double-checked cache read inside the lock) makes the burst that fires
+    /// when a token expires perform exactly one refresh. See `access_token`.
+    refresh_locks: Arc<Mutex<HashMap<i64, Arc<tokio::sync::Mutex<()>>>>>,
 }
 
 impl TokenManager {
@@ -117,7 +125,14 @@ impl TokenManager {
             sso,
             store,
             cache: TokenCache::new(),
+            refresh_locks: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// The per-character refresh lock, created on first use.
+    fn refresh_lock(&self, character_id: i64) -> Arc<tokio::sync::Mutex<()>> {
+        let mut guard = self.refresh_locks.lock().expect("refresh_locks poisoned");
+        guard.entry(character_id).or_default().clone()
     }
 
     /// Prime the cache with a freshly-issued access token (e.g. straight from
@@ -136,6 +151,18 @@ impl TokenManager {
     /// refresh token when the cache is cold or stale. Persists a rotated refresh
     /// token if EVE issues one.
     pub async fn access_token(&self, character_id: i64) -> Result<String> {
+        if let Some(tok) = self.cache.get_valid(character_id, SystemTime::now()) {
+            return Ok(tok);
+        }
+
+        // Serialize refreshes for this character: whoever gets the lock first does
+        // the single network refresh; everyone else waits and then finds the
+        // freshly-cached token below, so the rotated refresh token is never used
+        // twice concurrently.
+        let lock = self.refresh_lock(character_id);
+        let _guard = lock.lock().await;
+
+        // Double-checked read: another caller may have refreshed while we waited.
         if let Some(tok) = self.cache.get_valid(character_id, SystemTime::now()) {
             return Ok(tok);
         }
@@ -252,5 +279,46 @@ mod tests {
         let mgr = TokenManager::new(sso(), Arc::new(MemoryTokenStore::default()));
         let err = mgr.access_token(7).await.unwrap_err();
         assert!(matches!(err, Error::MissingToken(7)));
+    }
+
+    #[test]
+    fn refresh_lock_is_shared_per_character() {
+        let mgr = TokenManager::new(sso(), Arc::new(MemoryTokenStore::default()));
+        // Same character → the same lock instance (so refreshes serialize).
+        assert!(Arc::ptr_eq(&mgr.refresh_lock(1), &mgr.refresh_lock(1)));
+        // Different characters → independent locks (no cross-blocking).
+        assert!(!Arc::ptr_eq(&mgr.refresh_lock(1), &mgr.refresh_lock(2)));
+    }
+
+    #[tokio::test]
+    async fn concurrent_callers_single_flight_the_refresh() {
+        // The store has a refresh token, but the SSO endpoint is unreachable in a
+        // unit test — so any *actual* network refresh fails. We prove that a
+        // caller which loses the refresh race never performs one: it waits on the
+        // per-character lock and, via the double-checked cache read, returns the
+        // token the winner primed. Without single-flight this would hit the
+        // network and error.
+        let store = Arc::new(MemoryTokenStore::default());
+        store.save_refresh_token(1, "rt").unwrap();
+        let mgr = TokenManager::new(sso(), store);
+
+        // Hold the character's refresh lock, standing in for the in-flight winner.
+        let lock = mgr.refresh_lock(1);
+        let guard = lock.lock().await;
+
+        // A second caller blocks on the same lock (cache is cold).
+        let waiter = {
+            let mgr = mgr.clone();
+            tokio::spawn(async move { mgr.access_token(1).await })
+        };
+        // Give the waiter a moment to reach the lock.
+        tokio::task::yield_now().await;
+
+        // The "winner" refreshed: prime the cache, then release the lock.
+        mgr.prime(1, "fresh-AT".into(), 1200);
+        drop(guard);
+
+        // The waiter returns the primed token — it never touched the network.
+        assert_eq!(waiter.await.unwrap().unwrap(), "fresh-AT");
     }
 }
