@@ -76,6 +76,7 @@ import type {
   LootValueView,
   RollPlan,
   SignatureView,
+  ChainNodeView,
   TimerView,
   SrpBoardView,
   RecruitBoardView,
@@ -6632,10 +6633,17 @@ function SignatureTracker(): ReactNode {
   const [sigs, setSigs] = useState<SignatureView[] | null>(null);
   const [system, setSystem] = useState("");
   const [paste, setPaste] = useState("");
+  const [chainRoot, setChainRoot] = useState("");
+  const [chain, setChain] = useState<ChainNodeView[] | null>(null);
 
   function load() {
     if (!isTauri()) return;
     api.listSignatures().then(setSigs).catch(() => setSigs([]));
+  }
+
+  function mapChain() {
+    if (!isTauri() || !chainRoot.trim()) return;
+    api.getWhChain(chainRoot.trim()).then(setChain).catch(() => setChain(null));
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -6680,6 +6688,36 @@ function SignatureTracker(): ReactNode {
         placeholder={"ABC-123\tCosmic Signature\tWormhole\tUnstable Wormhole\t100%\t1.5 AU"}
         style={{ width: "100%", minHeight: 56, fontFamily: "monospace", fontSize: 12, marginTop: 6 }}
       />
+      <div style={{ display: "flex", gap: 8, alignItems: "end", marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Map chain from
+          <input value={chainRoot} onChange={(e) => setChainRoot(e.target.value)} placeholder="home system" />
+        </label>
+        <button onClick={mapChain} disabled={!chainRoot.trim()}>Map chain</button>
+      </div>
+      {chain && chain.length > 0 && (
+        <table className="holdings" style={{ marginTop: 8 }}>
+          <tbody>
+            {chain.map((n) => (
+              <tr key={n.system}>
+                <td>
+                  <span style={{ color: "var(--text-dim)" }}>{"→".repeat(n.hops) || "•"}</span> {n.system}
+                </td>
+                <td className="mono num">{n.hops} jump{n.hops === 1 ? "" : "s"}</td>
+                <td>
+                  {n.via_critical && <span className="badge danger" style={{ marginRight: 4 }}>critical</span>}
+                  {n.via_eol && <span className="badge caution">EOL path</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {chain && chain.length <= 1 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No mapped connections from there yet — annotate wormholes with a destination to grow the chain.
+        </p>
+      )}
       {Object.keys(bySystem).sort().map((sys) => (
         <div key={sys} style={{ marginTop: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

@@ -1360,6 +1360,13 @@ export interface SignatureView {
   notes: string;
 }
 
+export interface ChainNodeView {
+  system: string;
+  hops: number;
+  via_eol: boolean;
+  via_critical: boolean;
+}
+
 export interface TimerView {
   id: number;
   title: string;

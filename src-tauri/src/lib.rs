@@ -535,6 +535,7 @@ pub fn run() {
             commands::delete_recruit,
             commands::paste_signatures,
             commands::list_signatures,
+            commands::get_wh_chain,
             commands::annotate_signature,
             commands::delete_signature,
             commands::clear_signatures,

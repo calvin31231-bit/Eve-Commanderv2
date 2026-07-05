@@ -6594,6 +6594,47 @@ pub async fn list_signatures(state: State<'_, AppState>) -> CmdResult<Vec<Signat
         .collect())
 }
 
+/// One system in the wormhole chain, reachable from the root.
+#[derive(Debug, Serialize)]
+pub struct ChainNodeView {
+    pub system: String,
+    pub hops: i64,
+    pub via_eol: bool,
+    pub via_critical: bool,
+}
+
+/// Build the wormhole chain outward from `root` using the annotated connections
+/// (signatures with a destination set). Returns each reachable system with its
+/// hop distance and whether the shortest path to it crosses an EOL / mass-
+/// critical hole. Empty destinations are ignored.
+#[tauri::command]
+pub async fn get_wh_chain(state: State<'_, AppState>, root: String) -> CmdResult<Vec<ChainNodeView>> {
+    let root = root.trim();
+    if root.is_empty() {
+        return Err("enter the system to map the chain from".into());
+    }
+    let sigs = state.db.list_signatures().await.map_err(|e| e.to_string())?;
+    let links: Vec<eve_core::wormhole::ChainLink> = sigs
+        .into_iter()
+        .filter(|s| !s.system.trim().is_empty() && !s.destination.trim().is_empty())
+        .map(|s| eve_core::wormhole::ChainLink {
+            from: s.system.trim().to_string(),
+            to: s.destination.trim().to_string(),
+            mass_state: s.mass_state,
+            eol: s.eol,
+        })
+        .collect();
+    Ok(eve_core::wormhole::build_chain(root, &links)
+        .into_iter()
+        .map(|n| ChainNodeView {
+            system: n.system,
+            hops: n.hops,
+            via_eol: n.via_eol,
+            via_critical: n.via_critical,
+        })
+        .collect())
+}
+
 /// Annotate a signature's wormhole connection (type, destination, mass, EOL).
 #[tauri::command]
 pub async fn annotate_signature(

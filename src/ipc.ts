@@ -99,6 +99,7 @@ import type {
   TheraConnection,
   RollPlan,
   SignatureView,
+  ChainNodeView,
   TimerView,
   SrpBoardView,
   RecruitBoardView,
@@ -287,6 +288,7 @@ export const api = {
   pasteSignatures: (system: string, paste: string) =>
     call<number>("paste_signatures", { system, paste }),
   listSignatures: () => call<SignatureView[]>("list_signatures"),
+  getWhChain: (root: string) => call<ChainNodeView[]>("get_wh_chain", { root }),
   annotateSignature: (
     id: number,
     whType: string,
