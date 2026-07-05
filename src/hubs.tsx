@@ -67,6 +67,7 @@ import type {
   SystemSafetyView,
   SystemRiskView,
   CombatLogView,
+  TackleReportView,
   FleetAarView,
   AbyssTrackerView,
   LootValueView,
@@ -5981,6 +5982,7 @@ function FactionWarfarePanel(): ReactNode {
 
 function CombatLogPanel(): ReactNode {
   const [data, setData] = useState<CombatLogView | null>(null);
+  const [tackle, setTackle] = useState<TackleReportView | null>(null);
   const [loading, setLoading] = useState(false);
 
   function load() {
@@ -5991,6 +5993,7 @@ function CombatLogPanel(): ReactNode {
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
+    api.getTackleReport(20).then(setTackle).catch(() => setTackle(null));
   }
 
   const s = data?.summary;
@@ -5998,11 +6001,32 @@ function CombatLogPanel(): ReactNode {
     <div className="card combat-log">
       <h3>Combat Log · After-Action</h3>
       <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
-        Reads your latest Gamelog (Documents/EVE/logs) for DPS and a kill/damage breakdown.
+        Reads your latest Gamelog (Documents/EVE/logs) for DPS, a kill/damage breakdown, and who
+        tackled you.
       </p>
       <button onClick={load} disabled={loading}>
         {loading ? "Reading…" : "Analyze latest log"}
       </button>
+      {tackle && tackle.found && tackle.events.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <p style={{ margin: "0 0 4px", fontSize: 13 }}>
+            <span className={tackle.hard_tackled ? "badge danger" : "badge caution"}>
+              {tackle.hard_tackled ? "Hard tackled" : "EWAR"}
+            </span>{" "}
+            <span style={{ color: "var(--text-dim)", fontSize: 12 }}>who caught you (latest first)</span>
+          </p>
+          <table className="holdings">
+            <tbody>
+              {tackle.events.map((e, i) => (
+                <tr key={i}>
+                  <td className={e.hard_tackle ? "neg" : ""}>{e.effect}</td>
+                  <td className="loc">{e.source}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {data && !data.found && (
         <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
           No Gamelog found — set EVE_COMMANDER_LOG_DIR if your logs aren't under Documents/EVE/logs.

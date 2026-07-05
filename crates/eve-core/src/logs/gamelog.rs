@@ -174,6 +174,48 @@ pub fn parse_gamelog(text: &str) -> Vec<DamageEvent> {
     text.lines().filter_map(parse_combat_line).collect()
 }
 
+/// An incoming EWAR effect applied to you (tackle, web, jam, …) — the "you're
+/// caught" signal read from the Gamelog.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EwarEvent {
+    pub at: OffsetDateTime,
+    /// The effect phrase as EVE logs it ("Warp scramble", "Stasis Webification").
+    pub effect: String,
+    /// The pilot applying it.
+    pub source: String,
+}
+
+/// Parse one Gamelog EWAR line — EVE's `<Effect> attempt from <Source> to you!`
+/// family (warp scramble/disruption, stasis web, sensor damp, …), i.e. effects
+/// applied *to you*. `None` for any other line. Pure.
+pub fn parse_ewar_line(line: &str) -> Option<EwarEvent> {
+    let (at, body) = split_timestamp(line)?;
+    let body = body.strip_prefix("(combat)")?.trim();
+    let text = strip_tags(body);
+    let text = text.trim();
+    let lower = text.to_lowercase();
+    if !lower.contains(" attempt from ") || !lower.contains("to you") {
+        return None;
+    }
+    let effect = text.split(" attempt").next()?.trim().to_string();
+    let source = text.split(" attempt from ").nth(1)?.split(" to ").next()?.trim().to_string();
+    if effect.is_empty() || source.is_empty() {
+        return None;
+    }
+    Some(EwarEvent { at, effect: clean_entity(&effect), source: clean_entity(&source) })
+}
+
+/// All incoming-EWAR events in a Gamelog, oldest first. Pure.
+pub fn parse_ewar(text: &str) -> Vec<EwarEvent> {
+    text.lines().filter_map(parse_ewar_line).collect()
+}
+
+/// Which effects are hard tackle (stop you warping) vs soft. Pure.
+pub fn is_hard_tackle(effect: &str) -> bool {
+    let e = effect.to_lowercase();
+    e.contains("scramble") || e.contains("disruption")
+}
+
 /// One pilot's contribution within a fleet after-action report.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FleetPilot {
@@ -257,6 +299,27 @@ mod tests {
 
     const DEALT: &str = "[ 2024.01.15 12:34:57 ] (combat) <color=0xff...><b>247</b><color=0x77ffffff><font size=10> to </font><b><color=0xffffffff>Guristas Wrangler[GURI](Frigate)</b><font size=10><color=0x77ffffff> - Hits</font>";
     const RECV: &str = "[ 2024.01.15 12:35:07 ] (combat) <color=0xffcc0000><b>88</b><color=0x77ffffff><font size=10> from </font><b><color=0xffffffff>Guristas Wrangler</b><font size=10> - Penetrates</font>";
+
+    const SCRAM: &str = "[ 2024.01.15 12:35:10 ] (combat) <color=0xffe57f7f><b>Warp scramble attempt</b> <color=0xFFFFFFFF>from <b><color=0xffffffff>Enemy Hunter[BAD](Sabre)</color></b> <color=0x77ffffff>to<b><color=0xffffffff> you!</color></b>";
+    const WEB: &str = "[ 2024.01.15 12:35:11 ] (combat) <b>Stasis Webification attempt</b> from <b>Slower Pilot</b> to you!";
+
+    #[test]
+    fn parses_incoming_ewar_and_classifies_tackle() {
+        let s = parse_ewar_line(SCRAM).unwrap();
+        assert_eq!(s.effect, "Warp scramble");
+        assert_eq!(s.source, "Enemy Hunter");
+        assert!(is_hard_tackle(&s.effect));
+
+        let w = parse_ewar_line(WEB).unwrap();
+        assert_eq!(w.effect, "Stasis Webification");
+        assert_eq!(w.source, "Slower Pilot");
+        assert!(!is_hard_tackle(&w.effect)); // a web doesn't stop warp
+
+        // A damage line is not EWAR; an EWAR line is not damage.
+        assert!(parse_ewar_line(DEALT).is_none());
+        assert!(parse_combat_line(SCRAM).is_none());
+        assert_eq!(parse_ewar(&format!("{SCRAM}\n{WEB}\n{DEALT}")).len(), 2);
+    }
 
     #[test]
     fn parses_dealt_and_received() {

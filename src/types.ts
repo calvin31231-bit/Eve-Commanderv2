@@ -1262,6 +1262,18 @@ export interface LoyaltyBoardView {
   ledger: LoyaltyEntry[];
 }
 
+export interface EwarEventView {
+  effect: string;
+  source: string;
+  hard_tackle: boolean;
+}
+
+export interface TackleReportView {
+  found: boolean;
+  hard_tackled: boolean;
+  events: EwarEventView[];
+}
+
 export interface SignatureView {
   id: number;
   system: string;

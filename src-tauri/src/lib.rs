@@ -451,6 +451,7 @@ pub fn run() {
             commands::kick_fleet_member,
             commands::move_fleet_member,
             commands::get_combat_summary,
+            commands::get_tackle_report,
             commands::get_fleet_aar,
             commands::get_local_intel,
             commands::cost_skill_plan,

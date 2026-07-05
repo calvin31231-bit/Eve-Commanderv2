@@ -81,6 +81,7 @@ import type {
   SystemRiskView,
   PodRiskView,
   CombatLogView,
+  TackleReportView,
   FleetAarView,
   IncursionView,
   AbyssTrackerView,
@@ -346,6 +347,7 @@ export const api = {
   openMarketWindow: (characterId: number, typeId: number) =>
     call<void>("open_market_window", { characterId, typeId }),
   getCombatSummary: () => call<CombatLogView>("get_combat_summary"),
+  getTackleReport: (limit?: number) => call<TackleReportView>("get_tackle_report", { limit }),
   getFleetAar: (maxPilots?: number) =>
     call<FleetAarView>("get_fleet_aar", { maxPilots }),
   getLocalIntel: () => call<LocalIntel | null>("get_local_intel"),

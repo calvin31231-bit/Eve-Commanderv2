@@ -3597,6 +3597,46 @@ pub fn get_combat_summary() -> CombatLogView {
     CombatLogView { found: true, summary: Some(eve_core::logs::gamelog::summarize_combat(&events)) }
 }
 
+/// One incoming-EWAR event for the tackle report.
+#[derive(Debug, Serialize)]
+pub struct EwarEventView {
+    pub effect: String,
+    pub source: String,
+    /// True for warp scramble/disruption (you can't warp out).
+    pub hard_tackle: bool,
+}
+
+/// The tackle report: EWAR applied to you in the most recent Gamelog — who's
+/// pointing/scrambling/webbing you, most recent first. Passive local-file read.
+#[derive(Debug, Serialize)]
+pub struct TackleReportView {
+    pub found: bool,
+    /// True if any hard tackle (scram/point) is present.
+    pub hard_tackled: bool,
+    pub events: Vec<EwarEventView>,
+}
+
+#[tauri::command]
+pub fn get_tackle_report(limit: Option<usize>) -> TackleReportView {
+    let path = eve_core::logs::gamelogs_dir().and_then(|d| eve_core::logs::latest_log(&d, ""));
+    let Some(text) = path.as_ref().and_then(|p| eve_core::logs::read_log(p)) else {
+        return TackleReportView { found: false, hard_tackled: false, events: Vec::new() };
+    };
+    let mut ewar = eve_core::logs::gamelog::parse_ewar(&text);
+    ewar.reverse(); // most recent first
+    ewar.truncate(limit.unwrap_or(20));
+    let events: Vec<EwarEventView> = ewar
+        .into_iter()
+        .map(|e| EwarEventView {
+            hard_tackle: eve_core::logs::gamelog::is_hard_tackle(&e.effect),
+            effect: e.effect,
+            source: e.source,
+        })
+        .collect();
+    let hard_tackled = events.iter().any(|e| e.hard_tackle);
+    TackleReportView { found: true, hard_tackled, events }
+}
+
 /// A combined multi-box fleet after-action report, plus a found flag.
 #[derive(Debug, Serialize)]
 pub struct FleetAarView {
