@@ -2068,13 +2068,23 @@ function HubTradeScanner(): ReactNode {
   const [relist, setRelist] = useState(false);
   const [scope, setScope] = useState("curated");
   const [cargo, setCargo] = useState("");
+  const [minProfitM, setMinProfitM] = useState("1"); // millions ISK/unit
+  const [minVol, setMinVol] = useState("100");
   const cargoM3 = parseFloat(cargo) || 0;
 
   function scan() {
     if (!isTauri()) return;
     setLoading(true);
     api
-      .scanHubTrades({ scope, relist, cargoM3: cargoM3 > 0 ? cargoM3 : undefined, topN: scope === "all" ? 50 : 25 })
+      .scanHubTrades({
+        scope,
+        relist,
+        cargoM3: cargoM3 > 0 ? cargoM3 : undefined,
+        // Filters mainly matter for "all" (curated/minerals are pre-vetted).
+        minProfit: scope === "all" ? (parseFloat(minProfitM) || 0) * 1_000_000 : undefined,
+        minVolume: scope === "all" ? parseInt(minVol) || 0 : undefined,
+        topN: scope === "all" ? 50 : 25,
+      })
       .then((r) => { setRows(r); setLoading(false); })
       .catch(() => { setRows([]); setLoading(false); });
   }
@@ -2107,6 +2117,18 @@ function HubTradeScanner(): ReactNode {
           {loading ? (scope === "all" ? "Reading full order books…" : "Scanning hubs…") : "Scan"}
         </button>
       </div>
+      {scope === "all" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+          <label style={{ fontSize: 11, color: "var(--text-dim)", display: "flex", gap: 4, alignItems: "center" }}>
+            Min profit/unit (M ISK)
+            <input value={minProfitM} onChange={(e) => setMinProfitM(e.target.value)} style={{ width: 60 }} />
+          </label>
+          <label style={{ fontSize: 11, color: "var(--text-dim)", display: "flex", gap: 4, alignItems: "center" }}>
+            Min depth (units)
+            <input value={minVol} onChange={(e) => setMinVol(e.target.value)} style={{ width: 70 }} />
+          </label>
+        </div>
+      )}
       {rows && rows.length === 0 && !loading && (
         <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No profitable trades found right now.</p>
       )}
@@ -2129,7 +2151,12 @@ function HubTradeScanner(): ReactNode {
                     <span style={{ color: "var(--text-dim)", fontSize: 11 }}> · {ISK.format(t.units_per_trip)}u</span>
                   )}
                 </td>
-                <td className="loc">{t.buy_hub} → {t.sell_hub}</td>
+                <td className="loc">
+                  {t.buy_hub} → {t.sell_hub}
+                  {t.available_volume > 0 && (
+                    <span style={{ color: "var(--text-dim)", fontSize: 11 }}> · {ISK.format(t.available_volume)}u depth</span>
+                  )}
+                </td>
                 <td className="mono num pos">
                   {cargoM3 > 0 && t.trip_profit > 0 ? ISK.format(t.trip_profit) : ISK.format(t.profit_per_unit)}
                 </td>

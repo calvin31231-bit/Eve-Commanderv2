@@ -1460,6 +1460,9 @@ pub struct HubTradeView {
     pub units_per_trip: i64,
     /// Total profit for one full cargo (0 when no cargo/volume supplied).
     pub trip_profit: f64,
+    /// Units of order-book depth on the binding side (0 = unknown, per-item
+    /// scopes). The liquidity figure the min-volume filter checks.
+    pub available_volume: i64,
     /// Plain-language statement, e.g. "Buy in Jita, sell in Amarr".
     pub statement: String,
 }
@@ -1484,12 +1487,16 @@ pub async fn scan_hub_trades(
     cargo_m3: Option<f64>,
     sales_tax: Option<f64>,
     broker_fee: Option<f64>,
+    min_profit: Option<f64>,
+    min_volume: Option<i64>,
     top_n: Option<usize>,
 ) -> CmdResult<Vec<HubTradeView>> {
     let sde = state.names.sde();
     let relist = relist.unwrap_or(false);
     let cargo = cargo_m3.unwrap_or(0.0).max(0.0);
     let scope = scope.unwrap_or_else(|| "curated".to_string());
+    let min_profit = min_profit.unwrap_or(0.0);
+    let min_volume = min_volume.unwrap_or(0);
     let mut fees = eve_core::marketdata::TradeFees::default();
     if let Some(t) = sales_tax {
         fees.sales_tax = t;
@@ -1498,24 +1505,24 @@ pub async fn scan_hub_trades(
         fees.broker_fee = b;
     }
 
+    // For "all", the bulk region books also give per-hub order-book depth, kept
+    // here for the liquidity filter. `hub name → (type → reduction)`.
+    type RegionBook = std::collections::HashMap<i64, eve_core::marketdata::RegionTypeQuote>;
+    let mut depth_books: Vec<(&'static str, RegionBook)> = Vec::new();
+
     // Build the per-item hub boards, either from bulk region books ("all") or by
     // querying each chosen item across the hubs (curated/minerals/custom).
     let boards: Vec<(i64, Vec<eve_core::marketdata::HubQuote>)> = if items.is_none() && scope == "all"
     {
-        // One bulk order-book fetch per hub region → best sell/buy per type.
-        // `type_id → (best_sell, best_buy)` for one hub region.
-        type HubBook = std::collections::HashMap<i64, (Option<f64>, Option<f64>)>;
-        let hubs = eve_core::marketdata::HUBS;
-        let mut books: Vec<(&'static str, HubBook)> = Vec::with_capacity(hubs.len());
-        for &(region, name) in hubs {
+        for &(region, name) in eve_core::marketdata::HUBS {
             let book = state.marketdata.region_book(region).await.unwrap_or_default();
-            books.push((name, book));
+            depth_books.push((name, book));
         }
         // Union of every type that has a sell order somewhere.
         let mut type_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
-        for (_, book) in &books {
-            for (&tid, (sell, _)) in book {
-                if sell.is_some() {
+        for (_, book) in &depth_books {
+            for (&tid, q) in book {
+                if q.best_sell.is_some() {
                     type_ids.insert(tid);
                 }
             }
@@ -1523,11 +1530,15 @@ pub async fn scan_hub_trades(
         type_ids
             .into_iter()
             .map(|tid| {
-                let quotes = books
+                let quotes = depth_books
                     .iter()
                     .map(|(name, book)| {
-                        let (best_sell, best_buy) = book.get(&tid).copied().unwrap_or((None, None));
-                        eve_core::marketdata::HubQuote { hub: name.to_string(), best_sell, best_buy }
+                        let q = book.get(&tid).copied().unwrap_or_default();
+                        eve_core::marketdata::HubQuote {
+                            hub: name.to_string(),
+                            best_sell: q.best_sell,
+                            best_buy: q.best_buy,
+                        }
                     })
                     .collect();
                 (tid, quotes)
@@ -1568,6 +1579,24 @@ pub async fn scan_hub_trades(
         boards
     };
 
+    // Depth (units) on the binding side of a trade, from the bulk books: for a
+    // flip you're limited by min(sell orders at source, buy orders at dest); for
+    // a relist, by the sell orders you buy from at source. 0 when depth is
+    // unknown (per-item scopes), which disables the min-volume filter for them.
+    let depth = |tid: i64, buy_hub: &str, sell_hub: &str| -> i64 {
+        if depth_books.is_empty() {
+            return 0;
+        }
+        let side = |hub: &str| depth_books.iter().find(|(n, _)| *n == hub).and_then(|(_, b)| b.get(&tid).copied());
+        let src = side(buy_hub).map(|q| q.sell_volume).unwrap_or(0);
+        if relist {
+            src
+        } else {
+            let dst = side(sell_hub).map(|q| q.buy_volume).unwrap_or(0);
+            src.min(dst)
+        }
+    };
+
     let mut out: Vec<HubTradeView> = Vec::new();
     for (type_id, hubs) in boards {
         // Pick the per-item best trade for the chosen mode.
@@ -1582,6 +1611,14 @@ pub async fn scan_hub_trades(
                 None => continue,
             }
         };
+        // Liquidity + minimum-profit filters cut illiquid / penny-margin noise.
+        if profit < min_profit {
+            continue;
+        }
+        let available_volume = depth(type_id, &buy_hub, &sell_hub);
+        if min_volume > 0 && !depth_books.is_empty() && available_volume < min_volume {
+            continue;
+        }
         let volume = sde.type_volume(type_id).await.ok().flatten().unwrap_or(0.0);
         let units_per_trip = if cargo > 0.0 && volume > 0.0 {
             (cargo / volume).floor() as i64
@@ -1600,6 +1637,7 @@ pub async fn scan_hub_trades(
             margin_pct: margin,
             volume,
             units_per_trip,
+            available_volume,
             trip_profit: units_per_trip as f64 * profit,
         });
     }

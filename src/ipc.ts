@@ -187,6 +187,8 @@ export const api = {
     cargoM3?: number;
     salesTax?: number;
     brokerFee?: number;
+    minProfit?: number;
+    minVolume?: number;
     topN?: number;
   }) => call<HubTradeView[]>("scan_hub_trades", opts),
   getTradingPnl: (characterId: number) =>

@@ -290,25 +290,34 @@ pub struct HubSellToSell {
     pub margin_pct: f64,
 }
 
-/// Reduce a whole-region order book to `type_id → (best_sell, best_buy)` in one
-/// pass — the bulk path behind "scan all items". Pure.
-pub fn quotes_by_type(orders: &[RegionOrder]) -> std::collections::HashMap<i64, (Option<f64>, Option<f64>)> {
-    let mut out: std::collections::HashMap<i64, (Option<f64>, Option<f64>)> =
-        std::collections::HashMap::new();
+/// A whole-region reduction for one type: best prices plus total depth on each
+/// side (units across all orders), for liquidity filtering.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct RegionTypeQuote {
+    pub best_sell: Option<f64>,
+    pub best_buy: Option<f64>,
+    pub sell_volume: i64,
+    pub buy_volume: i64,
+}
+
+/// Reduce a whole-region order book to `type_id → RegionTypeQuote` in one pass —
+/// the bulk path behind "scan all items". Pure.
+pub fn quotes_by_type(orders: &[RegionOrder]) -> std::collections::HashMap<i64, RegionTypeQuote> {
+    let mut out: std::collections::HashMap<i64, RegionTypeQuote> = std::collections::HashMap::new();
     for o in orders {
         if o.type_id == 0 {
             continue;
         }
-        let e = out.entry(o.type_id).or_insert((None, None));
+        let e = out.entry(o.type_id).or_default();
         if o.is_buy_order {
-            // Best buy = highest bid.
-            if e.1.is_none_or_lt(o.price) {
-                e.1 = Some(o.price);
+            e.buy_volume += o.volume_remain;
+            if e.best_buy.is_none_or_lt(o.price) {
+                e.best_buy = Some(o.price); // highest bid
             }
         } else {
-            // Best sell = lowest ask.
-            if e.0.is_none_or_gt(o.price) {
-                e.0 = Some(o.price);
+            e.sell_volume += o.volume_remain;
+            if e.best_sell.is_none_or_gt(o.price) {
+                e.best_sell = Some(o.price); // lowest ask
             }
         }
     }
@@ -387,7 +396,7 @@ impl MarketDataClient {
     pub async fn region_book(
         &self,
         region_id: i64,
-    ) -> Result<std::collections::HashMap<i64, (Option<f64>, Option<f64>)>> {
+    ) -> Result<std::collections::HashMap<i64, RegionTypeQuote>> {
         let path = format!("/latest/markets/{region_id}/orders/?order_type=all");
         let orders = self.esi.get_public_json_paged::<RegionOrder>(&path).await?;
         Ok(quotes_by_type(&orders))
@@ -608,8 +617,11 @@ mod tests {
             o(0, 99.0, false), // no type id → ignored
         ];
         let q = quotes_by_type(&book);
-        assert_eq!(q.get(&34), Some(&(Some(5.2), Some(5.1))));
-        assert_eq!(q.get(&35), Some(&(Some(12.0), None)));
+        let t34 = q.get(&34).unwrap();
+        assert_eq!((t34.best_sell, t34.best_buy), (Some(5.2), Some(5.1)));
+        assert_eq!(t34.sell_volume, 20); // two 10-unit sells
+        assert_eq!(t34.buy_volume, 20); // two 10-unit buys
+        assert_eq!(q.get(&35).unwrap().best_sell, Some(12.0));
         assert!(!q.contains_key(&0));
     }
 

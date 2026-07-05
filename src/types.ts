@@ -770,6 +770,7 @@ export interface HubTradeView {
   volume: number;
   units_per_trip: number;
   trip_profit: number;
+  available_volume: number;
   statement: string;
 }
 
