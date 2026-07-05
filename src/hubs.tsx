@@ -2652,6 +2652,13 @@ function PlanetsCard({ character }: { character: Character | null }): ReactNode 
                     <div style={{ color: "var(--text-dim)", fontSize: 11 }}>{c.products.join(", ")}</div>
                   )}
                 </td>
+                <td className="mono num" title="Estimated raw-extraction ISK/hour at reference prices">
+                  {c.isk_per_hour > 0 ? (
+                    <span style={{ color: "var(--accent)" }}>{ISK.format(c.isk_per_hour)}/hr</span>
+                  ) : (
+                    <span style={{ color: "var(--text-dim)" }}>—</span>
+                  )}
+                </td>
                 <td className="mono num">
                   {!expiring ? (
                     <span style={{ color: "var(--text-dim)" }}>idle</span>

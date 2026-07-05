@@ -83,6 +83,32 @@ pub struct ColonyStatus {
     pub seconds_remaining: i64,
     /// Product type ids being extracted (for name resolution).
     pub products: Vec<i64>,
+    /// Per-extractor steady-state output (units/hour), for profit ranking.
+    pub yields: Vec<ExtractorYield>,
+}
+
+/// One extractor's steady-state output, normalized to units/hour so colonies
+/// with different cycle lengths compare directly. Pure — see [`extractor_yield`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ExtractorYield {
+    pub product_type_id: i64,
+    pub units_per_hour: f64,
+}
+
+/// Convert an extractor's per-cycle quantity + cycle length into units/hour.
+/// Returns `None` unless a product, a positive quantity, and a positive cycle
+/// time are all present. `cycle_time` is in seconds (ESI convention).
+pub fn extractor_yield(ed: &ExtractorDetails) -> Option<ExtractorYield> {
+    let product = ed.product_type_id?;
+    let qty = ed.qty_per_cycle?;
+    let cycle = ed.cycle_time?;
+    if qty <= 0 || cycle <= 0 {
+        return None;
+    }
+    Some(ExtractorYield {
+        product_type_id: product,
+        units_per_hour: qty as f64 * 3600.0 / cycle as f64,
+    })
 }
 
 /// Reduce a colony + its layout to a [`ColonyStatus`] with a countdown to the
@@ -91,6 +117,7 @@ pub fn summarize_colony(colony: &Colony, layout: &ColonyLayout, now: OffsetDateT
     let mut soonest: Option<(OffsetDateTime, String)> = None;
     let mut extractor_count = 0;
     let mut products = Vec::new();
+    let mut yields = Vec::new();
 
     for pin in &layout.pins {
         if let Some(ed) = &pin.extractor_details {
@@ -99,6 +126,9 @@ pub fn summarize_colony(colony: &Colony, layout: &ColonyLayout, now: OffsetDateT
                 if !products.contains(&p) {
                     products.push(p);
                 }
+            }
+            if let Some(y) = extractor_yield(ed) {
+                yields.push(y);
             }
         }
         if let Some(raw) = &pin.expiry_time {
@@ -129,6 +159,7 @@ pub fn summarize_colony(colony: &Colony, layout: &ColonyLayout, now: OffsetDateT
         soonest_expiry,
         seconds_remaining,
         products,
+        yields,
     }
 }
 
@@ -233,6 +264,35 @@ mod tests {
         assert_eq!(s.soonest_expiry.as_deref(), Some("2026-06-21T10:00:00Z"));
         assert_eq!(s.seconds_remaining, 3600); // one hour out
         assert_eq!(s.products, vec![2268, 2305]);
+        // 1000 units / 3600s cycle → 1000 units/hour, one per extractor.
+        assert_eq!(s.yields.len(), 2);
+        assert!((s.yields[0].units_per_hour - 1000.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn extractor_yield_normalizes_to_hourly_and_guards_bad_input() {
+        // 2000 units over a 2h cycle → 1000/hr.
+        let ed = ExtractorDetails {
+            product_type_id: Some(2268),
+            qty_per_cycle: Some(2000),
+            cycle_time: Some(7200),
+        };
+        let y = extractor_yield(&ed).unwrap();
+        assert_eq!(y.product_type_id, 2268);
+        assert!((y.units_per_hour - 1000.0).abs() < 1e-9);
+        // Missing/zero fields yield nothing rather than dividing by zero.
+        assert!(extractor_yield(&ExtractorDetails {
+            product_type_id: Some(2268),
+            qty_per_cycle: Some(100),
+            cycle_time: Some(0),
+        })
+        .is_none());
+        assert!(extractor_yield(&ExtractorDetails {
+            product_type_id: None,
+            qty_per_cycle: Some(100),
+            cycle_time: Some(3600),
+        })
+        .is_none());
     }
 
     #[test]

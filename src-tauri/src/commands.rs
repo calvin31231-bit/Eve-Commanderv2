@@ -847,11 +847,13 @@ pub struct ColonyView {
     pub products: Vec<String>,
     pub soonest_expiry: Option<String>,
     pub seconds_remaining: i64,
+    /// Estimated raw-extraction ISK/hour at current prices (0 if unpriced).
+    pub isk_per_hour: f64,
 }
 
 /// The character's planetary-industry colonies with extractor-cycle countdowns,
-/// soonest expiry first. Empty when the character runs no PI (or lacks the
-/// planets scope).
+/// ranked by estimated ISK/hour (most profitable first). Empty when the
+/// character runs no PI (or lacks the planets scope).
 #[tauri::command]
 pub async fn get_planets(
     state: State<'_, AppState>,
@@ -870,21 +872,37 @@ pub async fn get_planets(
         ids.extend(&c.products);
     }
     let names = names_for(&state, &ids).await;
+    let prices = state.prices.price_map().await.unwrap_or_default();
 
-    Ok(colonies
+    let mut out: Vec<ColonyView> = colonies
         .into_iter()
-        .map(|c| ColonyView {
-            planet_id: c.planet_id,
-            system_name: named(&names, c.solar_system_id),
-            planet_type: title_case(&c.planet_type),
-            upgrade_level: c.upgrade_level,
-            num_pins: c.num_pins,
-            extractor_count: c.extractor_count as i64,
-            products: c.products.iter().map(|&p| named(&names, p)).collect(),
-            soonest_expiry: c.soonest_expiry,
-            seconds_remaining: c.seconds_remaining,
+        .map(|c| {
+            let isk_per_hour = c
+                .yields
+                .iter()
+                .map(|y| y.units_per_hour * prices.price(y.product_type_id).unwrap_or(0.0))
+                .sum();
+            ColonyView {
+                planet_id: c.planet_id,
+                system_name: named(&names, c.solar_system_id),
+                planet_type: title_case(&c.planet_type),
+                upgrade_level: c.upgrade_level,
+                num_pins: c.num_pins,
+                extractor_count: c.extractor_count as i64,
+                products: c.products.iter().map(|&p| named(&names, p)).collect(),
+                soonest_expiry: c.soonest_expiry,
+                seconds_remaining: c.seconds_remaining,
+                isk_per_hour,
+            }
         })
-        .collect())
+        .collect();
+    // Most profitable first; colonies still expire-sorted within equal value.
+    out.sort_by(|a, b| {
+        b.isk_per_hour
+            .partial_cmp(&a.isk_per_hour)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    Ok(out)
 }
 
 /// Capitalize the first letter (ESI planet types come lowercase: "barren").

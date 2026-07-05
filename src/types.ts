@@ -136,6 +136,7 @@ export interface ColonyView {
   products: string[];
   soonest_expiry: string | null;
   seconds_remaining: number;
+  isk_per_hour: number;
 }
 
 export interface MailHeader {
