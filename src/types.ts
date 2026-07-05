@@ -551,6 +551,7 @@ export interface PilotThreatView {
 export interface ThreatScanView {
   pilots: PilotThreatView[];
   summary: string;
+  composition: string;
   unresolved: string[];
 }
 

@@ -6066,6 +6066,13 @@ function ThreatScanner(): ReactNode {
       {result && (
         <div style={{ marginTop: 10 }}>
           <p style={{ marginTop: 0 }}>{result.summary}</p>
+          {result.composition && (
+            <p style={{ margin: "0 0 8px", fontSize: 13 }}>
+              <span className="badge caution">gang</span> likely composition:{" "}
+              <strong>{result.composition}</strong>
+              <span style={{ color: "var(--text-dim)", fontSize: 11 }}> (from most-flown ships)</span>
+            </p>
+          )}
           <table className="holdings">
             <tbody>
               {result.pilots.map((p) => (

@@ -4416,6 +4416,9 @@ pub struct PilotThreatView {
 pub struct ThreatScanView {
     pub pilots: Vec<PilotThreatView>,
     pub summary: String,
+    /// Estimated gang composition from the pilots' most-flown ships
+    /// (e.g. "3 dps, 2 logi, 1 tackle"); empty when no ship data resolves.
+    pub composition: String,
     /// Pasted names that didn't resolve to a character.
     pub unresolved: Vec<String>,
 }
@@ -4447,6 +4450,7 @@ pub async fn scan_pilots(
         Vec::new();
     let mut unresolved = Vec::new();
     let mut seen = std::collections::HashSet::new();
+    let mut top_ships: Vec<i64> = Vec::new(); // one per resolved pilot, for composition
     for name in &names {
         let key = name.to_lowercase();
         if !seen.insert(key.clone()) {
@@ -4455,6 +4459,9 @@ pub async fn scan_pilots(
         match id_map.get(&key) {
             Some(&id) => {
                 let stats = state.zkill.character_stats(id).await.unwrap_or_default();
+                if let Some(ship) = stats.top_ship_type_id() {
+                    top_ships.push(ship);
+                }
                 let ps = stats.to_pilot_stats();
                 let threat = score_pilot(&ps);
                 scored.push((name.clone(), threat.level, threat, ps));
@@ -4462,6 +4469,16 @@ pub async fn scan_pilots(
             None => unresolved.push(name.clone()),
         }
     }
+
+    // Estimate gang composition from each pilot's most-flown ship (group → role).
+    let sde = state.names.sde();
+    let mut roles: Vec<eve_core::intel::ShipRole> = Vec::new();
+    for ship in &top_ships {
+        if let Ok(Some(group)) = sde.type_group_id(*ship).await {
+            roles.push(eve_core::intel::ship_role(group));
+        }
+    }
+    let composition = eve_core::intel::fleet_composition(&roles);
 
     // Most dangerous first.
     scored.sort_by(|a, b| b.1.cmp(&a.1));
@@ -4478,7 +4495,7 @@ pub async fn scan_pilots(
         })
         .collect();
 
-    Ok(ThreatScanView { pilots, summary, unresolved })
+    Ok(ThreatScanView { pilots, summary, composition, unresolved })
 }
 
 /// A single skill requirement the character hasn't met for a fit.

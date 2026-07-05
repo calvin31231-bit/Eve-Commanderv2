@@ -309,6 +309,16 @@ impl Sde {
         Ok(row.and_then(|r| r.get::<Option<f64>, _>("volume")))
     }
 
+    /// The market/ship group id of a type — used to classify ships into tactical
+    /// roles for gang-composition estimates.
+    pub async fn type_group_id(&self, type_id: i64) -> Result<Option<i64>> {
+        let row = sqlx::query("SELECT group_id FROM types WHERE type_id = ?1")
+            .bind(type_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.and_then(|r| r.get::<Option<i64>, _>("group_id")))
+    }
+
     /// The curated dogma attributes stored for a type, as an `attribute_id →
     /// value` map (empty when the SDE predates the fitting-stats ingestion or the
     /// type has none). Feeds `eve_core::dogma`.

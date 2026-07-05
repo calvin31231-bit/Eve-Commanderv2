@@ -283,6 +283,98 @@ pub struct ZkillStats {
     pub ships_lost: i64,
     #[serde(default)]
     pub info: ZkillInfo,
+    /// zKill "top" breakdowns (ships, systems, …); we read the ship list.
+    #[serde(rename = "topLists", default)]
+    pub top_lists: Vec<ZkillTopList>,
+}
+
+/// One zKill top-list block (a `type` like "ship" plus its ranked values).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ZkillTopList {
+    #[serde(rename = "type", default)]
+    pub list_type: String,
+    #[serde(default)]
+    pub values: Vec<ZkillTopEntry>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ZkillTopEntry {
+    #[serde(rename = "shipTypeID", default)]
+    pub ship_type_id: i64,
+    #[serde(default)]
+    pub kills: i64,
+}
+
+impl ZkillStats {
+    /// The pilot's most-flown ship type id (top of the "ship" list), if any.
+    pub fn top_ship_type_id(&self) -> Option<i64> {
+        self.top_lists
+            .iter()
+            .find(|l| l.list_type == "ship")
+            .and_then(|l| l.values.first())
+            .map(|e| e.ship_type_id)
+            .filter(|id| *id != 0)
+    }
+}
+
+/// A tactical role inferred from a ship's group, for gang-composition estimates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShipRole {
+    Logi,
+    Tackle,
+    Ewar,
+    Hunter,
+    Capital,
+    Dps,
+    Other,
+}
+
+impl ShipRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShipRole::Logi => "logi",
+            ShipRole::Tackle => "tackle",
+            ShipRole::Ewar => "ewar/recon",
+            ShipRole::Hunter => "hunter/blops",
+            ShipRole::Capital => "capital",
+            ShipRole::Dps => "dps",
+            ShipRole::Other => "other",
+        }
+    }
+}
+
+/// Classify a ship's SDE group id into a tactical role. The ids are EVE's
+/// stable ship-group ids. Unknown groups fall back to DPS (the safe default for
+/// a combat ship) or Other for non-ships. Pure.
+pub fn ship_role(group_id: i64) -> ShipRole {
+    match group_id {
+        832 | 1538 => ShipRole::Logi, // Logistics, Force Auxiliary
+        831 | 541 | 894 => ShipRole::Tackle, // Interceptor, Interdictor, HIC
+        833 | 906 | 893 | 963 => ShipRole::Ewar, // Force/Combat Recon, EAS, Strategic Cruiser
+        830 | 898 => ShipRole::Hunter, // Covert Ops, Black Ops
+        547 | 485 | 4594 | 659 | 30 | 883 => ShipRole::Capital, // Carrier, Dread, Lancer, Super, Titan, Cap Industrial
+        25 | 26 | 27 | 28 | 324 | 358 | 419 | 420 | 540 | 900 | 1201 | 1305 => {
+            ShipRole::Dps // frig/cruiser/BS/hauler/dessy/HAC/BC/marauder/command
+        }
+        0 => ShipRole::Other,
+        _ => ShipRole::Dps,
+    }
+}
+
+/// Summarize a gang's role mix into a one-line composition estimate, most
+/// numerous role first (e.g. "3 dps, 2 logi, 1 tackle"). Pure.
+pub fn fleet_composition(roles: &[ShipRole]) -> String {
+    if roles.is_empty() {
+        return String::new();
+    }
+    let mut counts: std::collections::HashMap<&'static str, i64> = std::collections::HashMap::new();
+    for r in roles {
+        *counts.entry(r.as_str()).or_insert(0) += 1;
+    }
+    let mut pairs: Vec<(&'static str, i64)> = counts.into_iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    pairs.iter().map(|(role, n)| format!("{n} {role}")).collect::<Vec<_>>().join(", ")
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -428,6 +520,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ship_roles_and_composition() {
+        assert_eq!(ship_role(832), ShipRole::Logi); // Logistics
+        assert_eq!(ship_role(541), ShipRole::Tackle); // Interdictor
+        assert_eq!(ship_role(906), ShipRole::Ewar); // Combat Recon
+        assert_eq!(ship_role(485), ShipRole::Capital); // Dreadnought
+        assert_eq!(ship_role(26), ShipRole::Dps); // Cruiser
+        assert_eq!(ship_role(0), ShipRole::Other);
+
+        let roles = vec![ShipRole::Dps, ShipRole::Dps, ShipRole::Logi, ShipRole::Tackle];
+        // Most numerous first; ties broken alphabetically.
+        assert_eq!(fleet_composition(&roles), "2 dps, 1 logi, 1 tackle");
+        assert_eq!(fleet_composition(&[]), "");
+    }
+
+    #[test]
+    fn top_ship_reads_the_ship_list() {
+        let json = r#"{
+            "dangerRatio": 60,
+            "topLists": [
+                { "type": "system", "values": [ {"kills": 5} ] },
+                { "type": "ship", "values": [ {"shipTypeID": 11567, "kills": 40}, {"shipTypeID": 587, "kills": 3} ] }
+            ]
+        }"#;
+        let stats: ZkillStats = serde_json::from_str(json).unwrap();
+        assert_eq!(stats.top_ship_type_id(), Some(11567));
+        // No ship list → None.
+        assert_eq!(ZkillStats::default().top_ship_type_id(), None);
+    }
+
+    #[test]
     fn parses_kill_ids_from_links_and_numbers() {
         assert_eq!(parse_kill_id("https://zkillboard.com/kill/129382777/"), Some(129382777));
         assert_eq!(parse_kill_id("zkillboard.com/kill/42"), Some(42));
@@ -546,6 +668,7 @@ mod tests {
             ships_destroyed: 500,
             ships_lost: 10,
             info: ZkillInfo { sec_status: -9.0 },
+            top_lists: Vec::new(),
         };
         let s = z.to_pilot_stats();
         assert_eq!(s.danger_ratio, 90);
