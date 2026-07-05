@@ -157,6 +157,98 @@ pub fn history_stats(days: &[HistoryDay]) -> HistoryStats {
     }
 }
 
+/// Which way a price is heading over the history window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrendDirection {
+    Rising,
+    Falling,
+    Flat,
+}
+
+impl TrendDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TrendDirection::Rising => "Rising",
+            TrendDirection::Falling => "Falling",
+            TrendDirection::Flat => "Flat",
+        }
+    }
+}
+
+/// A price-trend read fitted across the daily-average history: direction, the
+/// per-day drift as a fraction of the mean price, a short forward projection, and
+/// a fit-quality confidence. The "is it going up or down?" a trader wants that
+/// the raw min/max/avg stats don't answer.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PriceTrend {
+    pub direction: TrendDirection,
+    /// Slope as a fraction of the mean price, per day (0.01 = +1%/day).
+    pub per_day_pct: f64,
+    /// Latest price + slope × `horizon_days`.
+    pub projected: f64,
+    pub horizon_days: i64,
+    /// Fit quality 0.0–1.0 (R²); low means the move is noisy.
+    pub confidence: f64,
+}
+
+/// Fit an ordinary-least-squares line to a daily-average price series (oldest
+/// first, e.g. [`HistoryStats::recent`]) and project it `horizon_days` forward.
+/// A drift under 0.3%/day reads as Flat. Fewer than two points, or a flat/zero
+/// series, yields a zero-confidence Flat trend. Pure.
+pub fn price_trend(recent: &[f64], horizon_days: i64) -> PriceTrend {
+    let last = recent.last().copied().unwrap_or(0.0);
+    let flat = PriceTrend {
+        direction: TrendDirection::Flat,
+        per_day_pct: 0.0,
+        projected: last,
+        horizon_days,
+        confidence: 0.0,
+    };
+    if recent.len() < 2 {
+        return flat;
+    }
+    let n = recent.len() as f64;
+    let mean_x = (n - 1.0) / 2.0; // xs are 0..n-1
+    let mean_y = recent.iter().sum::<f64>() / n;
+    if mean_y <= 0.0 {
+        return flat;
+    }
+    let mut sxx = 0.0;
+    let mut sxy = 0.0;
+    let mut syy = 0.0;
+    for (i, &y) in recent.iter().enumerate() {
+        let dx = i as f64 - mean_x;
+        let dy = y - mean_y;
+        sxx += dx * dx;
+        sxy += dx * dy;
+        syy += dy * dy;
+    }
+    if sxx <= 0.0 {
+        return flat;
+    }
+    let slope = sxy / sxx; // ISK per day
+    let per_day_pct = slope / mean_y;
+    let confidence = if syy > 0.0 {
+        (sxy * sxy / (sxx * syy)).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let direction = if per_day_pct > 0.003 {
+        TrendDirection::Rising
+    } else if per_day_pct < -0.003 {
+        TrendDirection::Falling
+    } else {
+        TrendDirection::Flat
+    };
+    PriceTrend {
+        direction,
+        per_day_pct,
+        projected: last + slope * horizon_days as f64,
+        horizon_days,
+        confidence,
+    }
+}
+
 /// Broker fee + sales tax assumptions for station-trade profit math. Fractions
 /// (0.03 = 3%). Defaults are typical mid-skill highsec values; the UI lets the
 /// user override them.
@@ -710,6 +802,30 @@ mod tests {
         // No history / zero price → Normal, never a panic or divide-by-zero.
         assert_eq!(detect_anomaly(100.0, &[]).flag, PriceFlag::Normal);
         assert_eq!(detect_anomaly(0.0, &hist).flag, PriceFlag::Normal);
+    }
+
+    #[test]
+    fn price_trend_reads_direction_and_projects() {
+        // Steady +1%/day off a 100 base.
+        let rising: Vec<f64> = (0..10).map(|d| 100.0 + d as f64).collect();
+        let t = price_trend(&rising, 7);
+        assert_eq!(t.direction, TrendDirection::Rising);
+        assert!(t.per_day_pct > 0.0);
+        assert!(t.confidence > 0.99);
+        // Last is 109; slope 1/day × 7 → ~116.
+        assert!((t.projected - 116.0).abs() < 0.5);
+
+        // Falling series reads Falling.
+        let falling: Vec<f64> = (0..10).map(|d| 200.0 - 2.0 * d as f64).collect();
+        assert_eq!(price_trend(&falling, 7).direction, TrendDirection::Falling);
+
+        // A tiny drift under the 0.3%/day threshold is Flat.
+        let noisy = vec![100.0, 100.1, 99.9, 100.05, 99.95];
+        assert_eq!(price_trend(&noisy, 7).direction, TrendDirection::Flat);
+
+        // Degenerate inputs never panic.
+        assert_eq!(price_trend(&[], 7).direction, TrendDirection::Flat);
+        assert_eq!(price_trend(&[42.0], 7).projected, 42.0);
     }
 
     #[test]

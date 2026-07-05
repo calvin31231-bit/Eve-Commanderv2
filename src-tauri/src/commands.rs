@@ -1348,6 +1348,8 @@ pub struct MarketBrowse {
     pub hubs: Vec<eve_core::marketdata::HubQuote>,
     /// Live best-sell vs. recent history: spike / bargain / manipulation flag.
     pub anomaly: eve_core::marketdata::PriceAnomaly,
+    /// Fitted price direction + 7-day projection over the daily-average history.
+    pub trend: eve_core::marketdata::PriceTrend,
 }
 
 #[tauri::command]
@@ -1369,12 +1371,14 @@ pub async fn get_market_browse(
         quote.best_sell.unwrap_or(0.0),
         &history.recent,
     );
+    let trend = eve_core::marketdata::price_trend(&history.recent, 7);
     Ok(MarketBrowse {
         quote,
         history,
         insurance: insurance.ok().flatten(),
         hubs: hubs.unwrap_or_default(),
         anomaly,
+        trend,
     })
 }
 

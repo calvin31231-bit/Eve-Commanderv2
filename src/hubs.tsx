@@ -1798,6 +1798,16 @@ function MarketBrowser(): ReactNode {
             {data.quote.sell_orders} sell / {data.quote.buy_orders} buy orders
           </p>
           {data.history.recent.length > 1 && <Sparkline values={data.history.recent} />}
+          {data.trend.confidence > 0 && data.trend.direction !== "Flat" && (
+            <p style={{ fontSize: 12, margin: "4px 0 0", color: "var(--text-dim)" }}>
+              <span className={data.trend.direction === "Rising" ? "pos" : "neg"}>
+                {data.trend.direction === "Rising" ? "▲" : "▼"} {data.trend.direction}
+                {" "}{(Math.abs(data.trend.per_day_pct) * 100).toFixed(1)}%/day
+              </span>
+              {" · "}~{ISK.format(data.trend.projected)} in {data.trend.horizon_days}d
+              {data.trend.confidence < 0.4 && <span title="Noisy fit"> · rough</span>}
+            </p>
+          )}
           {data.hubs.length > 0 && (
             <table className="holdings" style={{ marginTop: 10 }}>
               <thead>

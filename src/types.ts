@@ -301,12 +301,21 @@ export interface PriceAnomaly {
   note: string;
 }
 
+export interface PriceTrend {
+  direction: "Rising" | "Falling" | "Flat";
+  per_day_pct: number;
+  projected: number;
+  horizon_days: number;
+  confidence: number;
+}
+
 export interface MarketBrowse {
   quote: MarketQuote;
   history: HistoryStats;
   insurance: InsuranceLevel[] | null;
   hubs: HubQuote[];
   anomaly: PriceAnomaly;
+  trend: PriceTrend;
 }
 
 export interface TradeOpportunity {
