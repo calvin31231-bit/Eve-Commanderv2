@@ -1299,6 +1299,8 @@ pub struct MarketBrowse {
     pub insurance: Option<Vec<eve_core::insurance::InsuranceLevel>>,
     /// Best buy/sell across the major trade hubs for cross-hub comparison.
     pub hubs: Vec<eve_core::marketdata::HubQuote>,
+    /// Live best-sell vs. recent history: spike / bargain / manipulation flag.
+    pub anomaly: eve_core::marketdata::PriceAnomaly,
 }
 
 #[tauri::command]
@@ -1313,11 +1315,19 @@ pub async fn get_market_browse(
         state.insurance.for_type(type_id),
         state.marketdata.compare(type_id),
     );
+    let quote = quote.map_err(|e| e.to_string())?;
+    let history = history.unwrap_or_else(|_| eve_core::marketdata::history_stats(&[]));
+    // Judge the live best-sell against the 30-day daily-average history.
+    let anomaly = eve_core::marketdata::detect_anomaly(
+        quote.best_sell.unwrap_or(0.0),
+        &history.recent,
+    );
     Ok(MarketBrowse {
-        quote: quote.map_err(|e| e.to_string())?,
-        history: history.unwrap_or_else(|_| eve_core::marketdata::history_stats(&[])),
+        quote,
+        history,
         insurance: insurance.ok().flatten(),
         hubs: hubs.unwrap_or_default(),
+        anomaly,
     })
 }
 

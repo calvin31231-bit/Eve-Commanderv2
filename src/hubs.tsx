@@ -1752,7 +1752,23 @@ function MarketBrowser(): ReactNode {
       </div>
       {sel && data && (
         <div className="market-quote">
-          <div className="market-name">{sel.name}</div>
+          <div className="market-name">
+            {sel.name}
+            {data.anomaly.flag !== "normal" && (
+              <span
+                className={`badge ${data.anomaly.flag === "cheap" ? "safe" : data.anomaly.flag === "spike" ? "caution" : "danger"}`}
+                style={{ marginLeft: 8, fontWeight: 400 }}
+                title={data.anomaly.note}
+              >
+                {data.anomaly.flag === "cheap" ? "below normal" : data.anomaly.flag === "spike" ? "price spike" : "anomaly"}
+              </span>
+            )}
+          </div>
+          {data.anomaly.flag !== "normal" && (
+            <p style={{ fontSize: 12, margin: "2px 0 0", color: data.anomaly.flag === "cheap" ? "var(--safe)" : "var(--caution)" }}>
+              {data.anomaly.note}
+            </p>
+          )}
           <div className="cashflow-totals">
             <span className="pos">{data.quote.best_sell != null ? `${ISK.format(data.quote.best_sell)} sell` : "no sell"}</span>
             <span className="neg">{data.quote.best_buy != null ? `${ISK.format(data.quote.best_buy)} buy` : "no buy"}</span>

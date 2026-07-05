@@ -300,6 +300,79 @@ pub struct RegionTypeQuote {
     pub buy_volume: i64,
 }
 
+/// A price-anomaly verdict comparing a live price against recent history.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PriceAnomaly {
+    /// Live price relative to the recent median, as a signed fraction (0.25 =
+    /// 25% above the median). 0 when there's no usable history.
+    pub deviation: f64,
+    /// The recent median daily average the deviation is measured against.
+    pub median: f64,
+    /// A coarse classification for the UI.
+    pub flag: PriceFlag,
+    /// One-line human explanation.
+    pub note: String,
+}
+
+/// Coarse price-anomaly classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PriceFlag {
+    /// Within normal daily variation.
+    Normal,
+    /// Notably cheaper than usual — a potential buy.
+    Cheap,
+    /// Notably dearer than usual — a spike.
+    Spike,
+    /// Extreme move — possible manipulation / thin book.
+    Manipulation,
+}
+
+/// Median of a slice (0.0 when empty). Pure.
+fn median(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let mut v: Vec<f64> = values.to_vec();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = v.len() / 2;
+    if v.len() % 2 == 0 {
+        (v[mid - 1] + v[mid]) / 2.0
+    } else {
+        v[mid]
+    }
+}
+
+/// Classify a live price against recent daily-average history: flags spikes,
+/// bargains, and extreme (possible-manipulation) moves off the median. Uses the
+/// median (not mean) so a single manipulated day doesn't move the baseline.
+/// Pure → unit-tested.
+pub fn detect_anomaly(live_price: f64, recent: &[f64]) -> PriceAnomaly {
+    let med = median(recent);
+    if med <= 0.0 || live_price <= 0.0 {
+        return PriceAnomaly {
+            deviation: 0.0,
+            median: med,
+            flag: PriceFlag::Normal,
+            note: "Not enough history to judge.".to_string(),
+        };
+    }
+    let deviation = (live_price - med) / med;
+    let (flag, note) = if deviation.abs() >= 0.5 {
+        (
+            PriceFlag::Manipulation,
+            format!("{:+.0}% vs 30d median — extreme; thin book or manipulation.", deviation * 100.0),
+        )
+    } else if deviation >= 0.2 {
+        (PriceFlag::Spike, format!("{:+.0}% above the 30d median — price spike.", deviation * 100.0))
+    } else if deviation <= -0.2 {
+        (PriceFlag::Cheap, format!("{:.0}% below the 30d median — cheaper than usual.", deviation * 100.0))
+    } else {
+        (PriceFlag::Normal, "Within normal daily variation.".to_string())
+    };
+    PriceAnomaly { deviation, median: med, flag, note }
+}
+
 /// Reduce a whole-region order book to `type_id → RegionTypeQuote` in one pass —
 /// the bulk path behind "scan all items". Pure.
 pub fn quotes_by_type(orders: &[RegionOrder]) -> std::collections::HashMap<i64, RegionTypeQuote> {
@@ -623,6 +696,20 @@ mod tests {
         assert_eq!(t34.buy_volume, 20); // two 10-unit buys
         assert_eq!(q.get(&35).unwrap().best_sell, Some(12.0));
         assert!(!q.contains_key(&0));
+    }
+
+    #[test]
+    fn anomaly_flags_spikes_bargains_and_extremes() {
+        let hist = vec![100.0, 102.0, 98.0, 101.0, 99.0]; // median 100
+        assert_eq!(detect_anomaly(105.0, &hist).flag, PriceFlag::Normal);
+        assert_eq!(detect_anomaly(130.0, &hist).flag, PriceFlag::Spike);
+        assert_eq!(detect_anomaly(75.0, &hist).flag, PriceFlag::Cheap);
+        assert_eq!(detect_anomaly(200.0, &hist).flag, PriceFlag::Manipulation);
+        // Deviation is measured off the median.
+        assert!((detect_anomaly(130.0, &hist).deviation - 0.30).abs() < 1e-9);
+        // No history / zero price → Normal, never a panic or divide-by-zero.
+        assert_eq!(detect_anomaly(100.0, &[]).flag, PriceFlag::Normal);
+        assert_eq!(detect_anomaly(0.0, &hist).flag, PriceFlag::Normal);
     }
 
     #[test]

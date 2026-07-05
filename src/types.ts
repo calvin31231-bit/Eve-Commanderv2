@@ -287,11 +287,21 @@ export interface HubQuote {
   best_buy: number | null;
 }
 
+export type PriceFlag = "normal" | "cheap" | "spike" | "manipulation";
+
+export interface PriceAnomaly {
+  deviation: number;
+  median: number;
+  flag: PriceFlag;
+  note: string;
+}
+
 export interface MarketBrowse {
   quote: MarketQuote;
   history: HistoryStats;
   insurance: InsuranceLevel[] | null;
   hubs: HubQuote[];
+  anomaly: PriceAnomaly;
 }
 
 export interface TradeOpportunity {
