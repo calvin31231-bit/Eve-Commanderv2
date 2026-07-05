@@ -182,6 +182,7 @@ export const api = {
     call<HubBoardView>("get_hub_board", { query, salesTax, brokerFee }),
   scanHubTrades: (opts: {
     items?: string[];
+    scope?: string;
     relist?: boolean;
     cargoM3?: number;
     salesTax?: number;

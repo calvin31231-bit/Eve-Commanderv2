@@ -1464,17 +1464,22 @@ pub struct HubTradeView {
     pub statement: String,
 }
 
-/// The curated-universe Top-N hub-trade scan — the spreadsheet's headline: rank
-/// the best trades right now across a hand-picked liquid item list, in either
-/// **flip** mode (sell into buy orders) or **relist** mode (buy low, list a
-/// sell order at a dearer hub). With `cargo_m3`, ranks by total per-trip profit
-/// and reports units-per-trip; without it, ranks by ISK/m³. `items` overrides
-/// the curated list (item names). `top_n` caps the result (default 20).
+/// The Top-N hub-trade scan — the spreadsheet's headline. Ranks the best trades
+/// right now in either **flip** mode (sell into buy orders) or **relist** mode
+/// (buy low, list a sell order at a dearer hub), across a chosen `scope`:
+/// - `"curated"` (default): a hand-picked liquid item list.
+/// - `"minerals"`: the eight refined minerals.
+/// - `"all"`: **every** tradeable item, via one bulk order-book fetch per hub
+///   region (slow the first time, then cache-served).
+///
+/// With `cargo_m3` it ranks by total per-trip profit and reports units-per-trip;
+/// without it, by ISK/m³. `items` overrides the scope with explicit names/ids.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn scan_hub_trades(
     state: State<'_, AppState>,
     items: Option<Vec<String>>,
+    scope: Option<String>,
     relist: Option<bool>,
     cargo_m3: Option<f64>,
     sales_tax: Option<f64>,
@@ -1484,6 +1489,7 @@ pub async fn scan_hub_trades(
     let sde = state.names.sde();
     let relist = relist.unwrap_or(false);
     let cargo = cargo_m3.unwrap_or(0.0).max(0.0);
+    let scope = scope.unwrap_or_else(|| "curated".to_string());
     let mut fees = eve_core::marketdata::TradeFees::default();
     if let Some(t) = sales_tax {
         fees.sales_tax = t;
@@ -1492,31 +1498,78 @@ pub async fn scan_hub_trades(
         fees.broker_fee = b;
     }
 
-    // Resolve the item universe (supplied names, else the curated list) → ids.
-    let names_in: Vec<String> = match items {
-        Some(v) => v,
-        None => eve_core::market_universe::CURATED_TRADE_ITEMS
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-    };
-    let mut type_ids: Vec<i64> = Vec::new();
-    for n in &names_in {
-        match sde.type_id_by_name(n.trim()).await.map_err(|e| e.to_string())? {
-            Some(id) => type_ids.push(id),
-            None => {
-                if let Ok(id) = n.trim().parse::<i64>() {
+    // Build the per-item hub boards, either from bulk region books ("all") or by
+    // querying each chosen item across the hubs (curated/minerals/custom).
+    let boards: Vec<(i64, Vec<eve_core::marketdata::HubQuote>)> = if items.is_none() && scope == "all"
+    {
+        // One bulk order-book fetch per hub region → best sell/buy per type.
+        // `type_id → (best_sell, best_buy)` for one hub region.
+        type HubBook = std::collections::HashMap<i64, (Option<f64>, Option<f64>)>;
+        let hubs = eve_core::marketdata::HUBS;
+        let mut books: Vec<(&'static str, HubBook)> = Vec::with_capacity(hubs.len());
+        for &(region, name) in hubs {
+            let book = state.marketdata.region_book(region).await.unwrap_or_default();
+            books.push((name, book));
+        }
+        // Union of every type that has a sell order somewhere.
+        let mut type_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        for (_, book) in &books {
+            for (&tid, (sell, _)) in book {
+                if sell.is_some() {
+                    type_ids.insert(tid);
+                }
+            }
+        }
+        type_ids
+            .into_iter()
+            .map(|tid| {
+                let quotes = books
+                    .iter()
+                    .map(|(name, book)| {
+                        let (best_sell, best_buy) = book.get(&tid).copied().unwrap_or((None, None));
+                        eve_core::marketdata::HubQuote { hub: name.to_string(), best_sell, best_buy }
+                    })
+                    .collect();
+                (tid, quotes)
+            })
+            .collect()
+    } else {
+        // Resolve the item set to type ids.
+        let mut type_ids: Vec<i64> = Vec::new();
+        if let Some(names_in) = items {
+            for n in &names_in {
+                match sde.type_id_by_name(n.trim()).await.map_err(|e| e.to_string())? {
+                    Some(id) => type_ids.push(id),
+                    None => {
+                        if let Ok(id) = n.trim().parse::<i64>() {
+                            type_ids.push(id);
+                        }
+                    }
+                }
+            }
+        } else if scope == "minerals" {
+            type_ids = eve_core::market_universe::MINERALS.to_vec();
+        } else {
+            for n in eve_core::market_universe::CURATED_TRADE_ITEMS {
+                if let Some(id) = sde.type_id_by_name(n).await.map_err(|e| e.to_string())? {
                     type_ids.push(id);
                 }
             }
         }
-    }
-    type_ids.sort_unstable();
-    type_ids.dedup();
+        type_ids.sort_unstable();
+        type_ids.dedup();
+
+        let mut boards = Vec::with_capacity(type_ids.len());
+        for type_id in type_ids {
+            if let Ok(hubs) = state.marketdata.compare(type_id).await {
+                boards.push((type_id, hubs));
+            }
+        }
+        boards
+    };
 
     let mut out: Vec<HubTradeView> = Vec::new();
-    for type_id in type_ids {
-        let Ok(hubs) = state.marketdata.compare(type_id).await else { continue };
+    for (type_id, hubs) in boards {
         // Pick the per-item best trade for the chosen mode.
         let (buy_hub, sell_hub, buy_price, sell_price, profit, margin) = if relist {
             match eve_core::marketdata::best_sell_to_sell(&hubs, fees) {

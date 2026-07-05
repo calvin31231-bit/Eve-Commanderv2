@@ -41,6 +41,10 @@ pub struct RegionOrder {
     pub is_buy_order: bool,
     #[serde(default)]
     pub location_id: i64,
+    /// Present on whole-region order books (`/markets/{region}/orders/`), absent
+    /// on per-type queries (which are already filtered to one type).
+    #[serde(default)]
+    pub type_id: i64,
 }
 
 /// Best-price summary of an item's order book in a region.
@@ -286,6 +290,45 @@ pub struct HubSellToSell {
     pub margin_pct: f64,
 }
 
+/// Reduce a whole-region order book to `type_id → (best_sell, best_buy)` in one
+/// pass — the bulk path behind "scan all items". Pure.
+pub fn quotes_by_type(orders: &[RegionOrder]) -> std::collections::HashMap<i64, (Option<f64>, Option<f64>)> {
+    let mut out: std::collections::HashMap<i64, (Option<f64>, Option<f64>)> =
+        std::collections::HashMap::new();
+    for o in orders {
+        if o.type_id == 0 {
+            continue;
+        }
+        let e = out.entry(o.type_id).or_insert((None, None));
+        if o.is_buy_order {
+            // Best buy = highest bid.
+            if e.1.is_none_or_lt(o.price) {
+                e.1 = Some(o.price);
+            }
+        } else {
+            // Best sell = lowest ask.
+            if e.0.is_none_or_gt(o.price) {
+                e.0 = Some(o.price);
+            }
+        }
+    }
+    out
+}
+
+/// Small helpers so the reducer reads cleanly without repeating match arms.
+trait OptCmp {
+    fn is_none_or_lt(&self, v: f64) -> bool;
+    fn is_none_or_gt(&self, v: f64) -> bool;
+}
+impl OptCmp for Option<f64> {
+    fn is_none_or_lt(&self, v: f64) -> bool {
+        self.map(|c| v > c).unwrap_or(true)
+    }
+    fn is_none_or_gt(&self, v: f64) -> bool {
+        self.map(|c| v < c).unwrap_or(true)
+    }
+}
+
 /// Find the best cross-hub sell-to-sell relist: buy where sell orders are
 /// cheapest, list where sell orders are dearest, netting the broker fee on the
 /// listing plus sales tax on the eventual sale. Returns `None` unless the hubs
@@ -335,6 +378,19 @@ pub struct MarketDataClient {
 impl MarketDataClient {
     pub fn new(esi: EsiClient) -> Self {
         Self { esi }
+    }
+
+    /// Fetch a region's **entire** order book (all types, all pages) and reduce
+    /// it to `type_id → (best_sell, best_buy)`. One bulk call set per hub covers
+    /// every tradeable item — the efficient way to "scan everything" (vs. tens
+    /// of thousands of per-item queries). Cache-first, so repeat scans are cheap.
+    pub async fn region_book(
+        &self,
+        region_id: i64,
+    ) -> Result<std::collections::HashMap<i64, (Option<f64>, Option<f64>)>> {
+        let path = format!("/latest/markets/{region_id}/orders/?order_type=all");
+        let orders = self.esi.get_public_json_paged::<RegionOrder>(&path).await?;
+        Ok(quotes_by_type(&orders))
     }
 
     /// Best buy/sell quote for a type in a region.
@@ -445,7 +501,7 @@ mod tests {
     use super::*;
 
     fn order(price: f64, vol: i64, buy: bool) -> RegionOrder {
-        RegionOrder { price, volume_remain: vol, is_buy_order: buy, location_id: 60003760 }
+        RegionOrder { price, volume_remain: vol, is_buy_order: buy, location_id: 60003760, type_id: 0 }
     }
 
     #[test]
@@ -532,6 +588,29 @@ mod tests {
         assert_eq!(a.buy_hub, "Jita");
         assert_eq!(a.sell_hub, "Amarr");
         assert!((a.profit_per_unit - 24.15).abs() < 1e-6);
+    }
+
+    #[test]
+    fn quotes_by_type_reduces_whole_region_book() {
+        let o = |type_id: i64, price: f64, buy: bool| RegionOrder {
+            price,
+            volume_remain: 10,
+            is_buy_order: buy,
+            location_id: 60003760,
+            type_id,
+        };
+        let book = vec![
+            o(34, 5.5, false), // sell
+            o(34, 5.2, false), // cheaper sell → best_sell
+            o(34, 5.0, true),  // buy
+            o(34, 5.1, true),  // higher buy → best_buy
+            o(35, 12.0, false),
+            o(0, 99.0, false), // no type id → ignored
+        ];
+        let q = quotes_by_type(&book);
+        assert_eq!(q.get(&34), Some(&(Some(5.2), Some(5.1))));
+        assert_eq!(q.get(&35), Some(&(Some(12.0), None)));
+        assert!(!q.contains_key(&0));
     }
 
     #[test]

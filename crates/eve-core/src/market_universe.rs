@@ -8,6 +8,19 @@
 //! spread and daily volume; it is not exhaustive (the scanner also accepts a
 //! user-supplied list).
 
+/// The eight refined minerals (canonical type ids) — the "minerals only" scope.
+/// Ids are stable, so no SDE resolution is needed.
+pub const MINERALS: &[i64] = &[
+    34,    // Tritanium
+    35,    // Pyerite
+    36,    // Mexallon
+    37,    // Isogen
+    38,    // Nocxium
+    39,    // Zydrine
+    40,    // Megacyte
+    11399, // Morphite
+];
+
 /// Curated item names to price across hubs. Grouped by intent in source order.
 pub const CURATED_TRADE_ITEMS: &[&str] = &[
     // Tech II drones (high value density, always in demand).

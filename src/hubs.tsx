@@ -2066,6 +2066,7 @@ function HubTradeScanner(): ReactNode {
   const [rows, setRows] = useState<HubTradeView[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [relist, setRelist] = useState(false);
+  const [scope, setScope] = useState("curated");
   const [cargo, setCargo] = useState("");
   const cargoM3 = parseFloat(cargo) || 0;
 
@@ -2073,19 +2074,25 @@ function HubTradeScanner(): ReactNode {
     if (!isTauri()) return;
     setLoading(true);
     api
-      .scanHubTrades({ relist, cargoM3: cargoM3 > 0 ? cargoM3 : undefined, topN: 25 })
+      .scanHubTrades({ scope, relist, cargoM3: cargoM3 > 0 ? cargoM3 : undefined, topN: scope === "all" ? 50 : 25 })
       .then((r) => { setRows(r); setLoading(false); })
       .catch(() => { setRows([]); setLoading(false); });
   }
 
   return (
     <div className="card">
-      <h3>Top Hub Trades <span style={{ color: "var(--text-dim)", fontWeight: 400, fontSize: 12 }}>· curated universe</span></h3>
+      <h3>Top Hub Trades</h3>
       <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
-        Ranks the best cross-hub trades right now across a curated liquid item list. Enter a cargo
-        size to rank by total per-trip profit and see how many units fit.
+        Ranks the best cross-hub trades right now. Enter a cargo size to rank by total per-trip
+        profit and see how many units fit. "All items" pulls each hub's full order book — slow the
+        first time, then cached.
       </p>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ fontSize: 12 }}>
+          <option value="curated">Curated list</option>
+          <option value="minerals">Minerals only</option>
+          <option value="all">All items (slow)</option>
+        </select>
         <label style={{ fontSize: 12, display: "flex", gap: 4, alignItems: "center" }}>
           <input type="checkbox" checked={relist} onChange={(e) => setRelist(e.target.checked)} />
           Sell-to-sell (relist)
@@ -2096,7 +2103,9 @@ function HubTradeScanner(): ReactNode {
           placeholder="cargo m³ (optional)"
           style={{ width: 130 }}
         />
-        <button onClick={scan} disabled={loading}>{loading ? "Scanning hubs…" : "Scan"}</button>
+        <button onClick={scan} disabled={loading}>
+          {loading ? (scope === "all" ? "Reading full order books…" : "Scanning hubs…") : "Scan"}
+        </button>
       </div>
       {rows && rows.length === 0 && !loading && (
         <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No profitable trades found right now.</p>
