@@ -771,6 +771,8 @@ export interface HubTradeView {
   units_per_trip: number;
   trip_profit: number;
   available_volume: number;
+  jumps: number;
+  route_kills: number;
   statement: string;
 }
 

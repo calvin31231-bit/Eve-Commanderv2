@@ -1463,8 +1463,25 @@ pub struct HubTradeView {
     /// Units of order-book depth on the binding side (0 = unknown, per-item
     /// scopes). The liquidity figure the min-volume filter checks.
     pub available_volume: i64,
+    /// Stargate jumps between the buy and sell hubs (0 = same/unknown).
+    pub jumps: i64,
+    /// Recent ship+pod kills summed along that hub-to-hub route (heatmap).
+    pub route_kills: i64,
     /// Plain-language statement, e.g. "Buy in Jita, sell in Amarr".
     pub statement: String,
+}
+
+/// Trade-hub station systems (name → solar system id), for hub-to-hub routing.
+const HUB_SYSTEMS: &[(&str, i64)] = &[
+    ("Jita", 30000142),
+    ("Amarr", 30002187),
+    ("Dodixie", 30002659),
+    ("Rens", 30002510),
+    ("Hek", 30002053),
+];
+
+fn hub_system(name: &str) -> Option<i64> {
+    HUB_SYSTEMS.iter().find(|(n, _)| *n == name).map(|(_, id)| *id)
 }
 
 /// The Top-N hub-trade scan — the spreadsheet's headline. Ranks the best trades
@@ -1638,6 +1655,8 @@ pub async fn scan_hub_trades(
             volume,
             units_per_trip,
             available_volume,
+            jumps: 0,       // filled after ranking for the survivors' hub pairs
+            route_kills: 0,
             trip_profit: units_per_trip as f64 * profit,
         });
     }
@@ -1653,6 +1672,42 @@ pub async fn scan_hub_trades(
         kb.partial_cmp(&ka).unwrap_or(std::cmp::Ordering::Equal)
     });
     out.truncate(top_n.unwrap_or(20));
+
+    // Annotate each survivor's hub-to-hub route: solve each distinct pair once
+    // (≤10 across 5 hubs) and sum the kill heatmap along it. Best-effort — a
+    // routing/heatmap failure just leaves jumps/kills at 0.
+    let mut pairs: Vec<(String, String)> =
+        out.iter().map(|t| (t.buy_hub.clone(), t.sell_hub.clone())).collect();
+    pairs.sort();
+    pairs.dedup();
+    if !pairs.is_empty() {
+        let kills: std::collections::HashMap<i64, i64> = state
+            .universe
+            .system_kills()
+            .await
+            .map(|v| v.into_iter().map(|k| (k.system_id, k.ship_kills + k.pod_kills)).collect())
+            .unwrap_or_default();
+        let mut routes: std::collections::HashMap<(String, String), (i64, i64)> =
+            std::collections::HashMap::new();
+        for (a, b) in pairs {
+            let (Some(oa), Some(ob)) = (hub_system(&a), hub_system(&b)) else { continue };
+            if let Ok(hops) = state
+                .navigation
+                .route(oa, ob, eve_core::navigation::RouteFlag::Secure)
+                .await
+            {
+                let jumps = (hops.len() as i64 - 1).max(0);
+                let route_kills = hops.iter().map(|s| kills.get(s).copied().unwrap_or(0)).sum();
+                routes.insert((a, b), (jumps, route_kills));
+            }
+        }
+        for t in &mut out {
+            if let Some(&(jumps, rk)) = routes.get(&(t.buy_hub.clone(), t.sell_hub.clone())) {
+                t.jumps = jumps;
+                t.route_kills = rk;
+            }
+        }
+    }
 
     // Resolve names for the survivors only.
     let names = names_for(&state, &out.iter().map(|t| t.type_id).collect::<Vec<_>>()).await;

@@ -2153,8 +2153,17 @@ function HubTradeScanner(): ReactNode {
                 </td>
                 <td className="loc">
                   {t.buy_hub} → {t.sell_hub}
+                  {t.jumps > 0 && <span style={{ color: "var(--text-dim)", fontSize: 11 }}> · {t.jumps}j</span>}
+                  {t.route_kills > 0 && (
+                    <span
+                      style={{ color: t.route_kills > 20 ? "var(--danger)" : "var(--caution)", fontSize: 11 }}
+                      title="Recent ship+pod kills along the secure route"
+                    >
+                      {" "}⚠{t.route_kills}
+                    </span>
+                  )}
                   {t.available_volume > 0 && (
-                    <span style={{ color: "var(--text-dim)", fontSize: 11 }}> · {ISK.format(t.available_volume)}u depth</span>
+                    <span style={{ color: "var(--text-dim)", fontSize: 11 }}> · {ISK.format(t.available_volume)}u</span>
                   )}
                 </td>
                 <td className="mono num pos">
