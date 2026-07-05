@@ -2417,6 +2417,18 @@ pub fn rank_income(
     Ok(eve_core::income::rank_income(&activities, hours))
 }
 
+/// Validate a proposed alliance-tournament team composition against the format's
+/// point budget, size, and per-hull limits. Stateless — the UI holds the roster
+/// and the current points list; the legality check lives in
+/// `eve_core::tournament::validate_comp`.
+#[tauri::command]
+pub fn validate_team_comp(
+    picks: Vec<eve_core::tournament::TeamPick>,
+    rules: eve_core::tournament::TeamRules,
+) -> CmdResult<eve_core::tournament::CompReport> {
+    Ok(eve_core::tournament::validate_comp(&picks, rules))
+}
+
 /// Rank candidate skill plans by ISK return on training time. Each plan is
 /// described in ISK terms (income unlocked, time to train, optional upfront
 /// cost); the deterministic ranking lives in `eve_core::skillplan::rank_roi`.

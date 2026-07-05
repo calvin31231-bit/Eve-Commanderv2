@@ -77,6 +77,8 @@ import type {
   RollPlan,
   SignatureView,
   ChainNodeView,
+  TeamPick,
+  CompReport,
   TimerView,
   SrpBoardView,
   RecruitBoardView,
@@ -3477,6 +3479,108 @@ function RecruitBoard(): ReactNode {
   );
 }
 
+// Alliance-tournament team builder: enter pilots + hulls + point costs, set the
+// format's budget/size/stacking limits, and get an instant legality check —
+// replacing the AT captain's spreadsheet. The roster persists in localStorage.
+const AT_STORE_KEY = "eve-at-comp";
+
+function TournamentBuilder(): ReactNode {
+  const [picks, setPicks] = useState<TeamPick[]>(() => {
+    try {
+      const raw = localStorage.getItem(AT_STORE_KEY);
+      return raw ? (JSON.parse(raw) as TeamPick[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [budget, setBudget] = useState(100);
+  const [maxPilots, setMaxPilots] = useState(12);
+  const [maxPerHull, setMaxPerHull] = useState(2);
+  const [report, setReport] = useState<CompReport | null>(null);
+  const [pilot, setPilot] = useState("");
+  const [ship, setShip] = useState("");
+  const [points, setPoints] = useState(0);
+
+  useEffect(() => {
+    try { localStorage.setItem(AT_STORE_KEY, JSON.stringify(picks)); } catch { /* ignore */ }
+    if (!isTauri() || picks.length === 0) { setReport(null); return; }
+    api
+      .validateTeamComp(picks, { point_budget: budget, max_pilots: maxPilots, max_per_hull: maxPerHull })
+      .then(setReport)
+      .catch(() => setReport(null));
+  }, [picks, budget, maxPilots, maxPerHull]);
+
+  function add() {
+    if (!pilot.trim() || !ship.trim()) return;
+    setPicks([...picks, { pilot: pilot.trim(), ship: ship.trim(), points: Math.max(0, points) }]);
+    setPilot(""); setShip(""); setPoints(0);
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 640 }}>
+      <h3>Tournament Comp Builder</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Enter each pilot's hull and its point cost (from the active format's list). Legality updates live.
+      </p>
+      <div className="cashflow-totals" style={{ gap: 12, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Point budget
+          <input type="number" value={budget} style={{ width: 80 }} onChange={(e) => setBudget(Number(e.target.value) || 0)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Max pilots
+          <input type="number" value={maxPilots} style={{ width: 70 }} onChange={(e) => setMaxPilots(Number(e.target.value) || 0)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Max / hull (0 = ∞)
+          <input type="number" value={maxPerHull} style={{ width: 70 }} onChange={(e) => setMaxPerHull(Number(e.target.value) || 0)} />
+        </label>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <input value={pilot} onChange={(e) => setPilot(e.target.value)} placeholder="Pilot" style={{ flex: 1, minWidth: 100 }} />
+        <input value={ship} onChange={(e) => setShip(e.target.value)} placeholder="Ship" style={{ flex: 1, minWidth: 100 }} />
+        <input type="number" value={points} onChange={(e) => setPoints(Number(e.target.value) || 0)} placeholder="pts" style={{ width: 70 }} />
+        <button onClick={add} disabled={!pilot.trim() || !ship.trim()}>Add</button>
+      </div>
+      {picks.length > 0 && (
+        <table className="holdings" style={{ marginTop: 10 }}>
+          <tbody>
+            {picks.map((p, i) => (
+              <tr key={i}>
+                <td>{p.pilot}</td>
+                <td className="loc">{p.ship}</td>
+                <td className="mono num">{p.points} pts</td>
+                <td>
+                  <button style={{ fontSize: 11 }} onClick={() => setPicks(picks.filter((_, j) => j !== i))}>Remove</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {report && (
+        <div className="cashflow-totals" style={{ marginTop: 10 }}>
+          <span className={report.over_budget ? "neg" : "pos"}>
+            {report.total_points}/{budget} pts ({report.remaining_points} left)
+          </span>
+          <span className={report.over_size ? "neg" : ""}>{report.pilot_count}/{maxPilots} pilots</span>
+          <span className={report.legal ? "pos" : "neg"} style={{ fontWeight: 600 }}>
+            {report.legal ? "✓ Legal comp" : "✗ Illegal"}
+          </span>
+        </div>
+      )}
+      {report && !report.legal && (
+        <ul style={{ fontSize: 12, color: "var(--danger)", marginTop: 4 }}>
+          {report.over_budget && <li>Over the point budget by {-report.remaining_points}.</li>}
+          {report.over_size && <li>Too many pilots.</li>}
+          {report.duplicate_pilots.length > 0 && <li>Duplicate pilot(s): {report.duplicate_pilots.join(", ")}.</li>}
+          {report.over_stacked_hulls.length > 0 && <li>Too many of: {report.over_stacked_hulls.join(", ")}.</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function CorpHub({ character }: { character: Character | null }): ReactNode {
   const [groups, setGroups] = useState<CharacterGroup[]>([]);
   const [roster, setRoster] = useState<Character[]>([]);
@@ -3532,6 +3636,7 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
           { id: "recruit", label: "Recruitment" },
           { id: "loyalty", label: "Loyalty" },
           { id: "timers", label: "Timerboard" },
+          { id: "tournament", label: "Tournament" },
         ]}
         active={sub}
         onSelect={setSub}
@@ -3540,6 +3645,7 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
       {sub === "recruit" && <RecruitBoard />}
       {sub === "loyalty" && <LoyaltyBoard />}
       {sub === "timers" && <Timerboard />}
+      {sub === "tournament" && <TournamentBuilder />}
       {sub === "groups" && (
         <>
           <div className="card" style={{ maxWidth: 560 }}>

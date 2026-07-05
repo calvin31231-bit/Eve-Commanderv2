@@ -83,6 +83,7 @@ pub mod skillplan;
 pub mod skillplan_import;
 pub mod srp;
 pub mod telemetry;
+pub mod tournament;
 pub mod trading;
 pub mod universe;
 pub mod update;

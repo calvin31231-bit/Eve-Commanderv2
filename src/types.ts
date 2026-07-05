@@ -454,6 +454,29 @@ export interface RoiResult {
   roi_score: number;
 }
 
+export interface TeamPick {
+  pilot: string;
+  ship: string;
+  points: number;
+}
+
+export interface TeamRules {
+  point_budget: number;
+  max_pilots: number;
+  max_per_hull: number;
+}
+
+export interface CompReport {
+  total_points: number;
+  pilot_count: number;
+  remaining_points: number;
+  over_budget: boolean;
+  over_size: boolean;
+  duplicate_pilots: string[];
+  over_stacked_hulls: string[];
+  legal: boolean;
+}
+
 export interface RemapView {
   intelligence: number;
   memory: number;

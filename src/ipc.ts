@@ -65,6 +65,9 @@ import type {
   SkillImportView,
   RemapView,
   RoiPlan,
+  TeamPick,
+  TeamRules,
+  CompReport,
   RoiResult,
   IncomeActivity,
   IncomeRanking,
@@ -399,6 +402,8 @@ export const api = {
   importSkillPlan: (text: string) =>
     call<SkillImportView>("import_skill_plan", { text }),
   rankSkillRoi: (plans: RoiPlan[]) => call<RoiResult[]>("rank_skill_roi", { plans }),
+  validateTeamComp: (picks: TeamPick[], rules: TeamRules) =>
+    call<CompReport>("validate_team_comp", { picks, rules }),
   rankIncome: (activities: IncomeActivity[], hours: number) =>
     call<IncomeRanking[]>("rank_income", { activities, hours }),
   getMining: (characterId: number) =>

@@ -461,6 +461,7 @@ pub fn run() {
             commands::optimize_remap,
             commands::import_skill_plan,
             commands::rank_skill_roi,
+            commands::validate_team_comp,
             commands::rank_income,
             commands::get_contracts,
             commands::get_mining,
