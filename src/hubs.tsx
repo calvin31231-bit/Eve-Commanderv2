@@ -75,6 +75,7 @@ import type {
   TimerView,
   SrpBoardView,
   RecruitBoardView,
+  LoyaltyBoardView,
   AiSettingsView,
   AiEndpointView,
   AiAgentView,
@@ -146,6 +147,7 @@ export const PALETTE_TARGETS: { hub: string; sub?: string; label: string }[] = [
   { hub: "corp", sub: "fleet", label: "Corp · Fleet" },
   { hub: "corp", sub: "srp", label: "Corp · SRP" },
   { hub: "corp", sub: "recruit", label: "Corp · Recruitment" },
+  { hub: "corp", sub: "loyalty", label: "Corp · Loyalty Points" },
   { hub: "corp", sub: "timers", label: "Corp · Timerboard" },
   { hub: "tools", sub: "settings", label: "Tools · Settings" },
   { hub: "tools", sub: "lp", label: "Tools · LP Optimizer" },
@@ -3140,6 +3142,103 @@ function Timerboard(): ReactNode {
 // accepted/rejected. Local — no ESI writes.
 const RECRUIT_STAGES = ["applied", "interview", "trial", "accepted", "rejected"];
 
+// Corp loyalty / participation points: a per-member balance board plus a
+// ledger. Directors award points (fleets, donations, hauling) and deduct them
+// on redemption against a corp store.
+function LoyaltyBoard(): ReactNode {
+  const [board, setBoard] = useState<LoyaltyBoardView | null>(null);
+  const [member, setMember] = useState("");
+  const [points, setPoints] = useState("");
+  const [reason, setReason] = useState("");
+  const [category, setCategory] = useState("pvp");
+
+  function load() {
+    if (!isTauri()) return;
+    api.getLoyaltyBoard().then(setBoard).catch(() => setBoard(null));
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  function add(sign: 1 | -1) {
+    const n = parseInt(points);
+    if (!isTauri() || !member.trim() || !n) return;
+    api
+      .addLoyaltyEntry(member.trim(), sign * Math.abs(n), reason.trim(), sign > 0 ? category : "redeem")
+      .then(() => { setPoints(""); setReason(""); load(); })
+      .catch(() => undefined);
+  }
+
+  if (!isTauri()) return <div className="sub">Loyalty tracking runs in the desktop app.</div>;
+  return (
+    <div className="card" style={{ maxWidth: 720 }}>
+      <h3>Loyalty Points</h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Award participation points and deduct them when members redeem against a corp store. Balances
+        are per-member; the ledger keeps the history.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={member} onChange={(e) => setMember(e.target.value)} placeholder="Member" style={{ flex: 1, minWidth: 130 }} />
+        <input value={points} onChange={(e) => setPoints(e.target.value)} placeholder="Points" style={{ width: 80 }} />
+        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="pvp">PvP</option>
+          <option value="donation">Donation</option>
+          <option value="hauling">Hauling</option>
+          <option value="industry">Industry</option>
+          <option value="other">Other</option>
+        </select>
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="reason (optional)" style={{ flex: 1, minWidth: 120 }} />
+        <button onClick={() => add(1)} disabled={!member.trim() || !points}>Award</button>
+        <button onClick={() => add(-1)} disabled={!member.trim() || !points}>Redeem</button>
+      </div>
+      {board && board.balances.length > 0 && (
+        <table className="holdings" style={{ marginTop: 12 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Member</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Balance</th>
+              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Earned / Redeemed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {board.balances.map((m) => (
+              <tr key={m.member}>
+                <td>{m.member}</td>
+                <td className={`mono num ${m.balance >= 0 ? "pos" : "neg"}`}>{ISK.format(m.balance)}</td>
+                <td className="mono num" style={{ color: "var(--text-dim)" }}>
+                  {ISK.format(m.earned)} / {ISK.format(m.redeemed)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {board && board.ledger.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "10px 0 2px" }}>Recent ledger</p>
+          <table className="holdings">
+            <tbody>
+              {board.ledger.slice(0, 30).map((e) => (
+                <tr key={e.id}>
+                  <td>
+                    {e.member}
+                    <span style={{ color: "var(--text-dim)", fontSize: 11 }}> · {e.category}{e.reason ? ` · ${e.reason}` : ""}</span>
+                  </td>
+                  <td className={`mono num ${e.points >= 0 ? "pos" : "neg"}`}>{e.points > 0 ? "+" : ""}{ISK.format(e.points)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <button style={{ fontSize: 11 }} onClick={() => api.deleteLoyaltyEntry(e.id).then(load)}>×</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {board && board.balances.length === 0 && (
+        <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 10 }}>No entries yet — award some points above.</p>
+      )}
+    </div>
+  );
+}
+
 function RecruitBoard(): ReactNode {
   const [data, setData] = useState<RecruitBoardView | null>(null);
   const [name, setName] = useState("");
@@ -3312,6 +3411,7 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
           { id: "fleet", label: "Fleet" },
           { id: "srp", label: "SRP" },
           { id: "recruit", label: "Recruitment" },
+          { id: "loyalty", label: "Loyalty" },
           { id: "timers", label: "Timerboard" },
         ]}
         active={sub}
@@ -3319,6 +3419,7 @@ function CorpHub({ character }: { character: Character | null }): ReactNode {
       />
       {sub === "srp" && <SrpBoard />}
       {sub === "recruit" && <RecruitBoard />}
+      {sub === "loyalty" && <LoyaltyBoard />}
       {sub === "timers" && <Timerboard />}
       {sub === "groups" && (
         <>

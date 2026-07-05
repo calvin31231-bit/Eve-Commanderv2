@@ -1240,6 +1240,28 @@ export interface RecruitBoardView {
   summary: RecruitSummary;
 }
 
+export interface LoyaltyEntry {
+  id: number;
+  member: string;
+  points: number;
+  reason: string;
+  category: string;
+  created_at: number;
+}
+
+export interface MemberBalance {
+  member: string;
+  balance: number;
+  earned: number;
+  redeemed: number;
+  entry_count: number;
+}
+
+export interface LoyaltyBoardView {
+  balances: MemberBalance[];
+  ledger: LoyaltyEntry[];
+}
+
 export interface SignatureView {
   id: number;
   system: string;

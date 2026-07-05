@@ -54,6 +54,7 @@ pub mod insurance;
 pub mod killmail;
 pub mod logs;
 pub mod loot;
+pub mod loyalty;
 pub mod lp;
 pub mod mail;
 pub mod market;

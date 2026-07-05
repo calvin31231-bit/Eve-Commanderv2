@@ -8,6 +8,7 @@ pub mod abyss;
 pub mod ai_memory;
 pub mod characters;
 pub mod library;
+pub mod loyalty;
 pub mod names;
 pub mod portability;
 pub mod recruit;

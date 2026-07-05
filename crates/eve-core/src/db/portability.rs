@@ -273,6 +273,7 @@ impl Database {
             "implant_loadouts",
             "abyss_runs",
             "srp_claims",
+            "loyalty_ledger",
             "recruits",
             "signatures",
             "timers",

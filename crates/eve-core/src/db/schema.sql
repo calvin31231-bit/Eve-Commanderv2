@@ -155,6 +155,18 @@ CREATE TABLE IF NOT EXISTS srp_claims (
 
 CREATE INDEX IF NOT EXISTS idx_srp_claims_time ON srp_claims (submitted_at);
 
+-- Corp loyalty / participation points ledger. Positive = earned, negative =
+-- redeemed; the board is a per-member running balance. See `loyalty`.
+CREATE TABLE IF NOT EXISTS loyalty_ledger (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    member     TEXT    NOT NULL,
+    points     INTEGER NOT NULL,
+    reason     TEXT    NOT NULL DEFAULT '',
+    category   TEXT    NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_loyalty_member ON loyalty_ledger (member);
+
 -- Recruitment / HR pipeline: applicants moving through applied -> interview ->
 -- trial -> accepted/rejected.
 CREATE TABLE IF NOT EXISTS recruits (

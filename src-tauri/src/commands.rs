@@ -5926,6 +5926,50 @@ pub async fn reconstruct_fit(
     Ok(ReconstructedFitView { eft, ship, pilot })
 }
 
+/// The loyalty board: per-member balances plus the recent raw ledger.
+#[derive(Debug, Serialize)]
+pub struct LoyaltyBoardView {
+    pub balances: Vec<eve_core::loyalty::MemberBalance>,
+    pub ledger: Vec<eve_core::loyalty::LoyaltyEntry>,
+}
+
+/// The corp loyalty-points board: per-member running balances + recent entries.
+#[tauri::command]
+pub async fn get_loyalty_board(state: State<'_, AppState>) -> CmdResult<LoyaltyBoardView> {
+    let ledger = state.db.list_loyalty().await.map_err(|e| e.to_string())?;
+    let balances = eve_core::loyalty::summarize(&ledger);
+    Ok(LoyaltyBoardView { balances, ledger })
+}
+
+/// Award or deduct loyalty points for a member. Positive earns; negative
+/// redeems (against a corp store). `reason`/`category` are free-text.
+#[tauri::command]
+pub async fn add_loyalty_entry(
+    state: State<'_, AppState>,
+    member: String,
+    points: i64,
+    reason: String,
+    category: String,
+) -> CmdResult<i64> {
+    if member.trim().is_empty() {
+        return Err("a loyalty entry needs a member name".into());
+    }
+    if points == 0 {
+        return Err("points must be non-zero".into());
+    }
+    state
+        .db
+        .add_loyalty_entry(member.trim(), points, reason.trim(), category.trim(), now_epoch_secs())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Delete a loyalty ledger entry.
+#[tauri::command]
+pub async fn delete_loyalty_entry(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    state.db.delete_loyalty_entry(id).await.map_err(|e| e.to_string())
+}
+
 /// Submit an SRP claim (status pending).
 #[tauri::command]
 pub async fn submit_srp_claim(

@@ -98,6 +98,7 @@ import type {
   TimerView,
   SrpBoardView,
   RecruitBoardView,
+  LoyaltyBoardView,
   AiSettingsView,
   AiEndpointView,
   ChatMessage,
@@ -333,6 +334,10 @@ export const api = {
   setRecruitStatus: (id: number, status: string, reviewerNote: string) =>
     call<void>("set_recruit_status", { id, status, reviewerNote }),
   deleteRecruit: (id: number) => call<void>("delete_recruit", { id }),
+  getLoyaltyBoard: () => call<LoyaltyBoardView>("get_loyalty_board"),
+  addLoyaltyEntry: (member: string, points: number, reason: string, category: string) =>
+    call<number>("add_loyalty_entry", { member, points, reason, category }),
+  deleteLoyaltyEntry: (id: number) => call<void>("delete_loyalty_entry", { id }),
   getJumpFatigue: (characterId: number) =>
     call<JumpFatigue | null>("get_jump_fatigue", { characterId }),
   getTheraConnections: () => call<TheraConnection[]>("get_thera_connections"),
