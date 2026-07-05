@@ -1816,6 +1816,88 @@ pub async fn get_hub_board(
     })
 }
 
+/// One priced line of a shopping plan.
+#[derive(Debug, Serialize)]
+pub struct ShoppingLineView {
+    pub name: String,
+    pub quantity: i64,
+    /// Cheapest hub to buy it (by best sell price); empty if unpriced.
+    pub best_hub: String,
+    pub unit_price: f64,
+    pub line_total: f64,
+    pub volume: f64,
+    /// True when the item name didn't resolve against the SDE.
+    pub unresolved: bool,
+}
+
+/// A buy-and-deliver plan for a shopping list: cheapest hub per item, totals,
+/// and cargo volume — the "Amazon for EVE" flow (market + hauling).
+#[derive(Debug, Serialize)]
+pub struct ShoppingPlanView {
+    pub lines: Vec<ShoppingLineView>,
+    pub total_cost: f64,
+    pub total_volume: f64,
+    /// Per-hub cost split (which hub to visit and what it costs there).
+    pub by_hub: Vec<(String, f64)>,
+}
+
+/// Price a pasted shopping list (in-game multibuy or a hand-written list):
+/// resolve each item, find the cheapest trade hub by best sell price, and total
+/// the cost + cargo volume, grouped by which hub to buy at. The market half of
+/// the buy-and-deliver flow; pair it with the courier estimator for delivery.
+#[tauri::command]
+pub async fn shopping_plan(
+    state: State<'_, AppState>,
+    list: String,
+) -> CmdResult<ShoppingPlanView> {
+    let sde = state.names.sde();
+    let wanted = eve_core::shopping::parse_multibuy(&list);
+
+    let mut lines: Vec<ShoppingLineView> = Vec::new();
+    let mut by_hub: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    for w in wanted {
+        let Some(type_id) = sde.type_id_by_name(w.name.trim()).await.map_err(|e| e.to_string())? else {
+            lines.push(ShoppingLineView {
+                name: w.name,
+                quantity: w.quantity,
+                best_hub: String::new(),
+                unit_price: 0.0,
+                line_total: 0.0,
+                volume: 0.0,
+                unresolved: true,
+            });
+            continue;
+        };
+        // Cheapest hub = lowest best-sell across the five hubs.
+        let hubs = state.marketdata.compare(type_id).await.unwrap_or_default();
+        let best = hubs
+            .iter()
+            .filter_map(|h| h.best_sell.map(|p| (h.hub.clone(), p)))
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let unit_vol = sde.type_volume(type_id).await.ok().flatten().unwrap_or(0.0);
+        let (best_hub, unit_price) = best.unwrap_or((String::new(), 0.0));
+        let line_total = unit_price * w.quantity as f64;
+        if !best_hub.is_empty() {
+            *by_hub.entry(best_hub.clone()).or_insert(0.0) += line_total;
+        }
+        lines.push(ShoppingLineView {
+            name: w.name,
+            quantity: w.quantity,
+            best_hub,
+            unit_price,
+            line_total,
+            volume: unit_vol * w.quantity as f64,
+            unresolved: false,
+        });
+    }
+
+    let total_cost = lines.iter().map(|l| l.line_total).sum();
+    let total_volume = lines.iter().map(|l| l.volume).sum();
+    let mut by_hub: Vec<(String, f64)> = by_hub.into_iter().collect();
+    by_hub.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(ShoppingPlanView { lines, total_cost, total_volume, by_hub })
+}
+
 /// A small curated set of liquid, commonly-flipped items for the default scan
 /// when the caller supplies no list (minerals, salvage, common modules/ships).
 fn default_scan_types() -> Vec<i64> {

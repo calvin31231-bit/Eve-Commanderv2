@@ -44,6 +44,7 @@ import type {
   MarketView,
   HubBoardView,
   HubTradeView,
+  ShoppingPlanView,
   TradingPnlView,
   MiningView,
   ResearchAgentView,
@@ -178,6 +179,7 @@ export const api = {
     salesTax?: number,
   ) =>
     call<TradeOpportunity[]>("scan_station_trades", { typeIds, brokerFee, salesTax }),
+  shoppingPlan: (list: string) => call<ShoppingPlanView>("shopping_plan", { list }),
   getHubBoard: (query: string, salesTax?: number, brokerFee?: number) =>
     call<HubBoardView>("get_hub_board", { query, salesTax, brokerFee }),
   scanHubTrades: (opts: {

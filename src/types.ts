@@ -768,6 +768,23 @@ export interface HubQuoteView {
   best_buy: number | null;
 }
 
+export interface ShoppingLineView {
+  name: string;
+  quantity: number;
+  best_hub: string;
+  unit_price: number;
+  line_total: number;
+  volume: number;
+  unresolved: boolean;
+}
+
+export interface ShoppingPlanView {
+  lines: ShoppingLineView[];
+  total_cost: number;
+  total_volume: number;
+  by_hub: [string, number][];
+}
+
 export interface HubTradeView {
   type_id: number;
   name: string;

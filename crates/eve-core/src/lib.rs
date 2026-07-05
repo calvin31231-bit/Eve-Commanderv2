@@ -76,6 +76,7 @@ pub mod reprocess;
 pub mod research;
 pub mod sde;
 pub mod share;
+pub mod shopping;
 pub mod signatures;
 pub mod skillplan;
 pub mod skillplan_import;

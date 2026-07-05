@@ -36,6 +36,7 @@ import type {
   TradeOpportunity,
   HubBoardView,
   HubTradeView,
+  ShoppingPlanView,
   TradingPnlView,
   ReprocessView,
   BuildPlanView,
@@ -2009,6 +2010,67 @@ function TradingPnlCard({ character }: { character: Character }): ReactNode {
   );
 }
 
+// Buy-and-deliver: paste a shopping list (in-game multibuy), get the cheapest
+// hub per item, totals, and cargo volume — the "Amazon for EVE" flow.
+function ShoppingList(): ReactNode {
+  const [text, setText] = useState("");
+  const [plan, setPlan] = useState<ShoppingPlanView | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function price() {
+    if (!isTauri() || !text.trim()) return;
+    setLoading(true);
+    api.shoppingPlan(text).then((p) => { setPlan(p); setLoading(false); }).catch(() => setLoading(false));
+  }
+
+  return (
+    <div className="card">
+      <h3>Shopping List <span style={{ color: "var(--text-dim)", fontWeight: 400, fontSize: 12 }}>· buy & deliver</span></h3>
+      <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
+        Paste an in-game multibuy (or "Item xN" lines). Finds the cheapest hub per item and totals
+        the cost + cargo volume so you know where to shop and what to haul.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={"Damage Control II x5\n200mm AutoCannon II x8\nWarrior II x10"}
+        rows={5}
+        style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }}
+      />
+      <button onClick={price} disabled={loading || !text.trim()} style={{ marginTop: 8 }}>
+        {loading ? "Pricing…" : "Price list"}
+      </button>
+      {plan && (
+        <div style={{ marginTop: 10 }}>
+          <div className="cashflow-totals">
+            <span className="neg">{ISK.format(plan.total_cost)} ISK</span>
+            <span>{ISK.format(Math.round(plan.total_volume))} m³</span>
+          </div>
+          {plan.by_hub.length > 0 && (
+            <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "4px 0" }}>
+              Buy at: {plan.by_hub.map(([hub, cost]) => `${hub} (${ISK.format(cost)})`).join(" · ")}
+            </p>
+          )}
+          <table className="holdings" style={{ marginTop: 6 }}>
+            <tbody>
+              {plan.lines.map((l, i) => (
+                <tr key={i}>
+                  <td>
+                    {l.unresolved ? <span style={{ color: "var(--caution)" }}>{l.name} (unknown)</span> : l.name}
+                    <span style={{ color: "var(--text-dim)", fontSize: 11 }}> ×{ISK.format(l.quantity)}</span>
+                  </td>
+                  <td className="loc">{l.best_hub}</td>
+                  <td className="mono num">{l.line_total > 0 ? ISK.format(l.line_total) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Hub trade analyzer: the 5-hub board for one item (best buy/sell at Jita,
 // Amarr, Dodixie, Rens, Hek) with the best immediate flip and sell-to-sell
 // relist. Live-ESI equivalent of a hub market-analysis spreadsheet.
@@ -2636,6 +2698,7 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
       {sub === "market" && (
         <>
           <MarketBrowser />
+          <ShoppingList />
           <HubAnalyzer />
           <HubTradeScanner />
           <StationScanner />
