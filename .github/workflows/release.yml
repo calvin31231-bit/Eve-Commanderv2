@@ -83,15 +83,13 @@ jobs:
           # secret — see BAKED_CLIENT_ID in src-tauri/src/lib.rs). Set the repo
           # secret so public builds authenticate without an end-user .env.
           EVE_COMMANDER_CLIENT_ID: ${{ secrets.EVE_COMMANDER_CLIENT_ID }}
-          # Optional signing — present only if the corresponding secrets are set.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # NOTE: signing env vars are intentionally omitted. Passing an *empty*
+          # APPLE_CERTIFICATE (from an unset secret) makes tauri-action attempt a
+          # cert import and fail ("security import: failed to import keychain
+          # certificate"). To enable code-signing later, add the cert/notarize
+          # secrets and re-introduce APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD
+          # / APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID
+          # (macOS) and WINDOWS_CERTIFICATE / WINDOWS_CERTIFICATE_PASSWORD here.
         with:
           args: --target ${{ matrix.target }}
           # On a tag push, github.ref_name is the tag; on a manual dispatch it's
