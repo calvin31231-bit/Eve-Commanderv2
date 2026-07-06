@@ -72,6 +72,10 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Baked into the backend binary at compile time (public PKCE id, not a
+          # secret — see BAKED_CLIENT_ID in src-tauri/src/lib.rs). Set the repo
+          # secret so public builds authenticate without an end-user .env.
+          EVE_COMMANDER_CLIENT_ID: ${{ secrets.EVE_COMMANDER_CLIENT_ID }}
           # Optional signing — present only if the corresponding secrets are set.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}

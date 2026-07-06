@@ -127,6 +127,16 @@ pub struct AppState {
     pub live_kills: Arc<Mutex<std::collections::VecDeque<eve_core::redisq::LiveKill>>>,
 }
 
+/// The ESI application's `client_id`, baked into the binary at **build time**
+/// from the `EVE_COMMANDER_CLIENT_ID` environment variable set during the
+/// release build (a CI secret — see `.github/workflows/release.yml`). The value
+/// is a **public PKCE client id**, not a secret: PKCE uses no client secret, so
+/// there is nothing confidential to protect here — embedding it just lets a
+/// distributed build authenticate out of the box without the end user
+/// registering their own ESI app or writing a `.env`. Unset in ordinary `cargo`
+/// builds, where the runtime env / `.env` supplies it instead.
+const BAKED_CLIENT_ID: Option<&str> = option_env!("EVE_COMMANDER_CLIENT_ID");
+
 /// Build the app config from environment / defaults. The ESI `client_id` and
 /// `redirect_uri` come from the registered ESI application.
 fn load_config() -> Config {
@@ -140,7 +150,13 @@ fn load_config() -> Config {
     }
 
     let data_dir = data_dir().join("eve-commander");
-    let client_id = std::env::var("EVE_COMMANDER_CLIENT_ID").unwrap_or_default();
+    // Precedence: runtime env / `.env` (dev + self-host override) → the value
+    // baked into the binary at build time (the public release path).
+    let client_id = std::env::var("EVE_COMMANDER_CLIENT_ID")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| BAKED_CLIENT_ID.filter(|s| !s.is_empty()).map(str::to_string))
+        .unwrap_or_default();
     if client_id.is_empty() {
         tracing::warn!(
             "EVE_COMMANDER_CLIENT_ID is empty — set it (env var or .env file) or login will fail"

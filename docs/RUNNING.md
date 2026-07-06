@@ -3,6 +3,13 @@
 This is the desktop app (Tauri 2 + React). It needs a WebView and an ESI
 application registered with EVE.
 
+> **Using a released installer?** The public release builds have the ESI client
+> id baked in at build time (a public PKCE id — see
+> `BAKED_CLIENT_ID` in `src-tauri/src/lib.rs`), so you can just install and log
+> in — no ESI-app registration or `.env` needed. The steps below are for
+> **building from source**, where you supply your own client id (a real env var
+> or `.env` value always overrides the baked-in one).
+
 ## 1. Prerequisites
 
 - **Rust** (1.80+) — https://rustup.rs

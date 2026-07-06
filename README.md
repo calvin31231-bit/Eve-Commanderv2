@@ -14,6 +14,16 @@ local game logs, the offline SDE, and third-party feeds in the same place at the
 The full product vision, module breakdown, UI/UX strategy, resource-budget design, optional
 local-AI ("Jarvis") layer, and phased roadmap live in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
+## Status
+
+**v0.1.0 — first public release.** All roadmap phases (character core, economy, fitting/skills,
+the desktop live/intel layer, navigation, corp/fleet, PvE, the 10× differentiators, and the
+optional local-AI layer) are implemented, covered by 349 unit tests plus a golden-value
+regression suite, and gated by CI. See the [`CHANGELOG`](CHANGELOG.md) for the feature list.
+
+**Get it running:** [`docs/RUNNING.md`](docs/RUNNING.md) — prerequisites, ESI app registration,
+and `pnpm tauri dev`. Released under the [MIT License](LICENSE).
+
 ## Architecture
 
 A Rust + Tauri desktop app, structured so the logic is testable without a GUI:
@@ -22,15 +32,15 @@ A Rust + Tauri desktop app, structured so the logic is testable without a GUI:
 |---|---|---|
 | [`crates/eve-core`](crates/eve-core) | All logic: SSO/PKCE auth, cache-first ESI client, error-budget rate limiter, tiered poll scheduler, SDE access, domain models. **No GUI deps.** | ✅ Yes — `cargo test -p eve-core` |
 | [`src-tauri`](src-tauri) | The desktop shell: window, system tray, IPC commands. Thin; delegates to `eve-core`. | ⚠️ Needs a system WebView (WebView2 / WKWebView / WebKitGTK) |
-| `src/` *(planned)* | React + TypeScript + Vite frontend. | — |
+| `src/` | React + TypeScript + Vite frontend (the cockpit UI). | — |
 
 This split is deliberate: the heavy, correctness-critical work (ESI scheduling, rate limiting,
 fitting/industry math) lives in `eve-core` and is unit-tested anywhere, while `src-tauri` only
 owns the window and IPC.
 
-## Phase 0 status (foundation)
+## Foundation
 
-Implemented and tested in `eve-core`:
+The backbone every feature builds on, implemented and tested in `eve-core`:
 
 - **EVE SSO** — OAuth2 Authorization Code + **PKCE** (`auth::pkce`, `auth::sso`), with refresh
   tokens stored in the OS keychain (`auth::token_store`, `keychain` feature).
