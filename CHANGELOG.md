@@ -3,7 +3,11 @@
 All notable changes to EVE Commander are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] — First public release
+## [0.1.1] — First public release
+
+The first build published with installers. (v0.1.0 was tagged but its release
+build failed before producing artifacts; 0.1.1 is the first working release.)
+
 
 The first public build: a cross-platform desktop companion (Tauri 2 + Rust +
 React) that unifies the EVE third-party ecosystem over your live ESI data, the
@@ -55,4 +59,4 @@ only, strictly EULA-compliant.
 - CI runs the full gate (tests + zero-warning clippy + typecheck + build) on
   every change.
 
-[0.1.0]: https://github.com/calvin31231-bit/eve-commanderv2/releases/tag/v0.1.0
+[0.1.1]: https://github.com/calvin31231-bit/eve-commanderv2/releases/tag/v0.1.1
