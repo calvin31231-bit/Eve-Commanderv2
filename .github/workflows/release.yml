@@ -16,6 +16,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create (e.g. v0.1.1)"
+        required: true
+        default: v0.1.1
 
 jobs:
   bundle:
@@ -89,7 +94,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --target ${{ matrix.target }}
-          tagName: ${{ github.ref_name }}
-          releaseName: "EVE Commander ${{ github.ref_name }}"
+          # On a tag push, github.ref_name is the tag; on a manual dispatch it's
+          # the branch, so fall back to the `tag` input (which tauri-action
+          # creates on the checked-out commit).
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: "EVE Commander ${{ github.event.inputs.tag || github.ref_name }}"
           releaseDraft: true
           prerelease: false
