@@ -415,6 +415,7 @@ pub fn run() {
             commands::search_items,
             commands::get_market_browse,
             commands::scan_station_trades,
+            commands::scan_flips,
             commands::scan_arbitrage,
             commands::get_hub_board,
             commands::scan_hub_trades,

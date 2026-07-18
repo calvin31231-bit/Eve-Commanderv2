@@ -329,6 +329,22 @@ export interface TradeOpportunity {
   daily_potential: number;
 }
 
+export interface FlipView {
+  type_id: number;
+  name: string;
+  buy_price: number;
+  sell_price: number;
+  profit_per_unit: number;
+  margin_pct: number;
+  daily_volume: number;
+  isk_turnover_daily: number;
+  sell_depth: number;
+  buy_depth: number;
+  sell_orders: number;
+  buy_orders: number;
+  daily_potential: number;
+}
+
 export interface ArbitrageView {
   type_id: number;
   name: string;

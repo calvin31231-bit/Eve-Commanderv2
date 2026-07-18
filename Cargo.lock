@@ -1056,7 +1056,7 @@ checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
 
 [[package]]
 name = "eve-commander"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dotenvy",
  "eve-core",
@@ -1074,7 +1074,7 @@ dependencies = [
 
 [[package]]
 name = "eve-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.22.1",
  "keyring",
@@ -3477,7 +3477,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sde-tools"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bzip2",

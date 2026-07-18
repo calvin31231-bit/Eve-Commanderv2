@@ -312,6 +312,121 @@ pub struct TradeOpportunity {
     pub metrics: TradeMetrics,
 }
 
+/// How to rank a flip scan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FlipSort {
+    /// profit_per_unit × daily_volume — the realistic daily-profit ceiling.
+    Potential,
+    /// Net return on capital per flip.
+    Margin,
+    /// Units traded per day.
+    Volume,
+    /// ISK changing hands per day (price × volume).
+    Turnover,
+    /// Net ISK profit per unit.
+    Profit,
+}
+
+impl FlipSort {
+    /// Parse a UI string; unknown/empty defaults to `Potential`.
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "margin" => FlipSort::Margin,
+            "volume" => FlipSort::Volume,
+            "turnover" => FlipSort::Turnover,
+            "profit" => FlipSort::Profit,
+            _ => FlipSort::Potential,
+        }
+    }
+}
+
+/// A full station-flip read for one item: the buy-low/sell-high economics plus
+/// the liquidity + competition signals a trader needs to judge whether a fat
+/// margin is actually fillable. Pure (see [`flip_metrics`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FlipMetrics {
+    /// Best buy order — the price to outbid to acquire.
+    pub buy_price: f64,
+    /// Best sell order — the price to undercut to realise.
+    pub sell_price: f64,
+    /// Net ISK profit per unit after broker fee (both orders) + sales tax.
+    pub profit_per_unit: f64,
+    /// Net profit as a fraction of the buy cost (return on capital per flip).
+    pub margin_pct: f64,
+    /// Units traded per day (30-day average).
+    pub daily_volume: i64,
+    /// ISK changing hands per day (sell price × daily volume) — the "how busy"
+    /// figure.
+    pub isk_turnover_daily: f64,
+    /// Open units resting on the sell side of the book.
+    pub sell_depth: i64,
+    /// Open units resting on the buy side of the book.
+    pub buy_depth: i64,
+    /// Number of competing sell orders (thin = easier to hold the best ask).
+    pub sell_orders: i64,
+    /// Number of competing buy orders (thin = easier to hold the best bid).
+    pub buy_orders: i64,
+    /// profit_per_unit × daily_volume — the optimistic daily-profit ceiling if
+    /// you captured the whole day's flow.
+    pub daily_potential: f64,
+}
+
+/// Full flip economics for one item from its quote + daily traded volume.
+/// Returns `None` when the book is one-sided, the spread is non-positive, or
+/// prices are invalid. Pure.
+pub fn flip_metrics(quote: &MarketQuote, daily_volume: i64, fees: TradeFees) -> Option<FlipMetrics> {
+    let buy = quote.best_buy?;
+    let sell = quote.best_sell?;
+    if buy <= 0.0 || sell <= 0.0 || sell <= buy {
+        return None;
+    }
+    let cost = buy * (1.0 + fees.broker_fee);
+    let revenue = sell * (1.0 - fees.broker_fee - fees.sales_tax);
+    let profit = revenue - cost;
+    let margin_pct = if cost > 0.0 { profit / cost } else { 0.0 };
+    let dv = daily_volume.max(0);
+    Some(FlipMetrics {
+        buy_price: buy,
+        sell_price: sell,
+        profit_per_unit: profit,
+        margin_pct,
+        daily_volume: dv,
+        isk_turnover_daily: sell * dv as f64,
+        sell_depth: quote.sell_volume,
+        buy_depth: quote.buy_volume,
+        sell_orders: quote.sell_orders as i64,
+        buy_orders: quote.buy_orders as i64,
+        daily_potential: profit * dv as f64,
+    })
+}
+
+/// A flip candidate (type + its full economics).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FlipCandidate {
+    pub type_id: i64,
+    pub metrics: FlipMetrics,
+}
+
+/// Rank flip candidates by the chosen key, best first. Pure.
+pub fn rank_flips(mut flips: Vec<FlipCandidate>, sort: FlipSort) -> Vec<FlipCandidate> {
+    let key = |m: &FlipMetrics| -> f64 {
+        match sort {
+            FlipSort::Potential => m.daily_potential,
+            FlipSort::Margin => m.margin_pct,
+            FlipSort::Volume => m.daily_volume as f64,
+            FlipSort::Turnover => m.isk_turnover_daily,
+            FlipSort::Profit => m.profit_per_unit,
+        }
+    };
+    flips.sort_by(|a, b| {
+        key(&b.metrics)
+            .partial_cmp(&key(&a.metrics))
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.type_id.cmp(&b.type_id))
+    });
+    flips
+}
+
 /// The best cross-hub buy-low / sell-high flip for an item.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HubArbitrage {
@@ -638,6 +753,45 @@ impl MarketDataClient {
         Ok(out)
     }
 
+    /// The item-flipper scan: for each type, fetch its quote + daily volume and
+    /// compute full flip economics (profit, margin, liquidity, competition),
+    /// keeping only profitable candidates that clear `min_margin` and
+    /// `min_daily_volume`, ranked by `sort`. Best-effort per item.
+    pub async fn flip_scan(
+        &self,
+        region_id: i64,
+        type_ids: &[i64],
+        fees: TradeFees,
+        min_margin: f64,
+        min_daily_volume: i64,
+        sort: FlipSort,
+    ) -> Result<Vec<FlipCandidate>> {
+        let mut out = Vec::new();
+        for &type_id in type_ids {
+            let quote = match self.quote(region_id, type_id).await {
+                Ok(q) => q,
+                Err(e) => {
+                    tracing::warn!("flip_scan: quote {type_id} failed: {e}");
+                    continue;
+                }
+            };
+            let daily_volume = self
+                .history(region_id, type_id)
+                .await
+                .map(|h| h.daily_volume_30d)
+                .unwrap_or(0);
+            if let Some(m) = flip_metrics(&quote, daily_volume, fees) {
+                if m.profit_per_unit > 0.0
+                    && m.margin_pct >= min_margin
+                    && m.daily_volume >= min_daily_volume
+                {
+                    out.push(FlipCandidate { type_id, metrics: m });
+                }
+            }
+        }
+        Ok(rank_flips(out, sort))
+    }
+
     /// Scan a set of types for the best cross-hub flip per item. Fetches each
     /// item's per-hub quotes best-effort (skipping ones that fail or have no
     /// profitable flip) and returns opportunities sorted by per-unit profit,
@@ -748,6 +902,79 @@ mod tests {
     fn trade_metrics_none_on_one_sided_book() {
         let q = quote_from_orders(&[order(10.0, 5, false)]);
         assert!(trade_metrics(&q, 100, TradeFees::default()).is_none());
+    }
+
+    #[test]
+    fn flip_metrics_carries_liquidity_and_competition() {
+        // Two sell orders (30 units) at 200/210, two buy orders (25 units) at 100/95.
+        let q = quote_from_orders(&[
+            order(200.0, 20, false),
+            order(210.0, 10, false),
+            order(100.0, 15, true),
+            order(95.0, 10, true),
+        ]);
+        let m = flip_metrics(&q, 500, TradeFees::default()).unwrap();
+        // Same core economics as trade_metrics: profit 82/unit.
+        assert!((m.profit_per_unit - 82.0).abs() < 1e-9);
+        assert!((m.daily_potential - 82.0 * 500.0).abs() < 1e-9);
+        // Turnover = best sell (200) × daily volume.
+        assert!((m.isk_turnover_daily - 200.0 * 500.0).abs() < 1e-9);
+        // Depth + competition surfaced from the book.
+        assert_eq!(m.sell_depth, 30);
+        assert_eq!(m.buy_depth, 25);
+        assert_eq!(m.sell_orders, 2);
+        assert_eq!(m.buy_orders, 2);
+    }
+
+    #[test]
+    fn flip_metrics_rejects_crossed_or_one_sided() {
+        // sell <= buy (no spread) → None.
+        let crossed = quote_from_orders(&[order(90.0, 5, false), order(100.0, 5, true)]);
+        assert!(flip_metrics(&crossed, 100, TradeFees::default()).is_none());
+        // one-sided → None.
+        let one = quote_from_orders(&[order(100.0, 5, true)]);
+        assert!(flip_metrics(&one, 100, TradeFees::default()).is_none());
+    }
+
+    #[test]
+    fn rank_flips_orders_by_key() {
+        let mk = |type_id, profit: f64, vol: i64, margin: f64| FlipCandidate {
+            type_id,
+            metrics: FlipMetrics {
+                buy_price: 100.0,
+                sell_price: 200.0,
+                profit_per_unit: profit,
+                margin_pct: margin,
+                daily_volume: vol,
+                isk_turnover_daily: 200.0 * vol as f64,
+                sell_depth: 0,
+                buy_depth: 0,
+                sell_orders: 0,
+                buy_orders: 0,
+                daily_potential: profit * vol as f64,
+            },
+        };
+        let flips = vec![
+            mk(1, 50.0, 10, 0.5),  // potential 500
+            mk(2, 5.0, 1000, 0.05), // potential 5000, high volume
+            mk(3, 80.0, 20, 0.8),  // potential 1600, high margin
+        ];
+        // By potential: item 2 (5000) first.
+        assert_eq!(rank_flips(flips.clone(), FlipSort::Potential)[0].type_id, 2);
+        // By margin: item 3 (0.8) first.
+        assert_eq!(rank_flips(flips.clone(), FlipSort::Margin)[0].type_id, 3);
+        // By volume: item 2 (1000) first.
+        assert_eq!(rank_flips(flips.clone(), FlipSort::Volume)[0].type_id, 2);
+        // By profit/unit: item 3 (80) first.
+        assert_eq!(rank_flips(flips, FlipSort::Profit)[0].type_id, 3);
+    }
+
+    #[test]
+    fn flip_sort_parses() {
+        assert_eq!(FlipSort::parse("margin"), FlipSort::Margin);
+        assert_eq!(FlipSort::parse("VOLUME"), FlipSort::Volume);
+        assert_eq!(FlipSort::parse(""), FlipSort::Potential);
+        assert_eq!(FlipSort::parse("weird"), FlipSort::Potential);
     }
 
     #[test]

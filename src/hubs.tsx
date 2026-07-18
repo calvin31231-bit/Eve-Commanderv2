@@ -33,7 +33,7 @@ import type {
   MiningView,
   ResearchAgentView,
   ServerStatus,
-  TradeOpportunity,
+  FlipView,
   HubBoardView,
   HubTradeView,
   ShoppingPlanView,
@@ -1918,56 +1918,138 @@ function Sparkline({ values }: { values: number[] }): ReactNode {
   );
 }
 
-function StationScanner(): ReactNode {
-  const [rows, setRows] = useState<TradeOpportunity[] | null>(null);
+// Item Flipper: the focused station-trading tool. Buy-low/sell-high candidates
+// at Jita ranked by profit / volume / turnover / margin, with the liquidity +
+// competition signals that say whether a fat margin is actually fillable.
+const FLIP_SORTS: { id: string; label: string }[] = [
+  { id: "potential", label: "Daily profit potential" },
+  { id: "turnover", label: "ISK traded/day" },
+  { id: "volume", label: "Units traded/day" },
+  { id: "margin", label: "Margin %" },
+  { id: "profit", label: "Profit / unit" },
+];
+
+function compactIsk(n: number): string {
+  const a = Math.abs(n);
+  if (a >= 1e9) return `${(n / 1e9).toFixed(1)}b`;
+  if (a >= 1e6) return `${(n / 1e6).toFixed(1)}m`;
+  if (a >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+  return n.toFixed(0);
+}
+
+function ItemFlipper(): ReactNode {
+  const [rows, setRows] = useState<FlipView[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sort, setSort] = useState("potential");
+  const [minMargin, setMinMargin] = useState(5); // percent
+  const [minVol, setMinVol] = useState(50); // units/day
+  const [broker, setBroker] = useState(3); // percent
+  const [tax, setTax] = useState(4.5); // percent
 
   function scan() {
     if (!isTauri()) return;
     setLoading(true);
     api
-      .scanStationTrades()
+      .scanFlips({
+        brokerFee: broker / 100,
+        salesTax: tax / 100,
+        minMargin: minMargin / 100,
+        minDailyVolume: minVol,
+        sort,
+      })
       .then(setRows)
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
   }
 
   return (
-    <div className="card station-scanner">
+    <div className="card item-flipper">
       <h3>
-        Station Trade Scanner{" "}
-        <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· Jita</span>
+        Item Flipper{" "}
+        <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· Jita station trading</span>
       </h3>
       <p style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 0 }}>
-        Best buy→sell flips on liquid items, net of 3% broker + 4.5% tax.
+        Buy low, sell high in place. Ranked by your chosen metric, net of broker + tax, with daily
+        volume and order-book competition so you can tell a real flip from a trap.
       </p>
-      <button onClick={scan} disabled={loading}>
-        {loading ? "Scanning…" : rows ? "Rescan" : "Scan"}
-      </button>
-      {rows && rows.length > 0 && (
-        <table className="holdings" style={{ marginTop: 10 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", fontSize: 11, color: "var(--text-dim)" }}>Item</th>
-              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Margin</th>
-              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Profit/u</th>
-              <th style={{ textAlign: "right", fontSize: 11, color: "var(--text-dim)" }}>Daily</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((o) => (
-              <tr key={o.type_id}>
-                <td>{o.name}</td>
-                <td className="mono num">{(o.margin_pct * 100).toFixed(1)}%</td>
-                <td className="mono num pos">{ISK.format(o.profit_per_unit)}</td>
-                <td className="mono num">{ISK.format(o.daily_potential)}</td>
-              </tr>
+      <div className="cashflow-totals" style={{ gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Rank by
+          <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ display: "block" }}>
+            {FLIP_SORTS.map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
             ))}
-          </tbody>
-        </table>
+          </select>
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Min margin %
+          <input type="number" value={minMargin} style={{ width: 64, display: "block" }}
+            onChange={(e) => setMinMargin(Number(e.target.value) || 0)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Min vol/day
+          <input type="number" value={minVol} style={{ width: 72, display: "block" }}
+            onChange={(e) => setMinVol(Number(e.target.value) || 0)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Broker %
+          <input type="number" value={broker} step="0.1" style={{ width: 56, display: "block" }}
+            onChange={(e) => setBroker(Number(e.target.value) || 0)} />
+        </label>
+        <label style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Tax %
+          <input type="number" value={tax} step="0.1" style={{ width: 56, display: "block" }}
+            onChange={(e) => setTax(Number(e.target.value) || 0)} />
+        </label>
+        <button onClick={scan} disabled={loading}>
+          {loading ? "Scanning…" : rows ? "Rescan" : "Scan"}
+        </button>
+      </div>
+      {rows && rows.length > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <table className="holdings" style={{ marginTop: 10, fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", color: "var(--text-dim)" }}>Item</th>
+                <th style={{ textAlign: "right", color: "var(--text-dim)" }}>Margin</th>
+                <th style={{ textAlign: "right", color: "var(--text-dim)" }}>Profit/u</th>
+                <th style={{ textAlign: "right", color: "var(--text-dim)" }}>Vol/day</th>
+                <th style={{ textAlign: "right", color: "var(--text-dim)" }} title="ISK changing hands per day">Traded/day</th>
+                <th style={{ textAlign: "right", color: "var(--text-dim)" }} title="Sell orders / buy orders competing — fewer is easier">Comp.</th>
+                <th style={{ textAlign: "right", color: "var(--text-dim)" }} title="profit/unit × daily volume — optimistic ceiling">Potential</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((f) => {
+                const busy = f.buy_orders + f.sell_orders;
+                const compColor = busy <= 20 ? "var(--accent)" : busy <= 80 ? "var(--caution)" : "var(--danger)";
+                return (
+                  <tr key={f.type_id}>
+                    <td>
+                      {f.name}
+                      <div style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                        buy {compactIsk(f.buy_price)} → sell {compactIsk(f.sell_price)}
+                      </div>
+                    </td>
+                    <td className="mono num pos">{(f.margin_pct * 100).toFixed(1)}%</td>
+                    <td className="mono num">{compactIsk(f.profit_per_unit)}</td>
+                    <td className="mono num">{f.daily_volume.toLocaleString()}</td>
+                    <td className="mono num">{compactIsk(f.isk_turnover_daily)}</td>
+                    <td className="mono num" style={{ color: compColor }} title={`${f.sell_orders} sell / ${f.buy_orders} buy orders`}>
+                      {f.sell_orders}/{f.buy_orders}
+                    </td>
+                    <td className="mono num pos">{compactIsk(f.daily_potential)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
       {rows && rows.length === 0 && !loading && (
-        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>No profitable flips found.</p>
+        <p style={{ color: "var(--text-dim)", fontSize: 12 }}>
+          No flips cleared your filters — lower the min margin or volume.
+        </p>
       )}
     </div>
   );
@@ -2865,10 +2947,10 @@ function EconomyHub({ character }: { character: Character | null }): ReactNode {
       {sub === "market" && (
         <>
           <MarketBrowser />
+          <ItemFlipper />
           <ShoppingList />
           <HubAnalyzer />
           <HubTradeScanner />
-          <StationScanner />
         </>
       )}
       {sub === "industry" && (

@@ -1435,6 +1435,86 @@ pub async fn scan_station_trades(
         .collect())
 }
 
+/// One item-flipper candidate: buy-low/sell-high economics plus the liquidity
+/// and competition signals that say whether the margin is actually fillable.
+#[derive(Debug, Serialize)]
+pub struct FlipView {
+    pub type_id: i64,
+    pub name: String,
+    pub buy_price: f64,
+    pub sell_price: f64,
+    pub profit_per_unit: f64,
+    /// Net return on capital per flip (fraction; 0.2 = 20%).
+    pub margin_pct: f64,
+    pub daily_volume: i64,
+    pub isk_turnover_daily: f64,
+    pub sell_depth: i64,
+    pub buy_depth: i64,
+    pub sell_orders: i64,
+    pub buy_orders: i64,
+    pub daily_potential: f64,
+}
+
+/// The **item flipper**: scan a set of item types at Jita (or a curated liquid
+/// default set) for buy-low/sell-high station-trade opportunities, enriched with
+/// daily traded volume, ISK turnover, and order-book depth + competition, then
+/// ranked by `sort` ("potential" | "margin" | "volume" | "turnover" | "profit").
+/// `minMargin` (fraction) and `minDailyVolume` filter out illiquid / thin-margin
+/// items. `brokerFee`/`salesTax` are fractions.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn scan_flips(
+    state: State<'_, AppState>,
+    type_ids: Option<Vec<i64>>,
+    broker_fee: Option<f64>,
+    sales_tax: Option<f64>,
+    min_margin: Option<f64>,
+    min_daily_volume: Option<i64>,
+    sort: Option<String>,
+) -> CmdResult<Vec<FlipView>> {
+    let region = eve_core::marketdata::THE_FORGE;
+    let ids = type_ids.unwrap_or_else(default_scan_types);
+    let mut fees = eve_core::marketdata::TradeFees::default();
+    if let Some(b) = broker_fee {
+        fees.broker_fee = b;
+    }
+    if let Some(t) = sales_tax {
+        fees.sales_tax = t;
+    }
+    let sort = eve_core::marketdata::FlipSort::parse(&sort.unwrap_or_default());
+    let flips = state
+        .marketdata
+        .flip_scan(
+            region,
+            &ids,
+            fees,
+            min_margin.unwrap_or(0.0),
+            min_daily_volume.unwrap_or(0),
+            sort,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let names = names_for(&state, &flips.iter().map(|f| f.type_id).collect::<Vec<_>>()).await;
+    Ok(flips
+        .into_iter()
+        .map(|f| FlipView {
+            type_id: f.type_id,
+            name: named(&names, f.type_id),
+            buy_price: f.metrics.buy_price,
+            sell_price: f.metrics.sell_price,
+            profit_per_unit: f.metrics.profit_per_unit,
+            margin_pct: f.metrics.margin_pct,
+            daily_volume: f.metrics.daily_volume,
+            isk_turnover_daily: f.metrics.isk_turnover_daily,
+            sell_depth: f.metrics.sell_depth,
+            buy_depth: f.metrics.buy_depth,
+            sell_orders: f.metrics.sell_orders,
+            buy_orders: f.metrics.buy_orders,
+            daily_potential: f.metrics.daily_potential,
+        })
+        .collect())
+}
+
 /// One cross-hub haul candidate with its item name resolved.
 #[derive(Debug, Serialize)]
 pub struct ArbitrageView {

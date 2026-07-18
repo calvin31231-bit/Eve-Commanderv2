@@ -51,6 +51,7 @@ import type {
   Notification,
   ServerStatus,
   TradeOpportunity,
+  FlipView,
   ArbitrageView,
   ReprocessView,
   OreYieldView,
@@ -188,6 +189,14 @@ export const api = {
     salesTax?: number,
   ) =>
     call<TradeOpportunity[]>("scan_station_trades", { typeIds, brokerFee, salesTax }),
+  scanFlips: (opts: {
+    typeIds?: number[];
+    brokerFee?: number;
+    salesTax?: number;
+    minMargin?: number;
+    minDailyVolume?: number;
+    sort?: string;
+  }) => call<FlipView[]>("scan_flips", opts),
   shoppingPlan: (list: string) => call<ShoppingPlanView>("shopping_plan", { list }),
   getHubBoard: (query: string, salesTax?: number, brokerFee?: number) =>
     call<HubBoardView>("get_hub_board", { query, salesTax, brokerFee }),
